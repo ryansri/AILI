@@ -225,7 +225,7 @@ export function ConversationPane({
                 <div
                   className={cn(
                     "max-w-[56%] rounded-2xl px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap",
-                    mine ? "bg-blue-600 text-white" : "bg-muted",
+                    mine ? "bg-foreground text-background" : "bg-muted",
                     mine && joinsPrev && "rounded-tr-md",
                     mine && joinsNext && "rounded-br-md",
                     !mine && joinsPrev && "rounded-tl-md",
@@ -270,7 +270,7 @@ export function ConversationPane({
             <span
               className={cn(
                 "size-2 shrink-0 rounded-full",
-                step.kind === "reply" ? "bg-blue-600" : step.kind === "chase" ? "bg-amber-500" : step.kind === "quiet" ? "bg-violet-500" : "bg-stone-400",
+                step.kind === "reply" ? "bg-foreground" : step.kind === "chase" ? "bg-amber-500" : step.kind === "quiet" ? "bg-violet-500" : "bg-stone-400",
               )}
             />
             <div className="min-w-0 flex-1">
@@ -284,7 +284,7 @@ export function ConversationPane({
                 <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} label="Not now" />
                 <Button
                   size="sm"
-                  className="h-7 rounded-full bg-blue-600 px-3 text-xs hover:bg-blue-700"
+                  className="h-7 rounded-full px-3 text-xs"
                   onClick={() => toast("AI drafting arrives in step 4.")}
                 >
                   <Sparkles />
@@ -323,7 +323,7 @@ export function ConversationPane({
           <Button
             size="icon"
             aria-label="Send"
-            className="size-10 rounded-full bg-blue-600 hover:bg-blue-700"
+            className="size-10 rounded-full"
             disabled={!draft.trim() || capReached || pending}
             onClick={send}
           >

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PersonDialog } from "@/components/people/person-dialog";
+import { CountBadge } from "@/components/count-badge";
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
 
@@ -32,7 +33,7 @@ export function PersonAvatar({ person, className }: { person: Person; className?
   return (
     <Avatar className={className}>
       {person.pictureUrl && <AvatarImage src={person.pictureUrl} alt="" />}
-      <AvatarFallback className="text-2xs font-semibold">{initials(person.name)}</AvatarFallback>
+      <AvatarFallback className="text-xs font-semibold">{initials(person.name)}</AvatarFallback>
     </Avatar>
   );
 }
@@ -62,10 +63,10 @@ function lastTime(row: Row): string {
 function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
   const { step } = row;
   if (step.kind === "chase") {
-    return <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-px text-3xs font-medium text-amber-700">{step.step}</span>;
+    return <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-2xs leading-none font-medium text-amber-700">{step.step}</span>;
   }
   if (step.kind === "quiet" && !grouped) {
-    return <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-px text-3xs font-medium text-violet-700">Decide</span>;
+    return <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-2xs leading-none font-medium text-violet-700">Decide</span>;
   }
   if (step.kind === "waiting") {
     const day = dueLabel(step.dueAt);
@@ -79,7 +80,7 @@ function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
             ? `Follow-up ${followUp} ${day}`
             : `Decide ${day}`;
     return (
-      <span suppressHydrationWarning className="shrink-0 rounded-full bg-muted px-1.5 py-px text-3xs font-medium text-muted-foreground">
+      <span suppressHydrationWarning className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs leading-none font-medium text-muted-foreground">
         {text}
       </span>
     );
@@ -163,8 +164,8 @@ export function PeopleList({
   }
 
   return (
-    <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col border-r bg-sidebar">
-      <div className="flex h-12 items-center gap-0.5 pr-2.5 pl-4">
+    <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col border-r bg-background">
+      <div className="flex h-14 items-center gap-0.5 pr-3 pl-4">
         {showSearch ? (
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -200,7 +201,7 @@ export function PeopleList({
           </div>
         ) : (
           <>
-            <h1 className="text-base font-bold tracking-tight">Inbox</h1>
+            <h1 className="text-xl font-bold tracking-tight">Inbox</h1>
             <div className="ml-auto flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -217,7 +218,6 @@ export function PeopleList({
                     variant="ghost"
                     size="icon-sm"
                     aria-label="Add person"
-                    className="text-blue-600 hover:text-blue-700"
                     onClick={() => setAdding(true)}
                   >
                     <Plus />
@@ -231,21 +231,15 @@ export function PeopleList({
         <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} onSaved={onCreated} />
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => onTab(v as Tab)} className="px-3 pb-1">
-        <TabsList className="w-full bg-foreground/[0.06]">
+      <Tabs value={tab} onValueChange={(v) => onTab(v as Tab)} className="border-b px-4 pb-4">
+        <TabsList className="h-9 w-full">
           {TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id} className="gap-1.5 text-xs">
+            <TabsTrigger key={t.id} value={t.id} className="gap-1.5 text-md">
               {t.label}
-              <span
-                className={cn(
-                  "flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-3xs font-semibold leading-none",
-                  tab === t.id && t.id === "needs" && tabCounts[t.id] > 0
-                    ? "bg-blue-600 text-white"
-                    : "bg-foreground/10 text-muted-foreground",
-                )}
-              >
-                {tabCounts[t.id] > 99 ? "99+" : tabCounts[t.id]}
-              </span>
+              <CountBadge
+                count={tabCounts[t.id]}
+                tone={tab === t.id && t.id === "needs" && tabCounts[t.id] > 0 ? "strong" : "soft"}
+              />
             </TabsTrigger>
           ))}
         </TabsList>
@@ -255,8 +249,8 @@ export function PeopleList({
         {groups.map((g) => (
           <div key={g.kind} role="group" aria-label={g.title}>
             {(tab !== "all" || g.kind === "stale") && (
-              <div className="flex items-baseline gap-1.5 px-4 pt-3.5 pb-1.5 text-2xs">
-                <span className="font-semibold tracking-wide uppercase">{g.title}</span>
+              <div className="flex items-baseline gap-1.5 px-4 pt-5 pb-2 text-2xs">
+                <span className="font-semibold tracking-wider uppercase">{g.title}</span>
                 <span className="text-muted-foreground">{g.rows.length}</span>
                 {g.hint && <span className="ml-auto text-muted-foreground">{g.hint}</span>}
               </div>
@@ -273,29 +267,29 @@ export function PeopleList({
                       onClick={() => onSelect(row.person.id)}
                       aria-current={active ? "true" : undefined}
                       className={cn(
-                        "flex w-full min-w-0 items-start gap-2.5 px-4 py-3 text-left transition-colors hover:bg-foreground/[0.04]",
-                        active && "bg-background shadow-[inset_3px_0_0_0_var(--color-blue-600)] hover:bg-background",
+                        "flex w-full min-w-0 items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/60",
+                        active && "bg-muted shadow-[inset_3px_0_0_0_var(--color-foreground)] hover:bg-muted",
                         stale && !active && "opacity-60",
                       )}
                     >
-                      <PersonAvatar person={row.person} className="mt-px size-9" />
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <PersonAvatar person={row.person} className="size-10" />
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <div className="flex items-center gap-1.5">
                           {row.step.kind === "reply" && (
-                            <span aria-label="Needs a reply" className="-mr-0.5 size-1.5 shrink-0 rounded-full bg-blue-600" />
+                            <span aria-label="Needs a reply" className="-mr-0.5 size-1.5 shrink-0 rounded-full bg-foreground" />
                           )}
-                          <span className="truncate text-md font-semibold">{row.person.name}</span>
+                          <span className="truncate text-sm font-semibold">{row.person.name}</span>
                           <Chip row={row} grouped={tab !== "all"} />
-                          <span className="ml-auto shrink-0 text-2xs text-muted-foreground/80" suppressHydrationWarning>
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground" suppressHydrationWarning>
                             {lastTime(row)}
                           </span>
                         </div>
-                        <div className="truncate text-xs text-foreground/70">{lastLine(row)}</div>
+                        <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
                       </div>
                     </button>
                     <div
                       className={cn(
-                        "absolute top-2 right-3 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
+                        "absolute top-2.5 right-3 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
                         "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
                       )}
                     >
@@ -320,7 +314,7 @@ export function PeopleList({
         {visible === 0 && <EmptyState tab={tab} narrowed={narrowed} total={total} />}
       </div>
 
-      <div className="flex items-center justify-center gap-1.5 border-t py-2 text-2xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-1.5 border-t py-2.5 text-xs text-muted-foreground">
         <span
           className={cn(
             "inline-block size-1.5 rounded-full",

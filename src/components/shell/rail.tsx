@@ -8,6 +8,7 @@ import { relativeTime } from "@/lib/next-step";
 import type { HelperStatus } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { CountBadge } from "@/components/count-badge";
 
 const SECTIONS = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
@@ -43,9 +44,7 @@ function RailLink({
         >
           <Icon className="size-4.5" strokeWidth={1.75} />
           {badge ? (
-            <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-3xs font-semibold leading-none text-white">
-              {badge > 99 ? "99+" : badge}
-            </span>
+            <CountBadge count={badge} size="sm" className="absolute top-0.5 right-0.5 ring-2 ring-sidebar" />
           ) : null}
         </Link>
       </TooltipTrigger>

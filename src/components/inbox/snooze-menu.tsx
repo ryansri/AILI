@@ -74,7 +74,7 @@ export function SnoozeMenu({
       aria-label={snoozed ? "Snoozed, change" : "Snooze"}
       aria-pressed={snoozed}
       disabled={pending}
-      className={snoozed ? "text-blue-600" : undefined}
+      className={snoozed ? "bg-muted text-foreground" : undefined}
     >
       <Clock />
     </Button>

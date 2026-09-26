@@ -65,7 +65,7 @@ export function FilterPopover({
               size="icon-sm"
               aria-label={label}
               aria-pressed={active.length > 0}
-              className={cn(active.length && "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700")}
+              className={cn(active.length && "bg-foreground text-background hover:bg-foreground/85 hover:text-background")}
             >
               <ListFilter />
             </Button>

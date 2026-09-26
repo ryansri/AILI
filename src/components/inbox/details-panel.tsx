@@ -91,7 +91,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
               href={person.linkedinUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-2xs text-blue-600 hover:underline"
+              className="inline-flex items-center gap-1 text-2xs text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground"
             >
               Open on LinkedIn
               <ExternalLink className="size-3" />

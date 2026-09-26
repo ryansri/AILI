@@ -3,7 +3,7 @@ import type { StatusKind } from "@/lib/next-step";
 
 /**
  * The only colour in the app. One dot per person, four meanings.
- * Tailwind colours: red-500, amber-500, violet-500, blue-500.
+ * Black for reply (the Notion accent), amber for chase, violet for decide, greys for the rest.
  */
 export const STATUS: Record<
   StatusKind,
@@ -11,10 +11,10 @@ export const STATUS: Record<
 > = {
   reply: {
     label: "Reply needed",
-    dot: "bg-red-500",
-    text: "text-red-700",
-    soft: "bg-red-50",
-    border: "border-red-500",
+    dot: "bg-foreground",
+    text: "text-foreground",
+    soft: "bg-muted",
+    border: "border-foreground",
   },
   chase: {
     label: "Chase today",
@@ -32,10 +32,10 @@ export const STATUS: Record<
   },
   waiting: {
     label: "Waiting",
-    dot: "bg-blue-500",
-    text: "text-blue-700",
-    soft: "bg-blue-50",
-    border: "border-blue-500",
+    dot: "bg-stone-400",
+    text: "text-muted-foreground",
+    soft: "bg-muted",
+    border: "border-stone-400",
   },
   stale: {
     label: "Older",
