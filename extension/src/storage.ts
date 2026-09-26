@@ -14,6 +14,27 @@ export interface HelperStatus {
   displayName?: string;
   conversations?: number;
   sentToday?: number;
+  /** Conversations imported so far by the first-run history import. */
+  imported?: number;
+  /** False while the history import is still walking the inbox. */
+  backfillDone?: boolean;
+}
+
+/** Where the first-run history import is up to. */
+export interface Backfill {
+  /** "PRIMARY_INBOX" | "SECONDARY_INBOX" | "done" */
+  category: string;
+  cursor: string | null;
+  imported: number;
+}
+
+export async function getBackfill(): Promise<Backfill> {
+  const { backfill } = await chrome.storage.local.get("backfill");
+  return (backfill as Backfill | undefined) ?? { category: "PRIMARY_INBOX", cursor: null, imported: 0 };
+}
+
+export async function setBackfill(state: Backfill): Promise<void> {
+  await chrome.storage.local.set({ backfill: state });
 }
 
 export async function getPairing(): Promise<Pairing | null> {
@@ -23,7 +44,7 @@ export async function getPairing(): Promise<Pairing | null> {
 
 export async function setPairing(pairing: Pairing | null): Promise<void> {
   if (pairing) await chrome.storage.local.set({ pairing });
-  else await chrome.storage.local.remove(["pairing", "syncedAt", "status"]);
+  else await chrome.storage.local.remove(["pairing", "syncedAt", "status", "backfill"]);
 }
 
 export async function getStatus(): Promise<HelperStatus> {

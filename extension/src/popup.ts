@@ -37,7 +37,10 @@ function render(pairing: Pairing | null, status: HelperStatus) {
         : status.state === "error"
           ? "Something went wrong on the last run."
           : "Paired. Waiting for the first run.";
-  detail.textContent = `Last sync ${relative(status.lastSyncAt)}${status.conversations ? `, ${status.conversations} conversations seen` : ""}. Next run within a minute.`;
+  const importing = status.state === "ok" && status.backfillDone === false;
+  detail.textContent = importing
+    ? `Importing your history: ${status.imported ?? 0} conversations so far. Keep Chrome open; it continues a page a minute.`
+    : `Last sync ${relative(status.lastSyncAt)}${status.imported ? `, ${status.imported} conversations imported` : ""}. Next run within a minute.`;
   errorEl.classList.toggle("hidden", !status.lastError);
   errorEl.textContent = status.lastError ?? "";
 }

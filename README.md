@@ -57,7 +57,9 @@ mode: you copy each message, paste it into LinkedIn, and log replies by hand.
 3. In AILI go to Settings, copy the helper token. Click the AILI helper icon in
    Chrome, paste `http://localhost:3000` and the token, press Connect.
 
-From then on, once a minute while Chrome is open:
+On first connect the helper imports your history, one inbox page a minute,
+back to conversations 180 days old. From then on, once a minute while Chrome
+is open:
 
 - new conversations and replies appear in AILI on their own,
 - a message you clicked Send on in AILI is delivered from your LinkedIn

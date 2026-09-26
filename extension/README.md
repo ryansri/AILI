@@ -22,14 +22,17 @@ changes.
 ## How it works
 
 - Runs in the extension's background worker. Once a minute it checks LinkedIn
-  is logged in, delivers at most one queued message, and every other minute
-  reads the first pages of your inbox and pushes new conversations and
-  messages to AILI.
+  is logged in and delivers at most one queued message.
+- On first connect it imports your history: one inbox page per minute,
+  Focused then Other, until it reaches conversations older than 180 days.
+  The popup shows the count as it goes. Keep Chrome open.
+- After that, every other minute it re-reads the first pages of your inbox
+  and pushes anything with new activity to AILI.
 - Uses the LinkedIn cookies already in your browser. Nothing is copied
   elsewhere. Requests to LinkedIn carry those cookies through a
   declarativeNetRequest rule scoped to this extension only.
-- Group threads are skipped. Conversations idle for more than 90 days are not
-  imported on the first sync.
+- Group threads are skipped. Conversations idle for more than 180 days are
+  not imported.
 
 ## Risk
 

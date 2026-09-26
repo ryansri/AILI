@@ -3,9 +3,11 @@
  *
  * Once a minute, while paired and LinkedIn is logged in:
  *   1. deliver any message the user clicked Send on in AILI (one per tick),
- *   2. every other tick, read the inbox and push new conversations and
- *      messages to AILI,
- *   3. tell AILI it is alive.
+ *   2. import history: walk the inbox one page per tick until every
+ *      one-to-one conversation active in the last BACKFILL_DAYS is in AILI,
+ *   3. after that, every other tick, re-read the first pages of the inbox and
+ *      push anything with new activity,
+ *   4. tell AILI it is alive.
  *
  * It never sends anything on its own. The queue only holds what a human
  * clicked, and AILI caps it per day.
@@ -15,14 +17,17 @@ import { postSync, reportOutbox, reportStatus, takeOutbox } from "./aili";
 import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
 import { fetchConversationsPage, fetchThread, getMe, sendToConversation, sendToRecipient, type InboxCategory } from "./linkedin/api";
 import type { ConversationSummary, PlainMessage } from "./linkedin/normalize";
-import { getPairing, getStatus, getSyncedAt, setStatus, setSyncedAt } from "./storage";
+import { getBackfill, getPairing, getStatus, getSyncedAt, setBackfill, setStatus, setSyncedAt, type Pairing } from "./storage";
 
 const ALARM = "aili-tick";
 const TICK_MINUTES = 1;
-/** Conversations idle for longer than this are not imported on first sync. */
-const BACKFILL_DAYS = 90;
-/** Pages of 20 conversations to scan per category on each sync. */
-const PAGES: Record<InboxCategory, number> = { PRIMARY_INBOX: 2, SECONDARY_INBOX: 1 };
+/** Conversations idle for longer than this are left out of the history import. */
+const BACKFILL_DAYS = 180;
+/** Pages of 20 conversations to re-scan per category once history is in. */
+const RECENT_PAGES: Record<InboxCategory, number> = { PRIMARY_INBOX: 2, SECONDARY_INBOX: 1 };
+/** Threads fetched per tick, so a tick stays well inside a minute. */
+const THREADS_PER_TICK = 15;
+const CATEGORY_ORDER: InboxCategory[] = ["PRIMARY_INBOX", "SECONDARY_INBOX"];
 
 let running = false;
 let tick = 0;
@@ -63,13 +68,19 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
     }
 
     const me = await getMe();
-
     const delivered = await deliverOutbox(pairing, me.memberUrn);
-    if (force || delivered > 0 || tick % 2 === 1) {
-      await syncInbox(pairing, me.memberUrn, me.displayName);
-    } else {
-      await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName });
+
+    const backfill = await getBackfill();
+    let synced = false;
+    if (backfill.category !== "done") {
+      await backfillStep(pairing, me.memberUrn, me.displayName);
+      synced = true;
+    } else if (force || delivered > 0 || tick % 2 === 1) {
+      await scanRecent(pairing, me.memberUrn, me.displayName);
+      synced = true;
     }
+    if (!synced) await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName });
+
     await setStatus({ state: "ok", lastError: undefined, memberUrn: me.memberUrn, displayName: me.displayName });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -83,7 +94,7 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
 }
 
 /** Sends at most one queued message per tick, so sends are spaced out. */
-async function deliverOutbox(pairing: Awaited<ReturnType<typeof getPairing>> & object, memberUrn: string): Promise<number> {
+async function deliverOutbox(pairing: Pairing, memberUrn: string): Promise<number> {
   const items = await takeOutbox(pairing);
   let delivered = 0;
   for (const item of items) {
@@ -113,24 +124,89 @@ async function deliverOutbox(pairing: Awaited<ReturnType<typeof getPairing>> & o
   return delivered;
 }
 
-async function syncInbox(pairing: Awaited<ReturnType<typeof getPairing>> & object, memberUrn: string, displayName: string) {
+function cutoff(): number {
+  return Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function isOneToOne(conv: ConversationSummary, memberUrn: string): boolean {
+  return conv.participants.filter((p) => p.urn !== memberUrn).length === 1;
+}
+
+/**
+ * Fetches threads for the given conversations and posts them to AILI.
+ * Returns how many were sent. Records each one's activity time so it is not
+ * fetched again until something new happens.
+ */
+async function importConversations(pairing: Pairing, memberUrn: string, displayName: string, list: ConversationSummary[]): Promise<number> {
+  if (list.length === 0) return 0;
   const syncedAt = await getSyncedAt();
-  const cutoff = Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000;
+  const payload = { memberUrn, displayName, conversations: [] as Array<ConversationSummary & { messages: PlainMessage[] }> };
+  for (const conv of list) {
+    await jitter();
+    const firstTime = syncedAt[conv.id] === undefined;
+    const messages = await fetchThread(memberUrn, conv.id, firstTime ? 3 : 1);
+    payload.conversations.push({ ...conv, messages });
+  }
+  await postSync(pairing, payload);
+  for (const conv of payload.conversations) syncedAt[conv.id] = conv.lastActivityAt;
+  await setSyncedAt(syncedAt);
+  return payload.conversations.length;
+}
+
+/**
+ * One page of the history import. LinkedIn lists conversations newest first,
+ * so once a whole page is older than the cutoff the category is finished.
+ */
+async function backfillStep(pairing: Pairing, memberUrn: string, displayName: string) {
+  const state = await getBackfill();
+  const category = state.category as InboxCategory;
+  const syncedAt = await getSyncedAt();
+  const since = cutoff();
+
+  const page = await fetchConversationsPage(memberUrn, category, state.cursor);
+  const eligible = page.conversations.filter(
+    (c) => isOneToOne(c, memberUrn) && c.lastActivityAt >= since && syncedAt[c.id] === undefined,
+  );
+  const allOld = page.conversations.length > 0 && page.conversations.every((c) => c.lastActivityAt < since);
+
+  // Import this page in chunks; stay on the page until every eligible thread is in.
+  const batch = eligible.slice(0, THREADS_PER_TICK);
+  const imported = await importConversations(pairing, memberUrn, displayName, batch);
+  const pageDone = eligible.length <= THREADS_PER_TICK;
+
+  let next = { ...state, imported: state.imported + imported };
+  if (pageDone) {
+    if (allOld || !page.nextCursor) {
+      const idx = CATEGORY_ORDER.indexOf(category);
+      const following = CATEGORY_ORDER[idx + 1];
+      next = { category: following ?? "done", cursor: null, imported: next.imported };
+    } else {
+      next = { ...next, cursor: page.nextCursor };
+    }
+  }
+  await setBackfill(next);
+  if (imported === 0) await reportStatus(pairing, { state: "ok", memberUrn, displayName });
+  await setStatus({ lastSyncAt: Date.now(), imported: next.imported, backfillDone: next.category === "done" });
+}
+
+/** After history is in: re-read the first pages and push whatever has new activity. */
+async function scanRecent(pairing: Pairing, memberUrn: string, displayName: string) {
+  const syncedAt = await getSyncedAt();
+  const since = cutoff();
   const changed: ConversationSummary[] = [];
   let seen = 0;
 
-  for (const category of Object.keys(PAGES) as InboxCategory[]) {
+  for (const category of CATEGORY_ORDER) {
     let cursor: string | null = null;
-    for (let page = 0; page < PAGES[category]; page++) {
+    for (let page = 0; page < RECENT_PAGES[category]; page++) {
       if (page > 0 || category !== "PRIMARY_INBOX") await jitter();
       const result = await fetchConversationsPage(memberUrn, category, cursor);
       for (const conv of result.conversations) {
         seen += 1;
-        const others = conv.participants.filter((p) => p.urn !== memberUrn);
-        if (others.length !== 1) continue; // group threads are not outreach
+        if (!isOneToOne(conv, memberUrn)) continue;
         const known = syncedAt[conv.id];
-        if (known === undefined && conv.lastActivityAt < cutoff) continue; // old and never seen
-        if (known !== undefined && conv.lastActivityAt <= known) continue; // nothing new
+        if (known === undefined && conv.lastActivityAt < since) continue;
+        if (known !== undefined && conv.lastActivityAt <= known) continue;
         changed.push(conv);
       }
       cursor = result.nextCursor;
@@ -138,20 +214,7 @@ async function syncInbox(pairing: Awaited<ReturnType<typeof getPairing>> & objec
     }
   }
 
-  const payload = { memberUrn, displayName, conversations: [] as Array<ConversationSummary & { messages: PlainMessage[] }> };
-  for (const conv of changed.slice(0, 15)) {
-    await jitter();
-    const firstTime = syncedAt[conv.id] === undefined;
-    const messages = await fetchThread(memberUrn, conv.id, firstTime ? 3 : 1);
-    payload.conversations.push({ ...conv, messages });
-  }
-
-  if (payload.conversations.length > 0) {
-    await postSync(pairing, payload);
-    for (const conv of payload.conversations) syncedAt[conv.id] = conv.lastActivityAt;
-    await setSyncedAt(syncedAt);
-  } else {
-    await reportStatus(pairing, { state: "ok", memberUrn, displayName });
-  }
-  await setStatus({ lastSyncAt: Date.now(), conversations: seen });
+  const imported = await importConversations(pairing, memberUrn, displayName, changed.slice(0, THREADS_PER_TICK));
+  if (imported === 0) await reportStatus(pairing, { state: "ok", memberUrn, displayName });
+  await setStatus({ lastSyncAt: Date.now(), conversations: seen, backfillDone: true });
 }
