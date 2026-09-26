@@ -7,7 +7,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { createStage, createTag, reorderStages } from "@/lib/actions";
 import { sameView, type View } from "@/lib/rows";
-import { TAG_COLORS, type StageDef, type Tag, type TagColor } from "@/lib/types";
+import { TAG_COLORS, type Account, type Person, type StageDef, type Tag, type TagColor } from "@/lib/types";
+import { averageReplyMs, shortDuration } from "@/lib/stats";
+import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -56,8 +58,8 @@ function Item({
       onClick={onClick}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "group/item flex h-8 w-full min-w-0 items-center gap-2.5 rounded-md px-2 text-left text-md transition-colors hover:bg-foreground/[0.05]",
-        active && "bg-foreground/[0.08] font-semibold hover:bg-foreground/[0.08]",
+        "group/item flex h-[30px] w-full min-w-0 items-center gap-2.5 rounded-md px-2 text-left text-md transition-colors hover:bg-foreground/[0.05]",
+        active && "bg-foreground/[0.08] font-medium hover:bg-foreground/[0.08]",
       )}
     >
       {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : lead}
@@ -74,8 +76,8 @@ function Item({
 /** A section heading with a full-width line above it, separating it from the section before. */
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="-mx-2 mt-2 flex h-10 items-center justify-between border-t pt-2 pr-3 pl-4">
-      <span className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</span>
+    <div className="-mx-2 mt-3 flex h-9 items-center justify-between border-t pt-3 pr-3 pl-4">
+      <span className="text-xs font-medium text-muted-foreground">{title}</span>
       {action}
     </div>
   );
@@ -262,19 +264,17 @@ function StageList({
               finish();
             }}
             onDragEnd={finish}
-            className={cn("rounded-md", dragging === key && "opacity-50")}
+            className={cn("group/stage relative cursor-grab rounded-md", dragging === key && "opacity-50")}
           >
             <Item
               label={s.label}
               count={counts[key] ?? 0}
               active={sameView(view, { kind: "stage", key })}
               onClick={() => onView({ kind: "stage", key })}
-              lead={
-                <GripVertical
-                  aria-hidden="true"
-                  className="size-4 shrink-0 cursor-grab text-muted-foreground/0 group-hover/item:text-muted-foreground"
-                />
-              }
+            />
+            <GripVertical
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 -left-2 size-3.5 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity group-hover/stage:opacity-100"
             />
           </div>
         );
@@ -287,25 +287,52 @@ function StageList({
  * The inbox sidebar: which people the list shows. Status views on top, then
  * tags and stages, each with a count. Sits between the icon rail and the list.
  */
+/**
+ * How today is going: messages sent against the daily cap, and how fast you
+ * answer on average over the last 30 days.
+ */
+function YourDay({ account, people }: { account: Account; people: Person[] }) {
+  const sent = Math.min(account.sentToday, account.dailyCap);
+  const pct = account.dailyCap ? Math.round((sent / account.dailyCap) * 100) : 0;
+  const avg = averageReplyMs(people);
+  return (
+    <div className="shrink-0 border-t px-4 pt-3 pb-4">
+      <div className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">Your day</div>
+      <Progress value={pct} aria-label="Messages sent today" className="mt-2 h-1.5 bg-foreground/10" />
+      <div className="mt-2 flex flex-col gap-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
+        <span>
+          <span className="font-medium text-foreground">{account.sentToday}</span> of {account.dailyCap} messages sent
+        </span>
+        <span>{avg === null ? "No replies to time yet" : `Avg reply time ${shortDuration(avg)}`}</span>
+      </div>
+    </div>
+  );
+}
+
 export function InboxSidebar({
   view,
   onView,
   counts,
   tags,
   stages,
+  account,
+  people,
 }: {
   view: View;
   onView: (v: View) => void;
   counts: SidebarCounts;
   tags: Tag[];
   stages: StageDef[];
+  account: Account;
+  people: Person[];
 }) {
   const [addingStage, setAddingStage] = useState(false);
 
   return (
     <nav aria-label="Inbox views" className="flex w-[220px] shrink-0 flex-col border-r bg-sidebar/50">
       <div className="flex h-14 shrink-0 items-center border-b px-4 text-md font-semibold">Inbox</div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3">
+        <div className="flex h-6 items-center px-2 text-xs font-medium text-muted-foreground">Views</div>
         <Item
           icon={Inbox}
           label="Now"
@@ -365,6 +392,7 @@ export function InboxSidebar({
         <StageList stages={stages} counts={counts.stages} view={view} onView={onView} />
         {addingStage && <AddStageField onClose={() => setAddingStage(false)} />}
       </div>
+      <YourDay account={account} people={people} />
     </nav>
   );
 }

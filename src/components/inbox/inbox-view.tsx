@@ -169,7 +169,17 @@ export function InboxView({
 
   return (
     <div className="flex h-full w-full">
-      {sidebarOpen && <InboxSidebar view={view} onView={pickView} counts={counts} tags={tags} stages={stages} />}
+      {sidebarOpen && (
+        <InboxSidebar
+          view={view}
+          onView={pickView}
+          counts={counts}
+          tags={tags}
+          stages={stages}
+          account={account}
+          people={people}
+        />
+      )}
       <PeopleList
         title={viewTitle(view, tags, stages)}
         view={view}
