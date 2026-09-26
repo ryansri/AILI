@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { nextStep } from "./next-step";
-import { groupRows, inTab, matchesConditions, sortRows, type Row } from "./rows";
+import { bucketOf, groupRows, inView, matchesConditions, sortRows, type Row, type View } from "./rows";
 import type { Person } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -76,37 +76,63 @@ describe("matchesConditions", () => {
   });
 });
 
-describe("tabs", () => {
+describe("views", () => {
   const more: Row[] = [
     ...rows,
     person({ name: "Chase Cho", messages: [{ id: "1", direction: "out", sentAt: ago(5), body: "hi" }] }),
-    person({ name: "Chase Cal", messages: [{ id: "1", direction: "out", sentAt: ago(9), body: "hi" }] }),
+    person({ name: "Chase Cal", messages: [{ id: "1", direction: "out", sentAt: ago(9), body: "hi" }], tagIds: ["t1"] }),
+    person({ name: "Newbie Ned", connectedAt: ago(1), stage: "connected", tagIds: ["t1"] }),
   ].map((p) => ("step" in p ? (p as Row) : { person: p as Person, step: nextStep(p as Person, now) }));
+  const names = (view: View) => more.filter((r) => inView(r, view)).map((r) => r.person.name);
 
-  it("puts reply and chase in Now, waits in Waiting, stars in Starred, everything in All", () => {
-    const names = (tab: "needs" | "waiting" | "starred" | "all") => more.filter((r) => inTab(r, tab)).map((r) => r.person.name);
-    expect(names("needs")).toEqual(["New Nia", "Chase Cho", "Chase Cal"]);
-    expect(names("waiting")).toEqual(["Mid Max"]);
-    expect(names("starred")).toEqual(["Mid Max"]);
-    expect(names("all")).toHaveLength(5);
+  it("puts your moves in Now, their moves in Waiting, stars in Starred, everyone in All", () => {
+    expect(names({ kind: "now" })).toEqual(["New Nia", "Chase Cho", "Chase Cal", "Newbie Ned"]);
+    expect(names({ kind: "waiting" })).toEqual(["Mid Max"]);
+    expect(names({ kind: "starred" })).toEqual(["Mid Max"]);
+    expect(names({ kind: "all" })).toHaveLength(6);
   });
 
-  it("keeps stale starred people in Starred, newest first", () => {
-    const starred = more.map((r) => ({ ...r, person: { ...r.person, starred: true } }));
-    const groups = groupRows(starred, "starred");
-    expect(groups).toHaveLength(1);
-    expect(groups[0].rows.map((r) => r.person.name).at(-1)).toBe("Old Olly");
+  it("filters by tag and by stage", () => {
+    expect(names({ kind: "tag", id: "t1" })).toEqual(["New Nia", "Chase Cal", "Newbie Ned"]);
+    expect(names({ kind: "stage", key: "call" })).toEqual(["Mid Max"]);
   });
 
-  it("groups Now into Reply then Chase, most overdue chase first", () => {
-    const groups = groupRows(more.filter((r) => inTab(r, "needs")), "needs");
-    expect(groups.map((g) => g.title)).toEqual(["Reply", "Chase"]);
-    expect(groups[1].rows.map((r) => r.person.name)).toEqual(["Chase Cal", "Chase Cho"]);
+  it("splits a first message from a reply", () => {
+    const ned = more.find((r) => r.person.name === "Newbie Ned")!;
+    const nia = more.find((r) => r.person.name === "New Nia")!;
+    expect(bucketOf(ned)).toBe("new");
+    expect(bucketOf(nia)).toBe("replied");
   });
 
-  it("folds stale rows under their own heading in All", () => {
-    const groups = groupRows(more, "all");
-    expect(groups.map((g) => g.title)).toEqual(["Recent", "Older than 30 days"]);
+  it("groups Now in the order an outreach expert works it, most overdue follow-up first", () => {
+    const view: View = { kind: "now" };
+    const groups = groupRows(more.filter((r) => inView(r, view)), view);
+    expect(groups.map((g) => g.title)).toEqual(["They replied", "New connections", "Follow up today"]);
+    expect(groups[2].rows.map((r) => r.person.name)).toEqual(["Chase Cal", "Chase Cho"]);
+    expect(groups.every((g) => g.band)).toBe(true);
+  });
+
+  it("groups a tag view by next step, waiting and older included", () => {
+    const view: View = { kind: "tag", id: "t1" };
+    const tagged = more.map((r) =>
+      r.person.name === "Mid Max" || r.person.name === "Old Olly" ? { ...r, person: { ...r.person, tagIds: ["t1"] } } : r,
+    );
+    const groups = groupRows(tagged.filter((r) => inView(r, view)), view);
+    expect(groups.map((g) => g.title)).toEqual([
+      "They replied",
+      "New connections",
+      "Follow up today",
+      "Waiting",
+      "Older than 30 days",
+    ]);
+  });
+
+  it("keeps flat views flat, with only the older fold banded", () => {
+    const groups = groupRows(more, { kind: "all" });
+    expect(groups.map((g) => [g.title, g.band])).toEqual([
+      ["Recent", false],
+      ["Older than 30 days", true],
+    ]);
     expect(groups[1].rows.map((r) => r.person.name)).toEqual(["Old Olly"]);
   });
 });

@@ -30,6 +30,7 @@ model Workspace {
 
   people Person[]
   tags   Tag[]
+  stages Stage[]
   outbox Outbox[]
 }
 
@@ -52,7 +53,7 @@ model Person {
   conversationId String?
   /// Where the row came from: "manual" or "linkedin".
   source      String    @default("manual")
-  /// Stage id, see STAGES in src/lib/types.ts
+  /// Stage key, see the Stage model
   stage       String    @default("warming")
   notes       String    @default("")
   starred     Boolean   @default(false)
@@ -73,6 +74,21 @@ model Person {
 
   @@unique([workspaceId, linkedinUrn])
   @@index([workspaceId, stage])
+}
+
+/// A pipeline stage. The eight built-in ones keep fixed keys the app's rules use
+/// (warming, requested, connected, conversation, call, pilot, won, lost); stages the
+/// user adds get a generated key. Position sets the order everywhere.
+model Stage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  key         String
+  label       String
+  position    Int
+  createdAt   DateTime  @default(now())
+
+  @@unique([workspaceId, key])
 }
 
 model Tag {

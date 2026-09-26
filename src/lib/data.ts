@@ -1,9 +1,9 @@
 import "server-only";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId } from "./auth";
-import { isStage, isTagColor, type Account, type Person, type Tag } from "./types";
+import { DEFAULT_STAGES, isTagColor, type Account, type Person, type StageDef, type Tag } from "./types";
 
 /** The logged-in workspace. Pages and actions call this; unauthenticated callers go to /login. */
 export async function getWorkspace() {
@@ -33,7 +33,7 @@ function toPerson(row: PersonRow): Person {
     conversationId: row.conversationId ?? undefined,
     pictureUrl: row.pictureUrl || undefined,
     source: row.source === "linkedin" ? "linkedin" : "manual",
-    stage: isStage(row.stage) ? row.stage : "warming",
+    stage: row.stage || "warming",
     tagIds: row.tags.map((t) => t.tagId),
     notes: row.notes,
     starred: row.starred,
@@ -76,6 +76,24 @@ export async function getTags(workspaceId: string): Promise<Tag[]> {
   }));
 }
 
+/** The workspace's stages in order. A workspace without any gets the defaults. */
+export async function getStages(workspaceId: string): Promise<StageDef[]> {
+  let rows = await db.stage.findMany({ where: { workspaceId }, orderBy: { position: "asc" } });
+  if (rows.length === 0) {
+    try {
+      await db.stage.createMany({
+        data: DEFAULT_STAGES.map((s, i) => ({ workspaceId, key: s.key, label: s.label, position: i })),
+      });
+    } catch (e) {
+      // The layout and the page load at once on a first visit; if the other one
+      // already created the defaults, use those.
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) throw e;
+    }
+    rows = await db.stage.findMany({ where: { workspaceId }, orderBy: { position: "asc" } });
+  }
+  return rows.map((r) => ({ key: r.key, label: r.label }));
+}
+
 /** The helper counts as connected when it reported in during the last few minutes. */
 export const HELPER_ONLINE_MS = 5 * 60 * 1000;
 
@@ -108,10 +126,11 @@ export async function getAccount(workspaceId: string): Promise<Account> {
 /** Everything the inbox, people table and today page need, in one round trip each. */
 export async function loadWorkspaceData() {
   const workspace = await getWorkspace();
-  const [people, tags, account] = await Promise.all([
+  const [people, tags, stages, account] = await Promise.all([
     getPeople(workspace.id),
     getTags(workspace.id),
+    getStages(workspace.id),
     getAccount(workspace.id),
   ]);
-  return { workspace, people, tags, account };
+  return { workspace, people, tags, stages, account };
 }

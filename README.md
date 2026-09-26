@@ -71,12 +71,16 @@ are in `extension/README.md`.
 
 ## What you can do
 
-- **Inbox.** Four tabs: Now, Waiting, Starred, All. Now is grouped into
-  Reply (they wrote last), Chase (you wrote last, no answer) and Decide (two
-  follow-ups, still nothing), so no row needs a status line. One number, the
-  count on the Inbox icon, drops as you clear rows. Search and an
-  Airtable-style filter (Status, Tag, Stage, Starred) narrow every tab.
-  Conversations quiet for 30 days fold into an Older group in All.
+- **Inbox.** A sidebar next to the icon rail picks who the list shows: Now,
+  Waiting, All, Starred, any tag or any stage, each with a count. Now is
+  grouped the way an outreach expert works it: They replied, New connections,
+  Follow up today, Last try. Tag and stage views use the same groups plus
+  Waiting and Older. Every group folds. The icon before the list title hides
+  the sidebar; the icon at the right of the conversation header shows the
+  details. Both are remembered. Search and an Airtable-style filter narrow
+  whatever is open.
+- **Tags and stages.** Add a tag (name and colour) or a stage from the plus in
+  the sidebar. Drag stages to reorder them; the order is used everywhere.
 - **Done.** Hover a row or press E. Nothing more to do until they write
   back; the person moves to Waiting. Reopen puts them back.
 - **Keyboard.** J and K move, R focuses the composer, E is done, S opens
@@ -132,7 +136,7 @@ extension/
   src/aili.ts           calls to the AILI server
   src/linkedin/         Voyager client, encoding, parsing (adapted from inflow)
 prisma/
-  schema.prisma         Workspace, Person, Tag, PersonTag, Message, Outbox
+  schema.prisma         Workspace, Person, Stage, Tag, PersonTag, Message, Outbox
   seed.ts, seed-data.ts
 scripts/setup-mac.sh
 src/
@@ -143,8 +147,8 @@ src/
     api/helper/         sync, status, outbox routes the helper calls
   components/
     shell/rail.tsx      left icon rail with the Now count badge and helper dot
-    inbox/              people list with tabs and filter, conversation pane,
-                        details panel, send dialog, log-reply dialog, snooze menu
+    inbox/              sidebar (views, tags, stages), people list, conversation
+                        pane, details panel, send dialog, log-reply dialog, snooze menu
     people/             people table, add/edit dialog, tag picker
     settings/           settings page
     ui/                 shadcn components

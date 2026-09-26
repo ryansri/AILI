@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
-import { getWorkspace, HELPER_ONLINE_MS } from "./data";
+import { getStages, getWorkspace, HELPER_ONLINE_MS } from "./data";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
-import { isStage, isTagColor, type Stage, type TagColor } from "./types";
+import { isTagColor, type Stage, type TagColor } from "./types";
 
 /*
  * Server actions. Every one resolves the logged-in workspace first and only
@@ -39,9 +39,15 @@ function touched() {
   return { lastActionAt: new Date() };
 }
 
+/** True when the key is one of the workspace's stages. */
+async function stageExists(workspaceId: string, key: string) {
+  const stages = await getStages(workspaceId);
+  return stages.some((s) => s.key === key);
+}
+
 export async function updateStage(personId: string, stage: string) {
-  if (!isStage(stage)) throw new Error("Unknown stage");
-  const { person } = await ownPerson(personId);
+  const { workspace, person } = await ownPerson(personId);
+  if (!(await stageExists(workspace.id, stage))) throw new Error("Unknown stage");
   const data: { stage: Stage; connectedAt?: Date; requestedAt?: Date; lastActionAt: Date } = { stage, ...touched() };
   if (stage === "requested" && !person.requestedAt) data.requestedAt = new Date();
   if (TALKING.includes(stage) && !person.connectedAt) data.connectedAt = new Date();
@@ -167,6 +173,35 @@ export async function cancelQueued(outboxId: string) {
   refresh();
 }
 
+/** Adds a stage at the end of the list. Returns its key. */
+export async function createStage(label: string) {
+  const workspace = await getWorkspace();
+  const cleanLabel = clean(label, 40);
+  if (!cleanLabel) throw new Error("Stage needs a name");
+  const stages = await getStages(workspace.id);
+  const existing = stages.find((s) => s.label.toLowerCase() === cleanLabel.toLowerCase());
+  if (existing) return existing.key;
+  const key = `s_${Math.random().toString(36).slice(2, 10)}`;
+  await db.stage.create({ data: { workspaceId: workspace.id, key, label: cleanLabel, position: stages.length } });
+  refresh();
+  return key;
+}
+
+/** Saves a new order. Keys not in the workspace are ignored; missing ones keep their place after the rest. */
+export async function reorderStages(keys: string[]) {
+  const workspace = await getWorkspace();
+  const stages = await getStages(workspace.id);
+  const known = new Set(stages.map((s) => s.key));
+  const ordered = [...new Set(keys.filter((k) => known.has(k)))];
+  for (const s of stages) if (!ordered.includes(s.key)) ordered.push(s.key);
+  await db.$transaction(
+    ordered.map((key, position) =>
+      db.stage.update({ where: { workspaceId_key: { workspaceId: workspace.id, key } }, data: { position } }),
+    ),
+  );
+  refresh();
+}
+
 export async function createTag(label: string, color: string) {
   const workspace = await getWorkspace();
   const cleanLabel = clean(label, 40);
@@ -216,7 +251,7 @@ export async function createPerson(input: PersonInput) {
   const workspace = await getWorkspace();
   const name = clean(input.name, 120);
   if (!name) throw new Error("Name is required");
-  const stage = input.stage && isStage(input.stage) ? input.stage : "warming";
+  const stage = input.stage && (await stageExists(workspace.id, input.stage)) ? input.stage : "warming";
   const tagIds = (input.tagIds ?? []).filter(Boolean);
   const validTags = tagIds.length
     ? await db.tag.findMany({ where: { id: { in: tagIds }, workspaceId: workspace.id }, select: { id: true } })

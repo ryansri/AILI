@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ArrowUp, Check, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
+import { ArrowUp, Check, MoreHorizontal, PanelRight, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { archivePerson, cancelQueued, markDone, queueSend, reopen, toggleStar, updateStage } from "@/lib/actions";
-import type { Account } from "@/lib/types";
+import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { shortDate, shortTime, type NextStep } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NextStepHint } from "./next-step-hint";
 import { HeaderAction } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { TagChip } from "@/components/tag-chip";
 import { PersonAvatar } from "./people-list";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
@@ -57,13 +59,21 @@ function cardTitle(step: NextStep, first: string): string {
 export function ConversationPane({
   row,
   account,
+  tags,
+  stages,
   snoozeOpen,
   onSnoozeOpenChange,
+  detailsOpen,
+  onToggleDetails,
 }: {
   row: Row;
   account: Account;
+  tags: Tag[];
+  stages: StageDef[];
   snoozeOpen: boolean;
   onSnoozeOpenChange: (open: boolean) => void;
+  detailsOpen: boolean;
+  onToggleDetails: () => void;
 }) {
   const { person, step } = row;
   const [draft, setDraft] = useState("");
@@ -83,6 +93,7 @@ export function ConversationPane({
   const actionable = step.kind === "reply" || step.kind === "chase" || step.kind === "quiet";
   const isDone = step.kind === "waiting" && step.step === "Done";
   const subtitle = [person.headline, person.company].filter(Boolean).join(" · ");
+  const personTags = tags.filter((t) => person.tagIds.includes(t.id));
 
   function run(fn: () => Promise<unknown>, done: string) {
     start(async () => {
@@ -112,13 +123,28 @@ export function ConversationPane({
     <section aria-label={`Conversation with ${person.name}`} className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b pr-3 pl-5">
         <PersonAvatar person={person} className="size-8" />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 shrink">
           <h2 className="truncate text-sm font-semibold leading-tight">{person.name}</h2>
           <p className="max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
             {subtitle || "No headline yet"}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
+        {!detailsOpen && (
+          <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden lg:flex">
+            <Badge variant="outline" className="font-normal">
+              {stageLabel(stages, person.stage)}
+            </Badge>
+            {personTags.slice(0, 2).map((t) => (
+              <TagChip key={t.id} tag={t} />
+            ))}
+            {personTags.length > 2 && (
+              <Badge variant="outline" className="font-normal text-muted-foreground">
+                +{personTags.length - 2}
+              </Badge>
+            )}
+          </div>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {isDone ? (
             <HeaderAction icon={RotateCcw} label="Reopen" onClick={() => run(() => reopen(person.id), "Reopened.")} />
           ) : (
@@ -186,6 +212,21 @@ export function ConversationPane({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={detailsOpen ? "Hide details" : "Show details"}
+                aria-pressed={detailsOpen}
+                onClick={onToggleDetails}
+                className={cn(detailsOpen && "bg-accent")}
+              >
+                <PanelRight />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{detailsOpen ? "Hide details" : "Show details"}</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 

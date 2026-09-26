@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createPerson, updatePerson } from "@/lib/actions";
-import { STAGES, type Person, type Tag } from "@/lib/types";
+import type { Person, StageDef, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +27,7 @@ import { TagDot } from "@/components/tag-chip";
 
 /** Add or edit a person. Pass `person` to edit. */
 export function PersonDialog({
+  stages,
   open,
   onOpenChange,
   tags,
@@ -36,6 +37,7 @@ export function PersonDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tags: Tag[];
+  stages: StageDef[];
   person?: Person;
   onSaved?: (id: string) => void;
 }) {
@@ -115,8 +117,8 @@ export function PersonDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {STAGES.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
+                    {stages.map((s) => (
+                      <SelectItem key={s.key} value={s.key}>
                         {s.label}
                       </SelectItem>
                     ))}

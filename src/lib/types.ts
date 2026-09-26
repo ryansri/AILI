@@ -1,33 +1,29 @@
-/** Where a person sits in the outreach pipeline. */
-export type Stage =
-  | "warming"
-  | "requested"
-  | "connected"
-  | "conversation"
-  | "call"
-  | "pilot"
-  | "won"
-  | "lost";
+/**
+ * Where a person sits in the pipeline: the key of one of the workspace's stages.
+ * The built-in keys below drive a few rules (a reply moves early stages to
+ * "conversation", "requested" sets the request date, and so on).
+ */
+export type Stage = string;
 
-export const STAGES: { id: Stage; label: string }[] = [
-  { id: "warming", label: "Warming up" },
-  { id: "requested", label: "Request sent" },
-  { id: "connected", label: "Connected" },
-  { id: "conversation", label: "In conversation" },
-  { id: "call", label: "Call earned" },
-  { id: "pilot", label: "Pilot" },
-  { id: "won", label: "Won" },
-  { id: "lost", label: "Lost" },
-];
-
-export const STAGE_IDS = STAGES.map((s) => s.id);
-
-export function isStage(value: string): value is Stage {
-  return (STAGE_IDS as string[]).includes(value);
+export interface StageDef {
+  key: string;
+  label: string;
 }
 
-export function stageLabel(stage: string): string {
-  return STAGES.find((s) => s.id === stage)?.label ?? stage;
+/** The stages every workspace starts with, in order. */
+export const DEFAULT_STAGES: StageDef[] = [
+  { key: "warming", label: "Warming up" },
+  { key: "requested", label: "Request sent" },
+  { key: "connected", label: "Connected" },
+  { key: "conversation", label: "In conversation" },
+  { key: "call", label: "Call earned" },
+  { key: "pilot", label: "Pilot" },
+  { key: "won", label: "Won" },
+  { key: "lost", label: "Lost" },
+];
+
+export function stageLabel(stages: StageDef[], key: string): string {
+  return stages.find((s) => s.key === key)?.label ?? DEFAULT_STAGES.find((s) => s.key === key)?.label ?? key;
 }
 
 export type TagColor = "amber" | "green" | "violet" | "blue" | "pink" | "stone";

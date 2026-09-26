@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dueLabel, nextStep, relativeTime } from "@/lib/next-step";
-import { STAGES, stageLabel, type Person, type Tag } from "@/lib/types";
+import { stageLabel, type Person, type StageDef, type Tag } from "@/lib/types";
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
 import {
   Table,
@@ -20,7 +20,7 @@ import { TagDot } from "@/components/tag-chip";
 import { PersonDialog } from "./person-dialog";
 import { sortRows, type Row } from "@/lib/rows";
 
-export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] }) {
+export function PeopleTable({ people, tags, stages }: { people: Person[]; tags: Tag[]; stages: StageDef[] }) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<string>("all");
   const [tagId, setTagId] = useState<string>("all");
@@ -70,8 +70,8 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
         <button type="button" className={chip(stage === "all")} onClick={() => setStage("all")}>
           All stages
         </button>
-        {STAGES.map((s) => (
-          <button key={s.id} type="button" className={chip(stage === s.id)} onClick={() => setStage(s.id)}>
+        {stages.map((s) => (
+          <button key={s.key} type="button" className={chip(stage === s.key)} onClick={() => setStage(s.key)}>
             {s.label}
           </button>
         ))}
@@ -89,7 +89,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
         ))}
       </div>
       </PageHeader>
-      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} />
+      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} stages={stages} />
 
       <div className="min-h-0 flex-1 overflow-auto">
         <Table>
@@ -117,7 +117,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
                       </div>
                     </Link>
                   </TableCell>
-                  <TableCell className="text-xs">{stageLabel(person.stage)}</TableCell>
+                  <TableCell className="text-xs">{stageLabel(stages, person.stage)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2 text-xs font-medium">
                       <StatusDot kind={step.kind} />

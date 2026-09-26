@@ -4,7 +4,7 @@ import { ListFilter, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StatusKind } from "@/lib/next-step";
 import { activeConditions, FILTER_FIELDS, type Condition, type FilterField, type FilterOp } from "@/lib/rows";
-import { STAGES, type Tag } from "@/lib/types";
+import type { StageDef, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,11 +32,13 @@ export function FilterPopover({
   conditions,
   onChange,
   tags,
+  stages,
   counts,
 }: {
   conditions: Condition[];
   onChange: (next: Condition[]) => void;
   tags: Tag[];
+  stages: StageDef[];
   counts: Record<StatusKind, number>;
 }) {
   const active = activeConditions(conditions);
@@ -106,7 +108,7 @@ export function FilterPopover({
                 </SelectContent>
               </Select>
 
-              <ValueSelect condition={c} tags={tags} counts={counts} onChange={(value) => update(c.id, { value })} />
+              <ValueSelect condition={c} tags={tags} stages={stages} counts={counts} onChange={(value) => update(c.id, { value })} />
 
               <Button variant="ghost" size="icon-xs" aria-label="Remove condition" onClick={() => remove(c.id)}>
                 <X />
@@ -134,11 +136,13 @@ export function FilterPopover({
 function ValueSelect({
   condition,
   tags,
+  stages,
   counts,
   onChange,
 }: {
   condition: Condition;
   tags: Tag[];
+  stages: StageDef[];
   counts: Record<StatusKind, number>;
   onChange: (value: string) => void;
 }) {
@@ -171,8 +175,8 @@ function ValueSelect({
             </SelectItem>
           ))}
         {c.field === "stage" &&
-          STAGES.map((s) => (
-            <SelectItem key={s.id} value={s.id} className="text-xs">
+          stages.map((s) => (
+            <SelectItem key={s.key} value={s.key} className="text-xs">
               {s.label}
             </SelectItem>
           ))}

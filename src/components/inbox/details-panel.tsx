@@ -4,8 +4,7 @@ import { useState, useTransition } from "react";
 import { ExternalLink, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { updateNotes, updateStage } from "@/lib/actions";
-import type { Tag } from "@/lib/types";
-import { STAGES } from "@/lib/types";
+import type { StageDef, Tag } from "@/lib/types";
 import { shortDate, shortTime } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -53,7 +52,7 @@ function Shortcut({ keys, label }: { keys: string[]; label: string }) {
 }
 
 /** Who this person is. It never repeats the next step; the list and the card do that. */
-export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
+export function DetailsPanel({ row, tags, stages }: { row: Row; tags: Tag[]; stages: StageDef[] }) {
   const { person } = row;
   const [pending, start] = useTransition();
   const [notes, setNotes] = useState(person.notes);
@@ -79,7 +78,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
   return (
     <aside
       aria-label="Person details"
-      className="flex w-[360px] shrink-0 flex-col gap-5 overflow-auto border-l bg-sidebar px-5 py-4 text-xs"
+      className="flex w-[320px] shrink-0 flex-col gap-5 overflow-auto border-l bg-sidebar px-5 py-4 text-xs"
     >
       <div className="flex items-start gap-2.5">
         <PersonAvatar person={person} className="size-10" />
@@ -104,7 +103,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
           <Pencil />
         </Button>
       </div>
-      <PersonDialog open={editing} onOpenChange={setEditing} tags={tags} person={person} />
+      <PersonDialog open={editing} onOpenChange={setEditing} tags={tags} stages={stages} person={person} />
 
       <Field label="Stage">
         <Select
@@ -124,8 +123,8 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {STAGES.map((s) => (
-              <SelectItem key={s.id} value={s.id} className="text-xs">
+            {stages.map((s) => (
+              <SelectItem key={s.key} value={s.key} className="text-xs">
                 {s.label}
               </SelectItem>
             ))}
