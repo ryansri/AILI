@@ -1,0 +1,184 @@
+import type { Person } from "./types";
+
+/**
+ * The four colours of the inbox. Every person is in exactly one.
+ *
+ *  reply    they wrote last, you owe them an answer
+ *  chase    you wrote last and a follow-up is due
+ *  quiet    you have chased twice and they never answered
+ *  waiting  you wrote last, nothing to do yet
+ */
+export type StatusKind = "reply" | "chase" | "quiet" | "waiting";
+
+export interface NextStep {
+  kind: StatusKind;
+  /** Short verb shown on the row, e.g. "Reply", "Follow-up 1". */
+  step: string;
+  /** One line of context, e.g. "no reply for 4 days". */
+  detail: string;
+  /** When it is due. */
+  dueAt: Date;
+  /** True when dueAt is today or earlier. */
+  dueNow: boolean;
+}
+
+/** Follow-up cadence from the outreach playbook, in days after the first message. */
+export const CADENCE = {
+  followUp1Days: 4,
+  followUp2Days: 9,
+  /** Days after follow-up 2 with no reply before we call it quiet. */
+  quietAfterDays: 5,
+} as const;
+
+export const KIND_ORDER: Record<StatusKind, number> = {
+  reply: 0,
+  chase: 1,
+  quiet: 2,
+  waiting: 3,
+};
+
+const DAY = 24 * 60 * 60 * 1000;
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * DAY);
+}
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function daysBetween(from: Date, to: Date): number {
+  return Math.floor((startOfDay(to).getTime() - startOfDay(from).getTime()) / DAY);
+}
+
+function isDueNow(dueAt: Date, now: Date): boolean {
+  return startOfDay(dueAt).getTime() <= startOfDay(now).getTime();
+}
+
+/**
+ * Works out what the user should do next with a person, from the messages alone.
+ * Pure and deterministic so it can be unit tested and re-run on every sync.
+ */
+export function nextStep(person: Person, now: Date = new Date()): NextStep {
+  const messages = [...person.messages].sort(
+    (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+  );
+  const last = messages[messages.length - 1];
+
+  // Snoozed people wait until the snooze date, whatever else is going on.
+  if (person.snoozedUntil) {
+    const until = new Date(person.snoozedUntil);
+    if (!isDueNow(until, now)) {
+      return {
+        kind: "waiting",
+        step: "Check back",
+        detail: "snoozed",
+        dueAt: until,
+        dueNow: false,
+      };
+    }
+    return {
+      kind: "chase",
+      step: "Check back",
+      detail: "snooze is over",
+      dueAt: until,
+      dueNow: true,
+    };
+  }
+
+  // No messages yet: they are connected but nothing has been sent.
+  if (!last) {
+    const since = person.connectedAt ? new Date(person.connectedAt) : now;
+    return {
+      kind: "reply",
+      step: "First message",
+      detail: person.connectedAt ? `connected ${daysBetween(since, now)} days ago` : "not messaged yet",
+      dueAt: since,
+      dueNow: true,
+    };
+  }
+
+  // They spoke last: answer them.
+  if (last.direction === "in") {
+    const sent = new Date(last.sentAt);
+    const days = daysBetween(sent, now);
+    return {
+      kind: "reply",
+      step: "Reply",
+      detail: days === 0 ? "replied today" : `replied ${days} day${days === 1 ? "" : "s"} ago`,
+      dueAt: sent,
+      dueNow: true,
+    };
+  }
+
+  // We spoke last. Find the start of this unanswered run of outbound messages.
+  let runStart = messages.length - 1;
+  while (runStart > 0 && messages[runStart - 1].direction === "out") runStart -= 1;
+  const run = messages.slice(runStart);
+  const firstOut = new Date(run[0].sentAt);
+  const lastOut = new Date(last.sentAt);
+  const followUpsSent = run.filter((m) => m.followUp).length;
+  const silentDays = daysBetween(lastOut, now);
+
+  if (followUpsSent === 0) {
+    const dueAt = addDays(firstOut, CADENCE.followUp1Days);
+    const dueNow = isDueNow(dueAt, now);
+    return {
+      kind: dueNow ? "chase" : "waiting",
+      step: dueNow ? "Follow-up 1" : "Wait",
+      detail: dueNow ? `no reply for ${silentDays} days` : `follow-up 1 on ${shortDate(dueAt)}`,
+      dueAt,
+      dueNow,
+    };
+  }
+
+  if (followUpsSent === 1) {
+    const dueAt = addDays(firstOut, CADENCE.followUp2Days);
+    const dueNow = isDueNow(dueAt, now);
+    return {
+      kind: dueNow ? "chase" : "waiting",
+      step: dueNow ? "Follow-up 2" : "Wait",
+      detail: dueNow ? `no reply for ${silentDays} days` : `follow-up 2 on ${shortDate(dueAt)}`,
+      dueAt,
+      dueNow,
+    };
+  }
+
+  // Two follow-ups and still nothing.
+  const dueAt = addDays(lastOut, CADENCE.quietAfterDays);
+  const dueNow = isDueNow(dueAt, now);
+  return {
+    kind: dueNow ? "quiet" : "waiting",
+    step: dueNow ? "Chase or drop" : "Wait",
+    detail: dueNow ? "silent after 2 follow-ups" : `decide on ${shortDate(dueAt)}`,
+    dueAt,
+    dueNow,
+  };
+}
+
+export function shortDate(date: Date): string {
+  return date.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+}
+
+/** "Today", "Tomorrow", "Fri" or "2 Jan" for the row. */
+export function dueLabel(dueAt: Date, now: Date = new Date()): string {
+  const diff = daysBetween(now, dueAt);
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff < 7) return dueAt.toLocaleDateString("en-AU", { weekday: "short" });
+  return shortDate(dueAt);
+}
+
+/** Time label for the row: "08:41", "2 h", "Yesterday", "4 d". */
+export function relativeTime(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  const ms = now.getTime() - date.getTime();
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (hours < 1) return "now";
+  if (daysBetween(date, now) === 0) return `${hours} h`;
+  const days = daysBetween(date, now);
+  if (days === 1) return "Yesterday";
+  return `${days} d`;
+}
