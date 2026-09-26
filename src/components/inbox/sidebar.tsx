@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { CountBadge } from "@/components/count-badge";
 import { TagDot } from "@/components/tag-chip";
 
 export interface SidebarCounts {
@@ -64,11 +63,14 @@ function Item({
     >
       {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : lead}
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {strong && count > 0 ? (
-        <CountBadge count={count} />
-      ) : (
-        <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums">{count}</span>
-      )}
+      <span
+        className={cn(
+          "shrink-0 text-xs tabular-nums",
+          strong && count > 0 ? "font-semibold text-foreground" : "font-normal text-muted-foreground",
+        )}
+      >
+        {count}
+      </span>
     </button>
   );
 }
@@ -76,7 +78,7 @@ function Item({
 /** A section heading with a full-width line above it, separating it from the section before. */
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="-mx-2 mt-3 flex h-9 items-center justify-between border-t pt-3 pr-3 pl-4">
+    <div className="-mx-2 mt-3 flex h-9 items-center justify-between border-t pt-3 pr-2.5 pl-4">
       <span className="text-xs font-medium text-muted-foreground">{title}</span>
       {action}
     </div>
