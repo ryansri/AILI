@@ -136,6 +136,11 @@ export function InboxView({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Esc closes the details panel, unless a menu or dialog is using it.
+      if (e.key === "Escape" && detailsOpen && !typing(e.target) && !document.querySelector("[role=dialog],[role=menu]")) {
+        setDetailsOpen(false);
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === "j" || key === "k") {
@@ -165,7 +170,7 @@ export function InboxView({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [flat, selected]);
+  }, [flat, selected, detailsOpen, setDetailsOpen]);
 
   return (
     <div className="flex h-full w-full">
@@ -225,7 +230,15 @@ export function InboxView({
             detailsOpen={detailsOpen}
             onToggleDetails={toggleDetails}
           />
-          {detailsOpen && <DetailsPanel key={`d-${selected.person.id}`} row={selected} tags={tags} stages={stages} />}
+          {detailsOpen && (
+            <DetailsPanel
+              key={`d-${selected.person.id}`}
+              row={selected}
+              tags={tags}
+              stages={stages}
+              onClose={() => setDetailsOpen(false)}
+            />
+          )}
         </>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

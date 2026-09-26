@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ExternalLink, Pencil } from "lucide-react";
+import { ExternalLink, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import { updateNotes } from "@/lib/actions";
 import type { StageDef, Tag } from "@/lib/types";
@@ -43,7 +43,17 @@ function Shortcut({ keys, label }: { keys: string[]; label: string }) {
 }
 
 /** Who this person is. It never repeats the next step; the list and the card do that. */
-export function DetailsPanel({ row, tags, stages }: { row: Row; tags: Tag[]; stages: StageDef[] }) {
+export function DetailsPanel({
+  row,
+  tags,
+  stages,
+  onClose,
+}: {
+  row: Row;
+  tags: Tag[];
+  stages: StageDef[];
+  onClose: () => void;
+}) {
   const { person } = row;
   const [, start] = useTransition();
   const [notes, setNotes] = useState(person.notes);
@@ -89,9 +99,14 @@ export function DetailsPanel({ row, tags, stages }: { row: Row; tags: Tag[]; sta
             <span className="text-2xs text-muted-foreground">No LinkedIn URL yet</span>
           )}
         </div>
-        <Button variant="ghost" size="icon-xs" aria-label="Edit person" onClick={() => setEditing(true)}>
-          <Pencil />
-        </Button>
+        <div className="-mt-1 -mr-2 flex shrink-0 items-center gap-0.5">
+          <Button variant="ghost" size="icon-sm" aria-label="Edit person" onClick={() => setEditing(true)}>
+            <Pencil />
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Close details (Esc)" title="Close (Esc)" onClick={onClose}>
+            <X />
+          </Button>
+        </div>
       </div>
       <PersonDialog open={editing} onOpenChange={setEditing} tags={tags} stages={stages} person={person} />
 
