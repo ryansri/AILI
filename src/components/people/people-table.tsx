@@ -35,7 +35,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
       .filter((p) => tagId === "all" || p.tagIds.includes(tagId))
       .filter((p) => !q || `${p.name} ${p.company} ${p.headline} ${p.location ?? ""}`.toLowerCase().includes(q))
       .map((person) => ({ person, step: nextStep(person, now) }));
-    return sortRows(list, "due");
+    return sortRows(list, "recent");
   }, [people, query, stage, tagId]);
 
   const chip = (active: boolean) =>
@@ -127,7 +127,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
                       <StatusDot kind={step.kind} />
                       <span className={STATUS[step.kind].text}>{step.step}</span>
                       <span className="font-normal text-muted-foreground">
-                        {step.dueNow ? "today" : dueLabel(step.dueAt)}
+                        {step.kind === "stale" ? step.detail : step.dueNow ? "today" : dueLabel(step.dueAt)}
                       </span>
                     </div>
                   </TableCell>

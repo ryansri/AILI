@@ -1,0 +1,77 @@
+import { describe, expect, it } from "vitest";
+import { nextStep } from "./next-step";
+import { matchesConditions, sortRows, type Row } from "./rows";
+import type { Person } from "./types";
+
+const DAY = 24 * 60 * 60 * 1000;
+const now = new Date("2026-09-26T10:00:00+10:00");
+const ago = (days: number) => new Date(now.getTime() - days * DAY).toISOString();
+
+function person(over: Partial<Person>): Person {
+  return {
+    id: over.id ?? over.name ?? "p",
+    name: "Test",
+    headline: "",
+    company: "",
+    linkedinUrl: "",
+    source: "linkedin",
+    stage: "conversation",
+    tagIds: [],
+    notes: "",
+    messages: [],
+    pending: [],
+    ...over,
+  };
+}
+
+const rows: Row[] = [
+  person({ name: "Old Olly", messages: [{ id: "1", direction: "in", sentAt: ago(120), body: "hi" }] }),
+  person({ name: "New Nia", messages: [{ id: "1", direction: "in", sentAt: ago(1), body: "hi" }], tagIds: ["t1"] }),
+  person({ name: "Mid Max", starred: true, stage: "call", messages: [{ id: "1", direction: "out", sentAt: ago(2), body: "hi" }] }),
+].map((p) => ({ person: p, step: nextStep(p, now) }));
+
+describe("sortRows", () => {
+  it("recent puts newest first and stale at the bottom", () => {
+    expect(sortRows(rows, "recent").map((r) => r.person.name)).toEqual(["New Nia", "Mid Max", "Old Olly"]);
+  });
+  it("due puts things due now first", () => {
+    expect(sortRows(rows, "due").map((r) => r.person.name)).toEqual(["New Nia", "Mid Max", "Old Olly"]);
+  });
+  it("name is alphabetical", () => {
+    expect(sortRows(rows, "name").map((r) => r.person.name)).toEqual(["Mid Max", "New Nia", "Old Olly"]);
+  });
+});
+
+describe("matchesConditions", () => {
+  const [old, nia, max] = rows;
+  it("filters by status, tag, stage and starred", () => {
+    expect(matchesConditions(nia, [{ id: "a", field: "status", op: "is", value: "reply" }])).toBe(true);
+    expect(matchesConditions(old, [{ id: "a", field: "status", op: "is", value: "reply" }])).toBe(false);
+    expect(matchesConditions(old, [{ id: "a", field: "status", op: "is", value: "stale" }])).toBe(true);
+    expect(matchesConditions(nia, [{ id: "a", field: "tag", op: "is", value: "t1" }])).toBe(true);
+    expect(matchesConditions(max, [{ id: "a", field: "tag", op: "is_not", value: "t1" }])).toBe(true);
+    expect(matchesConditions(max, [{ id: "a", field: "stage", op: "is", value: "call" }])).toBe(true);
+    expect(matchesConditions(max, [{ id: "a", field: "starred", op: "is", value: "yes" }])).toBe(true);
+    expect(matchesConditions(nia, [{ id: "a", field: "starred", op: "is", value: "yes" }])).toBe(false);
+  });
+  it("combines conditions with and, and ignores unfinished ones", () => {
+    expect(
+      matchesConditions(nia, [
+        { id: "a", field: "status", op: "is", value: "reply" },
+        { id: "b", field: "tag", op: "is", value: "t1" },
+      ]),
+    ).toBe(true);
+    expect(
+      matchesConditions(nia, [
+        { id: "a", field: "status", op: "is", value: "reply" },
+        { id: "b", field: "tag", op: "is", value: "" },
+      ]),
+    ).toBe(true);
+    expect(
+      matchesConditions(nia, [
+        { id: "a", field: "status", op: "is", value: "reply" },
+        { id: "b", field: "stage", op: "is", value: "won" },
+      ]),
+    ).toBe(false);
+  });
+});

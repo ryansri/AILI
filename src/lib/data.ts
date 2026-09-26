@@ -40,6 +40,7 @@ function toPerson(row: PersonRow): Person {
     connectedAt: row.connectedAt?.toISOString(),
     requestedAt: row.requestedAt?.toISOString(),
     snoozedUntil: row.snoozedUntil?.toISOString(),
+    lastActionAt: row.lastActionAt?.toISOString(),
     messages: row.messages.map((m) => ({
       id: m.id,
       direction: m.direction === "in" ? "in" : "out",

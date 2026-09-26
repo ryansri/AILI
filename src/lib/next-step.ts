@@ -1,14 +1,15 @@
 import type { Person } from "./types";
 
 /**
- * The four colours of the inbox. Every person is in exactly one.
+ * The five states of the inbox. Every person is in exactly one.
  *
  *  reply    they wrote last, you owe them an answer
  *  chase    you wrote last and a follow-up is due
  *  quiet    you have chased twice and they never answered
- *  waiting  you wrote last, nothing to do yet
+ *  waiting  you wrote last, nothing to do yet, or they are snoozed
+ *  stale    nothing has happened for STALE_DAYS, so no next step until you act
  */
-export type StatusKind = "reply" | "chase" | "quiet" | "waiting";
+export type StatusKind = "reply" | "chase" | "quiet" | "waiting" | "stale";
 
 export interface NextStep {
   kind: StatusKind;
@@ -30,11 +31,15 @@ export const CADENCE = {
   quietAfterDays: 5,
 } as const;
 
+/** A conversation with no message and no action from you for this long folds away. */
+export const STALE_DAYS = 30;
+
 export const KIND_ORDER: Record<StatusKind, number> = {
   reply: 0,
   chase: 1,
   quiet: 2,
   waiting: 3,
+  stale: 4,
 };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -57,6 +62,16 @@ function isDueNow(dueAt: Date, now: Date): boolean {
   return startOfDay(dueAt).getTime() <= startOfDay(now).getTime();
 }
 
+/** The most recent thing that happened: a message either way, or something you did in AILI. */
+export function lastActivity(person: Person): Date | null {
+  let latest = 0;
+  for (const m of person.messages) latest = Math.max(latest, new Date(m.sentAt).getTime());
+  for (const p of person.pending) latest = Math.max(latest, new Date(p.createdAt).getTime());
+  if (person.lastActionAt) latest = Math.max(latest, new Date(person.lastActionAt).getTime());
+  if (person.connectedAt) latest = Math.max(latest, new Date(person.connectedAt).getTime());
+  return latest ? new Date(latest) : null;
+}
+
 /**
  * Works out what the user should do next with a person, from the messages alone.
  * Pure and deterministic so it can be unit tested and re-run on every sync.
@@ -71,20 +86,21 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
   if (person.snoozedUntil) {
     const until = new Date(person.snoozedUntil);
     if (!isDueNow(until, now)) {
-      return {
-        kind: "waiting",
-        step: "Check back",
-        detail: "snoozed",
-        dueAt: until,
-        dueNow: false,
-      };
+      return { kind: "waiting", step: "Check back", detail: "snoozed", dueAt: until, dueNow: false };
     }
+    return { kind: "chase", step: "Check back", detail: "snooze is over", dueAt: until, dueNow: true };
+  }
+
+  // Nothing for a month, from either side: fold it away until you act.
+  const activity = lastActivity(person);
+  if (activity && daysBetween(activity, now) >= STALE_DAYS) {
+    const days = daysBetween(activity, now);
     return {
-      kind: "chase",
-      step: "Check back",
-      detail: "snooze is over",
-      dueAt: until,
-      dueNow: true,
+      kind: "stale",
+      step: "No next step",
+      detail: `quiet for ${days} days`,
+      dueAt: activity,
+      dueNow: false,
     };
   }
 
@@ -180,7 +196,7 @@ export function dueLabel(dueAt: Date, now: Date = new Date()): string {
   return shortDate(dueAt);
 }
 
-/** Time label for the row: "08:41", "2 h", "Yesterday", "4 d". */
+/** Time label for the row: "now", "2 h", "Yesterday", "4 d". */
 export function relativeTime(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   const ms = now.getTime() - date.getTime();

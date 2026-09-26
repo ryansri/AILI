@@ -60,6 +60,8 @@ model Person {
   requestedAt DateTime?
   snoozedUntil DateTime?
   archivedAt  DateTime?
+  /// Last time the user did something to this person in AILI (stage, note, tag, send, snooze).
+  lastActionAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

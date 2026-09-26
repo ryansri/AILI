@@ -162,7 +162,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
         <Fact label="Connected" value={person.connectedAt ? shortDate(new Date(person.connectedAt)) : "Not yet"} />
         <Fact label="Messages" value={String(person.messages.length)} />
         <Fact label="Last reply" value={lastIn ? shortDate(new Date(lastIn.sentAt)) : "None"} />
-        <Fact label="Next step" value={step.dueNow ? "Today" : shortDate(step.dueAt)} />
+        <Fact label="Next step" value={step.kind === "stale" ? "None" : step.dueNow ? "Today" : shortDate(step.dueAt)} />
         {person.snoozedUntil && (
           <Fact label="Snoozed until" value={shortDate(new Date(person.snoozedUntil))} />
         )}

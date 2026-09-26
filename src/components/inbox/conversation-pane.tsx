@@ -130,7 +130,7 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
         <div className="flex items-center gap-2 text-xs">
           <span className={cn("flex items-center gap-2 font-medium", status.text)}>
             <StatusDot kind={step.kind} />
-            Next step: {step.step.toLowerCase()} {step.dueNow ? "today" : ""}
+            {step.kind === "stale" ? "No next step" : `Next step: ${step.step.toLowerCase()} ${step.dueNow ? "today" : ""}`}
           </span>
           <span className="text-muted-foreground">
             <NextStepHint row={row} />

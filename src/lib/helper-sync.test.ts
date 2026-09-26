@@ -6,8 +6,14 @@ describe("splitHeadline", () => {
     expect(splitHeadline("Founder at Acme Agency")).toEqual({ headline: "Founder", company: "Acme Agency" });
     expect(splitHeadline("COO @ Farouk Digital")).toEqual({ headline: "COO", company: "Farouk Digital" });
   });
+  it("takes the company from the first segment of a long headline", () => {
+    expect(
+      splitHeadline("Director & COO at Unique IT Solution | Enterprise Software & Cloud Solutions | Building & Scaling B2B SaaS"),
+    ).toEqual({ headline: "Director & COO", company: "Unique IT Solution" });
+  });
   it("leaves other headlines alone", () => {
     expect(splitHeadline("Helping agencies scale")).toEqual({ headline: "Helping agencies scale", company: "" });
+    expect(splitHeadline("Helping agencies scale | Speaker")).toEqual({ headline: "Helping agencies scale", company: "" });
     expect(splitHeadline("")).toEqual({ headline: "", company: "" });
   });
 });

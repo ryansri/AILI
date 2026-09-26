@@ -34,10 +34,15 @@ async function ownPerson(personId: string) {
 
 const TALKING: Stage[] = ["connected", "conversation", "call", "pilot", "won"];
 
+/** Every user action wakes a stale conversation. */
+function touched() {
+  return { lastActionAt: new Date() };
+}
+
 export async function updateStage(personId: string, stage: string) {
   if (!isStage(stage)) throw new Error("Unknown stage");
   const { person } = await ownPerson(personId);
-  const data: { stage: Stage; connectedAt?: Date; requestedAt?: Date } = { stage };
+  const data: { stage: Stage; connectedAt?: Date; requestedAt?: Date; lastActionAt: Date } = { stage, ...touched() };
   if (stage === "requested" && !person.requestedAt) data.requestedAt = new Date();
   if (TALKING.includes(stage) && !person.connectedAt) data.connectedAt = new Date();
   await db.person.update({ where: { id: personId }, data });
@@ -46,13 +51,13 @@ export async function updateStage(personId: string, stage: string) {
 
 export async function updateNotes(personId: string, notes: string) {
   await ownPerson(personId);
-  await db.person.update({ where: { id: personId }, data: { notes: clean(notes, 5000) } });
+  await db.person.update({ where: { id: personId }, data: { notes: clean(notes, 5000), ...touched() } });
   refresh();
 }
 
 export async function toggleStar(personId: string) {
   const { person } = await ownPerson(personId);
-  await db.person.update({ where: { id: personId }, data: { starred: !person.starred } });
+  await db.person.update({ where: { id: personId }, data: { starred: !person.starred, ...touched() } });
   refresh();
 }
 
@@ -63,7 +68,7 @@ export async function snooze(personId: string, until: number | string | null) {
   if (typeof until === "number") date = new Date(Date.now() + until * DAY);
   else if (typeof until === "string") date = new Date(until);
   if (date && Number.isNaN(date.getTime())) throw new Error("Bad snooze date");
-  await db.person.update({ where: { id: personId }, data: { snoozedUntil: date } });
+  await db.person.update({ where: { id: personId }, data: { snoozedUntil: date, ...touched() } });
   refresh();
 }
 
@@ -98,7 +103,7 @@ export async function logMessage(input: {
       source: "manual",
     },
   });
-  const updates: { snoozedUntil: null; stage?: Stage; connectedAt?: Date } = { snoozedUntil: null };
+  const updates: { snoozedUntil: null; stage?: Stage; connectedAt?: Date; lastActionAt: Date } = { snoozedUntil: null, ...touched() };
   if (["warming", "requested", "connected"].includes(person.stage)) updates.stage = "conversation";
   if (!person.connectedAt) updates.connectedAt = sentAt;
   await db.person.update({ where: { id: input.personId }, data: updates });
@@ -128,6 +133,7 @@ export async function queueSend(input: { personId: string; body: string; followU
   await db.outbox.create({
     data: { workspaceId: workspace.id, personId: person.id, body, followUp: input.followUp ?? null },
   });
+  await db.person.update({ where: { id: person.id }, data: touched() });
   refresh();
 }
 
@@ -167,6 +173,7 @@ export async function setPersonTag(personId: string, tagId: string, on: boolean)
   } else {
     await db.personTag.deleteMany({ where: { personId, tagId } });
   }
+  await db.person.update({ where: { id: personId }, data: touched() });
   refresh();
 }
 
@@ -203,6 +210,7 @@ export async function createPerson(input: PersonInput) {
       notes: clean(input.notes, 5000),
       requestedAt: stage === "requested" ? new Date() : null,
       connectedAt: TALKING.includes(stage) ? new Date() : null,
+      ...touched(),
       tags: { create: validTags.map((t) => ({ tagId: t.id })) },
     },
   });
@@ -224,6 +232,7 @@ export async function updatePerson(personId: string, input: PersonInput) {
       location: clean(input.location, 120),
       linkedinUrl,
       publicId: publicIdFromUrl(linkedinUrl) ?? undefined,
+      ...touched(),
     },
   });
   refresh();

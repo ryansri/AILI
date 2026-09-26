@@ -83,6 +83,8 @@ export interface Person {
   requestedAt?: string; // ISO
   /** When the user pressed snooze, the date to resurface. */
   snoozedUntil?: string; // ISO
+  /** Last time the user acted on this person in AILI. */
+  lastActionAt?: string; // ISO
   messages: Message[];
   pending: PendingMessage[];
 }

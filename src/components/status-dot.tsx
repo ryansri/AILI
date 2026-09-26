@@ -37,6 +37,13 @@ export const STATUS: Record<
     soft: "bg-blue-50",
     border: "border-blue-500",
   },
+  stale: {
+    label: "Older",
+    dot: "bg-stone-300",
+    text: "text-stone-500",
+    soft: "bg-stone-50",
+    border: "border-stone-300",
+  },
 };
 
 export function StatusDot({

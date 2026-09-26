@@ -28,5 +28,6 @@ export function NextStepHint({ row }: { row: Row }) {
     return <>Snooze is over. Send a short check-in.</>;
   }
   if (step.kind === "quiet") return <>Two follow-ups, no answer. One last try or mark as lost.</>;
+  if (step.kind === "stale") return <>Nothing for a month. Reply, snooze or change the stage and it wakes up.</>;
   return <>{step.detail}. Nothing to do yet.</>;
 }

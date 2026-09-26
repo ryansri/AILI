@@ -127,6 +127,31 @@ describe("nextStep", () => {
     expect(nextStep(p, now).kind).toBe("chase");
   });
 
+  it("folds away a conversation with nothing for 30 days", () => {
+    const p = person({
+      messages: [{ id: "1", direction: "in", sentAt: daysAgo(45), body: "hello" }],
+    });
+    const s = nextStep(p, now);
+    expect(s.kind).toBe("stale");
+    expect(s.dueNow).toBe(false);
+  });
+
+  it("wakes a stale conversation when you act on it", () => {
+    const p = person({
+      lastActionAt: daysAgo(2),
+      messages: [{ id: "1", direction: "in", sentAt: daysAgo(45), body: "hello" }],
+    });
+    expect(nextStep(p, now).kind).toBe("reply");
+  });
+
+  it("lets a snooze override staleness", () => {
+    const p = person({
+      snoozedUntil: new Date(now.getTime() + 10 * DAY).toISOString(),
+      messages: [{ id: "1", direction: "in", sentAt: daysAgo(45), body: "hello" }],
+    });
+    expect(nextStep(p, now).step).toBe("Check back");
+  });
+
   it("asks for a first message when connected but silent", () => {
     const p = person({ connectedAt: daysAgo(1), messages: [] });
     const s = nextStep(p, now);

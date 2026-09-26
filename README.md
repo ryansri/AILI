@@ -71,8 +71,10 @@ are in `extension/README.md`.
 
 ## What you can do
 
-- **Inbox.** Four colour lists, tag filters, search, sort. Pick a person, read
-  the thread, see the next step in words.
+- **Inbox.** Recent first. One Filter button opens Airtable-style conditions
+  (Status, Tag, Stage, Starred), and tints while a filter is on. Sort by
+  recent, due or name. Conversations quiet for 30 days fold into an Older
+  group with no next step until you act on them.
 - **Send.** Type a message, press Send. With the helper connected it is
   delivered from your account. Without it, AILI copies the message, opens
   their profile, and logs it once you confirm. Follow-ups are numbered
@@ -97,6 +99,7 @@ returns one of four states. The rules come from the outreach playbook.
 | Amber | Chase today | You wrote last and follow-up 1 (day 4) or follow-up 2 (day 9) is due, or a snooze ended |
 | Violet | Gone quiet | Two follow-ups sent and five more silent days |
 | Blue | Waiting | You wrote last and nothing is due yet, or the person is snoozed |
+| Grey | Older | Nothing from either side, and no action by you, for 30 days |
 
 Any reply from the prospect resets the sequence.
 
@@ -132,8 +135,8 @@ src/
     api/helper/         sync, status, outbox routes the helper calls
   components/
     shell/rail.tsx      left icon rail
-    inbox/              sidebar, people list, conversation pane, details panel,
-                        send dialog, log-reply dialog, snooze menu
+    inbox/              toolbar with filter and sort, people list, conversation
+                        pane, details panel, send dialog, log-reply dialog, snooze menu
     people/             people table, add/edit dialog, tag picker
     settings/           settings page
     ui/                 shadcn components

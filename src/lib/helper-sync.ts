@@ -47,14 +47,20 @@ export interface SyncResult {
 }
 
 const COMPANY_SPLIT = /\s+(?:at|@)\s+/i;
+const SEGMENT_SPLIT = /\s*[|•·]\s*/;
 
-/** "Founder at Acme" -> { headline: "Founder", company: "Acme" }. Leaves other shapes alone. */
+/**
+ * "Founder at Acme" -> { headline: "Founder", company: "Acme" }.
+ * "Director & COO at Unique IT | Enterprise Software | ..." -> role "Director & COO",
+ * company "Unique IT". Headlines with no " at " keep their first segment as the role.
+ */
 export function splitHeadline(headline: string): { headline: string; company: string } {
-  const parts = headline.split(COMPANY_SPLIT);
-  if (parts.length === 2 && parts[0].length < 60 && parts[1].length < 80) {
+  const first = headline.split(SEGMENT_SPLIT)[0]?.trim() ?? "";
+  const parts = first.split(COMPANY_SPLIT);
+  if (parts.length === 2 && parts[0].trim() && parts[1].trim() && parts[0].length < 80) {
     return { headline: parts[0].trim(), company: parts[1].trim() };
   }
-  return { headline: headline.trim(), company: "" };
+  return { headline: first || headline.trim(), company: "" };
 }
 
 /** Message bodies match when equal after collapsing whitespace. */
