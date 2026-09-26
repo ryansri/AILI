@@ -20,6 +20,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NextStepHint } from "./next-step-hint";
+import { HeaderAction } from "@/components/page-header";
 import { PersonAvatar } from "./people-list";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
@@ -109,7 +110,7 @@ export function ConversationPane({
 
   return (
     <section aria-label={`Conversation with ${person.name}`} className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b pr-3 pl-5">
         <PersonAvatar person={person} className="size-8" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold leading-tight">{person.name}</h2>
@@ -117,82 +118,75 @@ export function ConversationPane({
             {subtitle || "No headline yet"}
           </p>
         </div>
-        {isDone ? (
-          <Button variant="outline" size="sm" className="h-8" onClick={() => run(() => reopen(person.id), "Reopened.")}>
-            <RotateCcw />
-            Reopen
-          </Button>
-        ) : (
-          actionable && (
+        <div className="flex shrink-0 items-center gap-0.5">
+          {isDone ? (
+            <HeaderAction icon={RotateCcw} label="Reopen" onClick={() => run(() => reopen(person.id), "Reopened.")} />
+          ) : (
+            actionable && (
+              <HeaderAction
+                icon={Check}
+                label="Mark done (E)"
+                onClick={() => run(() => markDone(person.id), `${first} marked done.`)}
+              />
+            )
+          )}
+          <SnoozeMenu
+            personId={person.id}
+            snoozed={Boolean(person.snoozedUntil)}
+            open={snoozeOpen}
+            onOpenChange={onSnoozeOpenChange}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={person.starred ? "Unstar" : "Star"}
+                aria-pressed={person.starred}
+                onClick={() => run(() => toggleStar(person.id), "")}
+              >
+                <Star className={cn(person.starred && "fill-amber-400 text-amber-400")} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{person.starred ? "Unstar" : "Star"}</TooltipContent>
+          </Tooltip>
+          <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  disabled={pending}
-                  onClick={() => run(() => markDone(person.id), `${first} marked done.`)}
-                >
-                  <Check />
-                  Done
-                  <Kbd>E</Kbd>
-                </Button>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label="More">
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Nothing more to do until they write back</TooltipContent>
+              <TooltipContent side="bottom">More</TooltipContent>
             </Tooltip>
-          )
-        )}
-        <SnoozeMenu
-          personId={person.id}
-          snoozed={Boolean(person.snoozedUntil)}
-          open={snoozeOpen}
-          onOpenChange={onSnoozeOpenChange}
-        />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={person.starred ? "Unstar" : "Star"}
-              aria-pressed={person.starred}
-              onClick={() => run(() => toggleStar(person.id), "")}
-            >
-              <Star className={cn(person.starred && "fill-amber-400 text-amber-400")} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{person.starred ? "Unstar" : "Star"}</TooltipContent>
-        </Tooltip>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="More">
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {!viaHelper && (
-              <>
-                <DropdownMenuItem onSelect={() => setLogging(true)}>Log their reply</DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "call"), "Marked as call earned.")}>
-              Mark call earned
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "won"), "Marked as won.")}>
-              Mark as won
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "lost"), "Marked as lost.")}>
-              Mark as lost
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() => run(() => archivePerson(person.id), `${person.name} archived.`)}
-            >
-              Archive
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <DropdownMenuContent align="end">
+              {!viaHelper && (
+                <>
+                  <DropdownMenuItem onSelect={() => setLogging(true)}>Log their reply</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "call"), "Marked as call earned.")}>
+                Mark call earned
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "won"), "Marked as won.")}>
+                Mark as won
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "lost"), "Marked as lost.")}>
+                Mark as lost
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => run(() => archivePerson(person.id), `${person.name} archived.`)}
+              >
+                Archive
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
