@@ -86,15 +86,13 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
     const delivered = await deliverOutbox(pairing, me.memberUrn);
 
     const backfill = await getBackfill();
-    let synced = false;
     if (backfill.category !== "done") {
       await backfillStep(pairing, me.memberUrn, me.displayName);
-      synced = true;
     } else if (force || delivered > 0 || tick % 2 === 1) {
       await scanRecent(pairing, me.memberUrn, me.displayName);
-      synced = true;
     }
-    if (!synced) await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName });
+    // Always report, so AILI has your name and photo even on ticks that synced.
+    await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName, pictureUrl: me.pictureUrl });
     if (backfill.category === "done") await lookupProfiles(pairing);
 
     await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName });

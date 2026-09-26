@@ -113,6 +113,7 @@ export async function getAccount(workspaceId: string): Promise<Account> {
   return {
     name: workspace.name,
     initials: workspace.initials,
+    pictureUrl: workspace.helperPictureUrl ?? undefined,
     dailyCap: workspace.dailyCap,
     sentToday: sentToday + queued,
     helper: {

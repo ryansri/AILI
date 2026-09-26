@@ -63,9 +63,11 @@ function participantFromEntity(entity: VoyagerEntity): Participant | null {
   };
 }
 
-function pictureFrom(pic: Loose | undefined): string {
+/** A LinkedIn profile photo URL from any of the shapes LinkedIn uses, about 100px wide. */
+export function pictureFrom(pic: Loose | undefined): string {
   if (!pic) return "";
-  const vector = pic.displayImageReference?.vectorImage || pic.vectorImage || pic;
+  const vector =
+    pic.displayImageReference?.vectorImage || pic.vectorImage || pic["com.linkedin.common.VectorImage"] || pic;
   const artifacts: Loose[] = Array.isArray(vector?.artifacts) ? vector.artifacts : [];
   const chosen = artifacts.find((a) => a.width === 100) || artifacts[0];
   if (!chosen) return "";

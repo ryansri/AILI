@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { syncedLabel } from "@/lib/next-step";
 import type { HelperStatus } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CountBadge } from "@/components/count-badge";
 
 const SECTIONS = [
@@ -87,11 +87,13 @@ function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: strin
 
 export function Rail({
   initials,
+  pictureUrl,
   needsYou,
   helper,
   sentLine,
 }: {
   initials: string;
+  pictureUrl?: string;
   needsYou: number;
   helper: HelperStatus;
   sentLine: string;
@@ -122,6 +124,7 @@ export function Rail({
         />
         <HelperDot helper={helper} sentLine={sentLine} />
         <Avatar size="sm">
+          {pictureUrl && <AvatarImage src={pictureUrl} alt="" />}
           <AvatarFallback className="text-3xs">{initials}</AvatarFallback>
         </Avatar>
       </div>

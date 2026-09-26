@@ -8,7 +8,7 @@ import { archivePerson, cancelQueued, markDone, queueSend, reopen, toggleStar, u
 import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { shortDate, shortTime, type NextStep } from "@/lib/next-step";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -48,6 +48,7 @@ function stamp(iso: string): string {
 function MyAvatar({ account }: { account: Account }) {
   return (
     <Avatar className="size-7" title={account.name}>
+      {account.pictureUrl && <AvatarImage src={account.pictureUrl} alt="" />}
       <AvatarFallback className="bg-foreground text-2xs font-semibold text-background">{account.initials}</AvatarFallback>
     </Avatar>
   );

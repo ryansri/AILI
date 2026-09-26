@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractConversationId, extractProfileId, linkedInVariables, raw } from "./encode";
-import { extractCurrentPosition, extractSentMessage, normalizeConversations, normalizeMessages } from "./normalize";
+import { extractCurrentPosition, extractSentMessage, normalizeConversations, normalizeMessages, pictureFrom } from "./normalize";
 
 function participant(convId: string, i: number, profileId: string, first: string, last: string, headline = "") {
   return {
@@ -144,5 +144,20 @@ describe("extractCurrentPosition", () => {
   it("returns null when every role has ended or there are none", () => {
     expect(extractCurrentPosition({ included: [{ title: "X", companyName: "Y", dateRange: { start: { year: 2010 }, end: { year: 2012 } } }] })).toBeNull();
     expect(extractCurrentPosition({ included: [] })).toBeNull();
+  });
+});
+
+describe("pictureFrom", () => {
+  it("reads your photo from the /me mini profile, keyed or flat", () => {
+    const vector = {
+      rootUrl: "https://media.licdn.com/dms/image/abc/",
+      artifacts: [
+        { width: 100, fileIdentifyingUrlPathSegment: "100_100/photo.jpg" },
+        { width: 400, fileIdentifyingUrlPathSegment: "400_400/photo.jpg" },
+      ],
+    };
+    expect(pictureFrom(vector)).toBe("https://media.licdn.com/dms/image/abc/100_100/photo.jpg");
+    expect(pictureFrom({ "com.linkedin.common.VectorImage": vector })).toBe("https://media.licdn.com/dms/image/abc/100_100/photo.jpg");
+    expect(pictureFrom(undefined)).toBe("");
   });
 });

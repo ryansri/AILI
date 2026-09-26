@@ -37,7 +37,10 @@ export function checkPairing(pairing: Pairing): Promise<{ workspace: string; dai
   return call<{ workspace: string; dailyCap: number }>(pairing, "/api/helper/status");
 }
 
-export function reportStatus(pairing: Pairing, body: { state: string; memberUrn?: string; displayName?: string }) {
+export function reportStatus(
+  pairing: Pairing,
+  body: { state: string; memberUrn?: string; displayName?: string; pictureUrl?: string },
+) {
   return call(pairing, "/api/helper/status", { method: "POST", body: JSON.stringify(body) });
 }
 

@@ -102,6 +102,8 @@ export interface HelperStatus {
 export interface Account {
   name: string;
   initials: string;
+  /** Your LinkedIn photo, once the helper has reported it. */
+  pictureUrl?: string;
   dailyCap: number;
   /** Sent today plus anything still queued for the helper. */
   sentToday: number;

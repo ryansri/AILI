@@ -14,6 +14,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <div className="flex h-full">
         <Rail
           initials={workspace.initials}
+          pictureUrl={account.pictureUrl}
           needsYou={needsYouCount}
           helper={account.helper}
           sentLine={`${account.sentToday} of ${account.dailyCap} sent today.`}

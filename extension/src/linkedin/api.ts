@@ -12,6 +12,7 @@ import {
   extractCurrentPosition,
   extractSentMessage,
   normalizeConversations,
+  pictureFrom,
   normalizeMessages,
   type ConversationSummary,
   type CurrentPosition,
@@ -25,6 +26,8 @@ export type InboxCategory = "PRIMARY_INBOX" | "SECONDARY_INBOX";
 export interface Me {
   memberUrn: string;
   displayName: string;
+  /** Your LinkedIn profile photo, when you have one. */
+  pictureUrl?: string;
 }
 
 let cachedMe: { me: Me; at: number } | null = null;
@@ -42,6 +45,7 @@ export async function getMe(): Promise<Me> {
   const me = {
     memberUrn: `urn:li:fsd_profile:${memberId}`,
     displayName: `${mini?.firstName || ""} ${mini?.lastName || ""}`.trim(),
+    pictureUrl: pictureFrom(mini?.picture) || undefined,
   };
   cachedMe = { me, at: Date.now() };
   return me;

@@ -25,6 +25,8 @@ model Workspace {
   helperLastSeenAt DateTime?
   helperMemberUrn  String?
   helperName       String?
+  /// Your LinkedIn profile photo, reported by the helper.
+  helperPictureUrl String?
   helperState      String?
   createdAt    DateTime  @default(now())
 

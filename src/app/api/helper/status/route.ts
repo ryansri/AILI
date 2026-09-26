@@ -23,7 +23,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
-  const body = (await request.json().catch(() => ({}))) as { state?: string; memberUrn?: string; displayName?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    state?: string;
+    memberUrn?: string;
+    displayName?: string;
+    pictureUrl?: string;
+  };
+  // Only LinkedIn's image host, so a bad value cannot point your avatar anywhere else.
+  const picture =
+    typeof body.pictureUrl === "string" && /^https:\/\/media\.licdn\.com\//.test(body.pictureUrl)
+      ? body.pictureUrl.slice(0, 1000)
+      : undefined;
   const state = ["ok", "logged_out", "error"].includes(body.state ?? "") ? body.state! : "error";
   await db.workspace.update({
     where: { id: workspace.id },
@@ -32,6 +42,7 @@ export async function POST(request: Request) {
       helperState: state,
       helperMemberUrn: typeof body.memberUrn === "string" ? body.memberUrn : workspace.helperMemberUrn,
       helperName: typeof body.displayName === "string" ? body.displayName : workspace.helperName,
+      ...(picture ? { helperPictureUrl: picture } : {}),
     },
   });
   revalidatePath("/inbox");
