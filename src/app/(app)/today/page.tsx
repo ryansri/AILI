@@ -26,7 +26,7 @@ function Section({
     <section className="flex flex-col gap-2">
       <div className="flex items-baseline gap-2">
         <StatusDot kind={kind} />
-        <h2 className="text-[13px] font-semibold">
+        <h2 className="text-md font-semibold">
           {title} <span className="font-normal text-muted-foreground">{rows.length}</span>
         </h2>
         <span className="text-xs text-muted-foreground">{hint}</span>
@@ -41,7 +41,7 @@ function Section({
             <li key={person.id}>
               <Link
                 href={`/inbox?person=${person.id}`}
-                className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-accent/60"
+                className="flex items-center gap-3 px-3 py-2.5 text-md hover:bg-accent/60"
               >
                 <span className="w-44 truncate font-semibold">{person.name}</span>
                 <span className="w-40 truncate text-xs text-muted-foreground">{person.company}</span>
@@ -91,7 +91,7 @@ export default async function TodayPage() {
   return (
     <div className="flex h-full w-full flex-col">
       <header className="border-b px-6 pt-5 pb-4">
-        <h1 className="text-[17px] font-semibold leading-tight">Today</h1>
+        <h1 className="text-base font-semibold leading-tight">Today</h1>
         <p className="text-xs text-muted-foreground">
           {dateLabel}. {total === 0 ? "Nothing due. " : `${total} things to do. `}
           {account.sentToday} of {account.dailyCap} messages sent.

@@ -112,8 +112,8 @@ export function ConversationPane({
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
         <PersonAvatar person={person} className="size-8" />
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[14px] font-semibold leading-tight">{person.name}</h1>
-          <p className="truncate text-xs text-muted-foreground" title={subtitle}>
+          <h1 className="truncate text-sm font-semibold leading-tight">{person.name}</h1>
+          <p className="max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
             {subtitle || "No headline yet"}
           </p>
         </div>
@@ -196,41 +196,54 @@ export function ConversationPane({
       </header>
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <ol className="flex flex-col gap-2 px-6 py-5">
+        <ol className="flex flex-col px-8 py-6">
           {person.connectedAt && (
-            <li className="mb-2 text-center text-[11px] text-muted-foreground" suppressHydrationWarning>
+            <li className="mb-4 text-center text-2xs text-muted-foreground" suppressHydrationWarning>
               Connected {shortDate(new Date(person.connectedAt))}
             </li>
           )}
           {messages.map((m, i) => {
             const mine = m.direction === "out";
             const prev = messages[i - 1];
-            const gap = !prev || new Date(m.sentAt).getTime() - new Date(prev.sentAt).getTime() > 60 * 60 * 1000;
+            const next = messages[i + 1];
+            const HOUR = 60 * 60 * 1000;
+            const at = new Date(m.sentAt).getTime();
+            const gap = !prev || at - new Date(prev.sentAt).getTime() > HOUR;
+            // Messages from the same side within an hour sit as one run, like Messages.
+            const joinsPrev = !gap && prev.direction === m.direction;
+            const joinsNext = Boolean(next) && next.direction === m.direction && new Date(next.sentAt).getTime() - at <= HOUR;
             return (
-              <li key={m.id} className={cn("flex flex-col gap-1", mine ? "items-end" : "items-start")}>
+              <li
+                key={m.id}
+                className={cn("flex flex-col gap-1", mine ? "items-end" : "items-start", joinsPrev ? "mt-0.5" : "mt-5 first:mt-0")}
+              >
                 {gap && (
-                  <div className="mt-2 mb-1 w-full text-center text-[11px] text-muted-foreground" suppressHydrationWarning>
+                  <div className="mb-2 w-full text-center text-2xs text-muted-foreground" suppressHydrationWarning>
                     {stamp(m.sentAt)}
                   </div>
                 )}
                 <div
                   className={cn(
-                    "max-w-[60%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap",
-                    mine ? "rounded-br-md bg-blue-600 text-white" : "rounded-bl-md bg-muted",
+                    "max-w-[56%] rounded-2xl px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap",
+                    mine ? "bg-blue-600 text-white" : "bg-muted",
+                    mine && joinsPrev && "rounded-tr-md",
+                    mine && joinsNext && "rounded-br-md",
+                    !mine && joinsPrev && "rounded-tl-md",
+                    !mine && joinsNext && "rounded-bl-md",
                   )}
                 >
                   {m.body}
                 </div>
-                {m.followUp ? <div className="px-1 text-[11px] text-muted-foreground">Follow-up {m.followUp}</div> : null}
+                {m.followUp ? <div className="px-1 text-2xs text-muted-foreground">Follow-up {m.followUp}</div> : null}
               </li>
             );
           })}
           {person.pending.map((p) => (
-            <li key={p.id} className="flex flex-col items-end gap-1">
-              <div className="max-w-[60%] rounded-2xl rounded-br-md border border-dashed px-3.5 py-2 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
+            <li key={p.id} className="mt-5 flex flex-col items-end gap-1">
+              <div className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
                 {p.body}
               </div>
-              <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-2 px-1 text-2xs text-muted-foreground">
                 {p.status === "sending" ? "Sending now" : "Waiting for the helper"}
                 {p.status === "queued" && (
                   <button
@@ -261,7 +274,7 @@ export function ConversationPane({
               )}
             />
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold">{cardTitle(step, first)}</div>
+              <div className="text-md font-semibold">{cardTitle(step, first)}</div>
               <div className="truncate text-xs text-muted-foreground">
                 <NextStepHint row={row} />
               </div>
@@ -299,9 +312,9 @@ export function ConversationPane({
                 }
               }}
               placeholder={followUp ? `Follow-up ${followUp} to ${first}` : `Write to ${first}`}
-              className="min-h-10 resize-none rounded-2xl px-4 py-2.5 pr-24 text-[13.5px]"
+              className="min-h-10 resize-none rounded-2xl px-4 py-2.5 pr-24 text-md"
             />
-            <span className="pointer-events-none absolute right-3.5 bottom-2.5 hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+            <span className="pointer-events-none absolute right-3.5 bottom-2.5 hidden items-center gap-1 text-2xs text-muted-foreground sm:flex">
               <Kbd>⌘</Kbd>
               <Kbd>↵</Kbd>
               send
@@ -317,7 +330,7 @@ export function ConversationPane({
             <ArrowUp />
           </Button>
         </div>
-        <div className="flex justify-between text-[11px] text-muted-foreground">
+        <div className="flex justify-between text-2xs text-muted-foreground">
           <span>
             {capReached
               ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`

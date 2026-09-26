@@ -15,7 +15,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   return (
     <section className="grid grid-cols-[220px_1fr] gap-8">
       <div>
-        <h2 className="text-[13px] font-semibold">{title}</h2>
+        <h2 className="text-md font-semibold">{title}</h2>
         {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
       </div>
       <div className="flex max-w-md flex-col gap-3">{children}</div>
@@ -83,7 +83,7 @@ export function SettingsView({
   return (
     <div className="flex h-full w-full flex-col">
       <header className="border-b px-6 pt-5 pb-4">
-        <h1 className="text-[17px] font-semibold leading-tight">Settings</h1>
+        <h1 className="text-base font-semibold leading-tight">Settings</h1>
         <p className="text-xs text-muted-foreground">Your account, the Chrome helper, and the daily send cap.</p>
       </header>
 
@@ -137,7 +137,7 @@ export function SettingsView({
               </Button>
             </div>
             {helperMemberUrn && (
-              <p className="text-[11px] text-muted-foreground">LinkedIn id seen by the helper: {helperMemberUrn}</p>
+              <p className="text-2xs text-muted-foreground">LinkedIn id seen by the helper: {helperMemberUrn}</p>
             )}
           </Section>
 

@@ -41,9 +41,9 @@ function RailLink({
             active && "bg-accent text-foreground",
           )}
         >
-          <Icon className="size-[18px]" strokeWidth={1.75} />
+          <Icon className="size-4.5" strokeWidth={1.75} />
           {badge ? (
-            <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold leading-none text-white">
+            <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-3xs font-semibold leading-none text-white">
               {badge > 99 ? "99+" : badge}
             </span>
           ) : null}
@@ -123,7 +123,7 @@ export function Rail({
         />
         <HelperDot helper={helper} sentLine={sentLine} />
         <Avatar size="sm">
-          <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
+          <AvatarFallback className="text-3xs">{initials}</AvatarFallback>
         </Avatar>
       </div>
     </nav>

@@ -6,6 +6,13 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Type scale used across the app: 3xs 10px (pills), 2xs 11px (meta), md 13px (body). */
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: 0.875rem;
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-md: 0.8125rem;
+  --text-md--line-height: 1.25rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -40,7 +47,7 @@
 
 /*
  * Notion-grey theme on shadcn's Stone base.
- * Page is white, panels are stone-50, text is stone-800, muted text stone-500,
+ * Page is white, panels (rail, list, details) are stone-100, text is stone-800, muted text stone-500,
  * borders stone-200, one near-black primary. Radius 6px, no shadows.
  */
 :root {
@@ -63,7 +70,7 @@
   --border: oklch(0.923 0.003 48.717);
   --input: oklch(0.923 0.003 48.717);
   --ring: oklch(0.709 0.01 56.259);
-  --sidebar: oklch(0.985 0.001 106.423);
+  --sidebar: oklch(0.97 0.001 106.424);
   --sidebar-foreground: oklch(0.268 0.007 34.298);
   --sidebar-primary: oklch(0.216 0.006 56.043);
   --sidebar-primary-foreground: oklch(0.985 0.001 106.423);

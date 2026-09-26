@@ -26,7 +26,7 @@ import { PersonAvatar } from "./people-list";
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{label}</div>
+      <div className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">{label}</div>
       {children}
     </div>
   );
@@ -79,25 +79,25 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
   return (
     <aside
       aria-label="Person details"
-      className="flex w-[260px] shrink-0 flex-col gap-5 overflow-auto border-l bg-sidebar/60 px-4 py-4 text-xs"
+      className="flex w-[260px] shrink-0 flex-col gap-5 overflow-auto border-l bg-sidebar px-4 py-4 text-xs"
     >
       <div className="flex items-start gap-2.5">
         <PersonAvatar person={person} className="size-10" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold">{person.name}</div>
-          {where && <div className="truncate text-[11px] text-muted-foreground">{where}</div>}
+          <div className="truncate text-md font-semibold">{person.name}</div>
+          {where && <div className="truncate text-2xs text-muted-foreground">{where}</div>}
           {person.linkedinUrl ? (
             <a
               href={person.linkedinUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
+              className="inline-flex items-center gap-1 text-2xs text-blue-600 hover:underline"
             >
               Open on LinkedIn
               <ExternalLink className="size-3" />
             </a>
           ) : (
-            <span className="text-[11px] text-muted-foreground">No LinkedIn URL yet</span>
+            <span className="text-2xs text-muted-foreground">No LinkedIn URL yet</span>
           )}
         </div>
         <Button variant="ghost" size="icon-xs" aria-label="Edit person" onClick={() => setEditing(true)}>
@@ -166,7 +166,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
         </div>
       </Field>
 
-      <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1.5 pt-2 text-[11px] text-muted-foreground">
+      <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1.5 pt-2 text-2xs text-muted-foreground">
         <Shortcut keys={["J", "K"]} label="move" />
         <Shortcut keys={["R"]} label="reply" />
         <Shortcut keys={["E"]} label="done" />

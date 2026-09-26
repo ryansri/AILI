@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             A
           </div>
           <div>
-            <div className="text-[15px] font-semibold leading-tight">AILI</div>
+            <div className="text-sm font-semibold leading-tight">AILI</div>
             <div className="text-xs text-muted-foreground">
               {setup ? "Create your account" : "Log in"}
             </div>

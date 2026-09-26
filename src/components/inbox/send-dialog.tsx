@@ -79,7 +79,7 @@ export function SendDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-48 overflow-auto rounded-md border bg-muted/40 px-3 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap">
+        <div className="max-h-48 overflow-auto rounded-md border bg-muted/40 px-3 py-2.5 text-md leading-relaxed whitespace-pre-wrap">
           {body}
         </div>
 

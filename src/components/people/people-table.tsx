@@ -49,7 +49,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
       <header className="flex flex-col gap-3 border-b px-6 pt-5 pb-4">
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <h1 className="text-[17px] font-semibold leading-tight">People</h1>
+            <h1 className="text-base font-semibold leading-tight">People</h1>
             <p className="text-xs text-muted-foreground">
               {people.length} in your pipeline. Click a row to open the conversation.
             </p>
@@ -61,7 +61,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search name, company, role"
-              className="h-8 pl-8 text-[13px]"
+              className="h-8 pl-8 text-md"
             />
           </div>
           <Button size="sm" onClick={() => setAdding(true)}>
@@ -115,7 +115,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
                 <TableRow key={person.id} className="cursor-pointer">
                   <TableCell className="pl-6">
                     <Link href={`/inbox?person=${person.id}`} className="block">
-                      <div className="text-[13px] font-semibold">{person.name}</div>
+                      <div className="text-md font-semibold">{person.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {[person.headline, person.company].filter(Boolean).join(", ")}
                       </div>
