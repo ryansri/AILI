@@ -13,7 +13,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
     "postinstall": "prisma generate",
-    "helper:build": "node extension/build.mjs"
+    "helper:build": "node extension/build.mjs",
+    "predev": "prisma db push --accept-data-loss --skip-generate"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

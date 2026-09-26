@@ -23,7 +23,7 @@ npm install          # also generates the Prisma client
 npm run db:push      # creates prisma/dev.db (SQLite)
 npm run db:seed      # loads eight sample people so there is something to click
 npm run helper:build # bundles the Chrome helper into extension/dist
-npm run dev
+npm run dev          # also syncs the database layout first
 ```
 
 Open http://localhost:3000. The first visit asks you to create your account.
