@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:push": "prisma db push --accept-data-loss",
     "db:seed": "tsx prisma/seed.ts",
+    "reset:conversations": "tsx prisma/reset-conversations.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
     "postinstall": "prisma generate",
     "helper:build": "node extension/build.mjs",

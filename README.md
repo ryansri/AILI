@@ -44,6 +44,7 @@ npm run lint
 npm test            # vitest: next-step engine, auth, sync parsing, LinkedIn response parsing
 npm run build       # helper bundle plus the Next.js production build
 npm run db:seed     # wipes and reloads the sample data
+npm run reset:conversations -- you@example.com --yes  # clears one account's people and messages to re-import
 ```
 
 ## The Chrome helper
