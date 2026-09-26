@@ -24,8 +24,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NextStepHint } from "./next-step-hint";
 import { HeaderAction } from "@/components/page-header";
-import { Badge } from "@/components/ui/badge";
 import { TagChip } from "@/components/tag-chip";
+import { TagPicker } from "@/components/people/tag-picker";
 import { PersonAvatar } from "./people-list";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
@@ -182,19 +182,6 @@ export function ConversationPane({
           </TooltipTrigger>
           <TooltipContent side="bottom">{detailsOpen ? "Hide details" : "Show details"}</TooltipContent>
         </Tooltip>
-        <StageMenu stages={stages} value={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
-        {!detailsOpen && (
-          <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden xl:flex">
-            {personTags.slice(0, 2).map((t) => (
-              <TagChip key={t.id} tag={t} />
-            ))}
-            {personTags.length > 2 && (
-              <Badge variant="outline" className="font-normal text-muted-foreground">
-                +{personTags.length - 2}
-              </Badge>
-            )}
-          </div>
-        )}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {isDone ? (
             <HeaderAction icon={RotateCcw} label="Reopen" onClick={() => run(() => reopen(person.id), "Reopened.")} />
@@ -243,20 +230,10 @@ export function ConversationPane({
               <DropdownMenuSeparator />
               {!viaHelper && (
                 <>
-                  <DropdownMenuItem onSelect={() => setLogging(true)}>Log their reply</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setLogging(true)}>Paste a reply from LinkedIn</DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "call"), "Marked as call earned.")}>
-                Mark call earned
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "won"), "Marked as won.")}>
-                Mark as won
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => run(() => updateStage(person.id, "lost"), "Marked as lost.")}>
-                Mark as lost
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
                 onSelect={() => run(() => archivePerson(person.id), `${person.name} archived.`)}
@@ -267,6 +244,15 @@ export function ConversationPane({
           </DropdownMenu>
         </div>
       </header>
+
+      <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b px-5 py-2">
+        <StageMenu stages={stages} value={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
+        <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
+        {personTags.map((t) => (
+          <TagChip key={t.id} tag={t} />
+        ))}
+        <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
+      </div>
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <ol className="flex flex-col px-8 py-6">

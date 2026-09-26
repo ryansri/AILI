@@ -3,21 +3,12 @@
 import { useState, useTransition } from "react";
 import { ExternalLink, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { updateNotes, updateStage } from "@/lib/actions";
+import { updateNotes } from "@/lib/actions";
 import type { StageDef, Tag } from "@/lib/types";
 import { shortDate, shortTime } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { TagChip } from "@/components/tag-chip";
-import { TagPicker } from "@/components/people/tag-picker";
 import { PersonDialog } from "@/components/people/person-dialog";
 import type { Row } from "@/lib/rows";
 import { PersonAvatar } from "./people-list";
@@ -54,11 +45,10 @@ function Shortcut({ keys, label }: { keys: string[]; label: string }) {
 /** Who this person is. It never repeats the next step; the list and the card do that. */
 export function DetailsPanel({ row, tags, stages }: { row: Row; tags: Tag[]; stages: StageDef[] }) {
   const { person } = row;
-  const [pending, start] = useTransition();
+  const [, start] = useTransition();
   const [notes, setNotes] = useState(person.notes);
   const [editing, setEditing] = useState(false);
 
-  const personTags = tags.filter((t) => person.tagIds.includes(t.id));
   const inbound = person.messages.filter((m) => m.direction === "in");
   const outbound = person.messages.filter((m) => m.direction === "out");
   const lastIn = inbound[inbound.length - 1];
@@ -110,42 +100,6 @@ export function DetailsPanel({ row, tags, stages }: { row: Row; tags: Tag[]; sta
           <p className="text-xs leading-relaxed text-muted-foreground">{person.headline}</p>
         </Field>
       )}
-
-      <Field label="Stage">
-        <Select
-          value={person.stage}
-          disabled={pending}
-          onValueChange={(stage) =>
-            start(async () => {
-              try {
-                await updateStage(person.id, stage);
-              } catch {
-                toast.error("Stage did not save.");
-              }
-            })
-          }
-        >
-          <SelectTrigger size="sm" className="w-full bg-background text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {stages.map((s) => (
-              <SelectItem key={s.key} value={s.key} className="text-xs">
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-
-      <Field label="Tags">
-        <div className="flex flex-wrap gap-1.5">
-          {personTags.map((t) => (
-            <TagChip key={t.id} tag={t} className="bg-background" />
-          ))}
-          <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
-        </div>
-      </Field>
 
       <Field label="Notes">
         <Textarea
