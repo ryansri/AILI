@@ -18,6 +18,10 @@ export interface HelperStatus {
   imported?: number;
   /** False while the history import is still walking the inbox. */
   backfillDone?: boolean;
+  /** Which inbox and page the history import is on, for the popup. */
+  importPhase?: string;
+  /** When LinkedIn asked us to slow down, the time to resume. */
+  pausedUntil?: number;
 }
 
 /** Where the first-run history import is up to. */
@@ -26,6 +30,8 @@ export interface Backfill {
   category: string;
   cursor: string | null;
   imported: number;
+  /** Pages fetched in the current category. */
+  page?: number;
 }
 
 export async function getBackfill(): Promise<Backfill> {

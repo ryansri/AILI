@@ -37,10 +37,11 @@ function render(pairing: Pairing | null, status: HelperStatus) {
         : status.state === "error"
           ? "Something went wrong on the last run."
           : "Paired. Waiting for the first run.";
-  const importing = status.state === "ok" && status.backfillDone === false;
+  const importing = status.backfillDone === false;
+  const paused = status.pausedUntil && status.pausedUntil > Date.now() ? ` Paused until ${new Date(status.pausedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` : "";
   detail.textContent = importing
-    ? `Importing your history: ${status.imported ?? 0} conversations so far. Keep Chrome open; it continues a page a minute.`
-    : `Last sync ${relative(status.lastSyncAt)}${status.imported ? `, ${status.imported} conversations imported` : ""}. Next run within a minute.`;
+    ? `Importing your history: ${status.imported ?? 0} conversations so far (${status.importPhase ?? "starting"}). Keep Chrome open; it continues a page a minute.${paused}`
+    : `Last sync ${relative(status.lastSyncAt)}${status.imported ? `, ${status.imported} conversations imported` : ""}. Next run within a minute.${paused}`;
   errorEl.classList.toggle("hidden", !status.lastError);
   errorEl.textContent = status.lastError ?? "";
 }

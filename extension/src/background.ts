@@ -26,7 +26,9 @@ const BACKFILL_DAYS = 180;
 /** Pages of 20 conversations to re-scan per category once history is in. */
 const RECENT_PAGES: Record<InboxCategory, number> = { PRIMARY_INBOX: 2, SECONDARY_INBOX: 1 };
 /** Threads fetched per tick, so a tick stays well inside a minute. */
-const THREADS_PER_TICK = 15;
+const THREADS_PER_TICK = 10;
+/** How long to back off when LinkedIn answers 429 or a server error. */
+const PAUSE_MS = 10 * 60 * 1000;
 const CATEGORY_ORDER: InboxCategory[] = ["PRIMARY_INBOX", "SECONDARY_INBOX"];
 
 let running = false;
@@ -67,6 +69,9 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
       return;
     }
 
+    const paused = (await getStatus()).pausedUntil ?? 0;
+    if (!force && paused > Date.now()) return;
+
     const me = await getMe();
     const delivered = await deliverOutbox(pairing, me.memberUrn);
 
@@ -81,11 +86,14 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
     }
     if (!synced) await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName });
 
-    await setStatus({ state: "ok", lastError: undefined, memberUrn: me.memberUrn, displayName: me.displayName });
+    await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    let message = err instanceof Error ? err.message : String(err);
     const loggedOut = err instanceof LinkedInError && (err.status === 401 || err.status === 403);
-    await setStatus({ state: loggedOut ? "logged_out" : "error", lastError: message });
+    const throttled = err instanceof LinkedInError && (err.status === 429 || err.status >= 500);
+    if (throttled) message = `LinkedIn asked us to slow down (${err.status}). Pausing for 10 minutes, then continuing.`;
+    if (message === "Failed to fetch") message = "Could not reach AILI. Is the app running? Start it with npm run dev, then Sync now.";
+    await setStatus({ state: loggedOut ? "logged_out" : "error", lastError: message, pausedUntil: throttled ? Date.now() + PAUSE_MS : undefined });
     const pairing = await getPairing();
     if (pairing) await reportStatus(pairing, { state: loggedOut ? "logged_out" : "error" }).catch(() => {});
   } finally {
@@ -143,8 +151,8 @@ async function importConversations(pairing: Pairing, memberUrn: string, displayN
   const payload = { memberUrn, displayName, conversations: [] as Array<ConversationSummary & { messages: PlainMessage[] }> };
   for (const conv of list) {
     await jitter();
-    const firstTime = syncedAt[conv.id] === undefined;
-    const messages = await fetchThread(memberUrn, conv.id, firstTime ? 3 : 1);
+    // The latest 20 messages are enough to work out the next step.
+    const messages = await fetchThread(memberUrn, conv.id, 1);
     payload.conversations.push({ ...conv, messages });
   }
   await postSync(pairing, payload);
@@ -162,6 +170,8 @@ async function backfillStep(pairing: Pairing, memberUrn: string, displayName: st
   const category = state.category as InboxCategory;
   const syncedAt = await getSyncedAt();
   const since = cutoff();
+  const pageNo = (state.page ?? 0) + 1;
+  await setStatus({ importPhase: `${category === "PRIMARY_INBOX" ? "Focused" : "Other"} inbox, page ${pageNo}` });
 
   const page = await fetchConversationsPage(memberUrn, category, state.cursor);
   const eligible = page.conversations.filter(
@@ -174,19 +184,24 @@ async function backfillStep(pairing: Pairing, memberUrn: string, displayName: st
   const imported = await importConversations(pairing, memberUrn, displayName, batch);
   const pageDone = eligible.length <= THREADS_PER_TICK;
 
-  let next = { ...state, imported: state.imported + imported };
+  let next = { ...state, imported: state.imported + imported, page: pageNo };
   if (pageDone) {
-    if (allOld || !page.nextCursor) {
+    if (allOld || !page.nextCursor || page.nextCursor === state.cursor) {
       const idx = CATEGORY_ORDER.indexOf(category);
       const following = CATEGORY_ORDER[idx + 1];
-      next = { category: following ?? "done", cursor: null, imported: next.imported };
+      next = { category: following ?? "done", cursor: null, imported: next.imported, page: 0 };
     } else {
       next = { ...next, cursor: page.nextCursor };
     }
   }
   await setBackfill(next);
   if (imported === 0) await reportStatus(pairing, { state: "ok", memberUrn, displayName });
-  await setStatus({ lastSyncAt: Date.now(), imported: next.imported, backfillDone: next.category === "done" });
+  await setStatus({
+    lastSyncAt: Date.now(),
+    imported: next.imported,
+    backfillDone: next.category === "done",
+    importPhase: next.category === "done" ? undefined : `${next.category === "PRIMARY_INBOX" ? "Focused" : "Other"} inbox, page ${(next.page ?? 0) + 1} next`,
+  });
 }
 
 /** After history is in: re-read the first pages and push whatever has new activity. */
