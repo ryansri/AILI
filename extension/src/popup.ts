@@ -1,4 +1,4 @@
-import { checkPairing } from "./aili";
+import { checkPairing, checkPerson } from "./aili";
 import { getPairing, getStatus, setPairing, type HelperStatus, type Pairing } from "./storage";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -14,6 +14,14 @@ const dot = $("dot");
 const line = $("line");
 const detail = $("detail");
 const errorEl = $("error");
+const addEl = $("add");
+const addName = $("add-name");
+const addForm = $("add-form");
+const addStage = $<HTMLSelectElement>("add-stage");
+const addTag = $<HTMLSelectElement>("add-tag");
+const addBtn = $<HTMLButtonElement>("add-btn");
+const addDone = $("add-done");
+const addError = $("add-error");
 
 function relative(ts?: number): string {
   if (!ts) return "never";
@@ -102,8 +110,106 @@ disconnectBtn.addEventListener("click", async () => {
   await refresh();
 });
 
+// ---------------------------------------------------------------------------
+// Add to AILI: shown when the current tab is someone's LinkedIn profile.
+// ---------------------------------------------------------------------------
+
+interface ProfileTab {
+  publicId: string;
+  name: string;
+}
+
+/** The profile in the active tab, from its address and title. Nothing is read from the page itself. */
+async function profileTab(): Promise<ProfileTab | null> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const match = tab?.url?.match(/^https:\/\/www\.linkedin\.com\/in\/([^/?#]+)/);
+  if (!match) return null;
+  const publicId = decodeURIComponent(match[1]);
+  // "(3) Sarah Chen | LinkedIn" -> "Sarah Chen"
+  const name = (tab.title ?? "").replace(/^\(\d+\+?\)\s*/, "").replace(/\s*\|\s*LinkedIn\s*$/i, "").trim();
+  return { publicId, name };
+}
+
+let current: ProfileTab | null = null;
+
+function showAdded(text: string, personId: string, serverUrl: string) {
+  addForm.classList.add("hidden");
+  addDone.classList.remove("hidden");
+  addDone.textContent = `${text} `;
+  const link = document.createElement("a");
+  link.href = "#";
+  link.textContent = "Open in AILI";
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    void chrome.tabs.create({ url: `${serverUrl.replace(/\/$/, "")}/inbox?person=${encodeURIComponent(personId)}` });
+  });
+  addDone.append(link);
+}
+
+function fill(select: HTMLSelectElement, options: { value: string; label: string }[], keepFirst: boolean) {
+  if (!keepFirst) select.textContent = "";
+  else while (select.options.length > 1) select.remove(1);
+  for (const o of options) select.add(new Option(o.label, o.value));
+}
+
+async function renderAdd() {
+  const pairing = await getPairing();
+  current = pairing ? await profileTab() : null;
+  addEl.classList.toggle("hidden", !current);
+  if (!pairing || !current) return;
+  addName.textContent = current.name || current.publicId;
+  addError.classList.add("hidden");
+  try {
+    const check = await checkPerson(pairing, current.publicId);
+    const stageLabel = (key: string) => check.stages.find((s) => s.key === key)?.label ?? key;
+    if (check.person) {
+      addName.textContent = check.person.name;
+      showAdded(`Already in AILI, in ${stageLabel(check.person.stage)}.`, check.person.id, pairing.serverUrl);
+      return;
+    }
+    const remembered = (await chrome.storage.local.get(["addStage", "addTag"])) as { addStage?: string; addTag?: string };
+    fill(addStage, check.stages.map((s) => ({ value: s.key, label: s.label })), false);
+    fill(addTag, check.tags.map((t) => ({ value: t.id, label: t.label })), true);
+    if (remembered.addStage && check.stages.some((s) => s.key === remembered.addStage)) addStage.value = remembered.addStage;
+    if (remembered.addTag && check.tags.some((t) => t.id === remembered.addTag)) addTag.value = remembered.addTag;
+  } catch (err) {
+    addForm.classList.add("hidden");
+    addError.classList.remove("hidden");
+    addError.textContent = err instanceof Error && err.message === "Failed to fetch" ? "Could not reach AILI. Is it running?" : String(err instanceof Error ? err.message : err);
+  }
+}
+
+addBtn.addEventListener("click", async () => {
+  if (!current) return;
+  const pairing = await getPairing();
+  if (!pairing) return;
+  addBtn.disabled = true;
+  addBtn.textContent = "Adding";
+  addError.classList.add("hidden");
+  await chrome.storage.local.set({ addStage: addStage.value, addTag: addTag.value });
+  try {
+    const res = await chrome.runtime.sendMessage({
+      type: "add-person",
+      publicId: current.publicId,
+      fallbackName: current.name,
+      stage: addStage.value,
+      tagId: addTag.value,
+    });
+    if (!res || res.error) throw new Error(res?.error ?? "The helper did not answer. Reload it in chrome://extensions.");
+    const stage = addStage.selectedOptions[0]?.textContent ?? "";
+    showAdded(res.existed ? "Already in AILI." : `Added to ${stage}.`, res.id, pairing.serverUrl);
+  } catch (err) {
+    addError.classList.remove("hidden");
+    addError.textContent = err instanceof Error ? err.message : String(err);
+  } finally {
+    addBtn.disabled = false;
+    addBtn.textContent = "Add to AILI";
+  }
+});
+
 chrome.storage.onChanged.addListener(() => void refresh());
 void (async () => {
   serverInput.value = "http://localhost:3000";
   await refresh();
+  await renderAdd();
 })();

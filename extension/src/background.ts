@@ -19,11 +19,12 @@
  * clicked, and AILI caps it per day.
  */
 
-import { postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type ReplyToNotify } from "./aili";
+import { addPerson, postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type ReplyToNotify } from "./aili";
 import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
 import {
   fetchConversationsPage,
   fetchCurrentPosition,
+  fetchProfile,
   fetchThread,
   getMe,
   sendToConversation,
@@ -59,6 +60,10 @@ chrome.notifications.onClicked.addListener((id) => {
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === "sync-now") {
     void cycle({ force: true }).then(() => reply({ ok: true }));
+    return true;
+  }
+  if (msg?.type === "add-person") {
+    void addFromProfile(msg).then(reply, (err) => reply({ error: err instanceof Error ? err.message : String(err) }));
     return true;
   }
   return false;
@@ -137,6 +142,39 @@ async function lookupProfiles(pairing: Pairing): Promise<void> {
   } finally {
     if (results.length) await reportLookups(pairing, results).catch(() => {});
   }
+}
+
+/**
+ * "Add to AILI" from the popup, for the profile open in the current tab. Reads
+ * that one profile from LinkedIn (you clicked, so it is one request, like
+ * opening the page), then hands it to AILI. If LinkedIn's answer is unusable,
+ * the name from the page title is enough; the background lookup fills in the
+ * title and company later.
+ */
+async function addFromProfile(msg: { publicId: string; fallbackName: string; stage: string; tagId?: string }) {
+  const pairing = await getPairing();
+  if (!pairing) throw new Error("Connect the helper to AILI first.");
+  let profile: Awaited<ReturnType<typeof fetchProfile>> = null;
+  try {
+    profile = await fetchProfile(msg.publicId);
+  } catch (err) {
+    if (err instanceof LinkedInError && (err.status === 401 || err.status === 403)) {
+      throw new Error("LinkedIn is logged out in this browser. Log in and try again.");
+    }
+  }
+  const name = profile?.name || msg.fallbackName;
+  if (!name) throw new Error("Could not read this profile. Reload the page and try again.");
+  return addPerson(pairing, {
+    publicId: msg.publicId,
+    urn: profile?.urn,
+    name,
+    headline: profile?.headline,
+    pictureUrl: profile?.pictureUrl || undefined,
+    jobTitle: profile?.position?.title,
+    company: profile?.position?.company,
+    stage: msg.stage,
+    tagId: msg.tagId || undefined,
+  });
 }
 
 /** Sends at most one queued message per tick, so sends are spaced out. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractConversationId, extractProfileId, linkedInVariables, raw } from "./encode";
-import { extractCurrentPosition, extractSentMessage, normalizeConversations, normalizeMessages, pictureFrom } from "./normalize";
+import { extractCurrentPosition, extractProfile, extractSentMessage, normalizeConversations, normalizeMessages, pictureFrom } from "./normalize";
 
 function participant(convId: string, i: number, profileId: string, first: string, last: string, headline = "") {
   return {
@@ -159,5 +159,47 @@ describe("pictureFrom", () => {
     expect(pictureFrom(vector)).toBe("https://media.licdn.com/dms/image/abc/100_100/photo.jpg");
     expect(pictureFrom({ "com.linkedin.common.VectorImage": vector })).toBe("https://media.licdn.com/dms/image/abc/100_100/photo.jpg");
     expect(pictureFrom(undefined)).toBe("");
+  });
+});
+
+describe("extractProfile", () => {
+  it("reads the dash profile that matches the public id", () => {
+    const res = {
+      included: [
+        { $type: "com.linkedin.voyager.dash.identity.profile.Profile", entityUrn: "urn:li:fsd_profile:OTHER", firstName: "Someone", lastName: "Else", publicIdentifier: "someone" },
+        {
+          $type: "com.linkedin.voyager.dash.identity.profile.Profile",
+          entityUrn: "urn:li:fsd_profile:ACoAAB123",
+          firstName: "Sarah",
+          lastName: "Chen",
+          headline: "Ops Director at Bright Agency",
+          publicIdentifier: "sarahchen",
+          profilePicture: {
+            displayImageReference: {
+              vectorImage: { rootUrl: "https://media.licdn.com/dms/image/", artifacts: [{ width: 100, fileIdentifyingUrlPathSegment: "abc_100" }] },
+            },
+          },
+        },
+      ],
+    };
+    expect(extractProfile(res, "SarahChen")).toEqual({
+      urn: "urn:li:fsd_profile:ACoAAB123",
+      name: "Sarah Chen",
+      headline: "Ops Director at Bright Agency",
+      pictureUrl: "https://media.licdn.com/dms/image/abc_100",
+    });
+  });
+
+  it("reads the older mini profile shape", () => {
+    const res = {
+      included: [
+        { $type: "com.linkedin.voyager.identity.shared.MiniProfile", entityUrn: "urn:li:fs_miniProfile:ACoAAC9", firstName: "Tom", lastName: "Whitfield", occupation: "CEO, Pixel Forge", publicIdentifier: "tomw" },
+      ],
+    };
+    expect(extractProfile(res, "tomw")).toMatchObject({ urn: "urn:li:fsd_profile:ACoAAC9", name: "Tom Whitfield", headline: "CEO, Pixel Forge" });
+  });
+
+  it("returns null when nothing matches", () => {
+    expect(extractProfile({ included: [] }, "x")).toBeNull();
   });
 });

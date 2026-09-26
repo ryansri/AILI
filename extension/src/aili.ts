@@ -87,3 +87,30 @@ export function reportLookups(
 ) {
   return call(pairing, "/api/helper/profiles", { method: "POST", body: JSON.stringify({ results }) });
 }
+
+export interface PersonCheck {
+  person: { id: string; name: string; stage: string } | null;
+  stages: { key: string; label: string }[];
+  tags: { id: string; label: string }[];
+}
+
+export function checkPerson(pairing: Pairing, publicId: string): Promise<PersonCheck> {
+  return call(pairing, `/api/helper/people?publicId=${encodeURIComponent(publicId)}`);
+}
+
+export function addPerson(
+  pairing: Pairing,
+  body: {
+    publicId: string;
+    urn?: string;
+    name: string;
+    headline?: string;
+    pictureUrl?: string;
+    jobTitle?: string;
+    company?: string;
+    stage: string;
+    tagId?: string;
+  },
+): Promise<{ id: string; existed: boolean; stage: string }> {
+  return call(pairing, "/api/helper/people", { method: "POST", body: JSON.stringify(body) });
+}

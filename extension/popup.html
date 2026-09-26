@@ -21,6 +21,14 @@
   .muted { font-size: 11px; color: #78716c; }
   .err { font-size: 11px; color: #b91c1c; white-space: pre-wrap; }
   .hidden { display: none; }
+  .card { border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .who { display: flex; flex-direction: column; gap: 1px; }
+  .who strong { font-size: 14px; }
+  select { font: inherit; padding: 6px 8px; border: 1px solid #e7e5e4; border-radius: 6px; background: #fff; width: 100%; min-width: 0; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  #add { margin-bottom: 14px; }
+  button.wide { width: 100%; }
+  a { color: #292524; }
 </style>
 </head>
 <body>
@@ -41,6 +49,18 @@
   </div>
 
   <div id="paired" class="hidden">
+    <div id="add" class="card hidden">
+      <div class="who"><span class="muted">On LinkedIn</span><strong id="add-name"></strong></div>
+      <div id="add-form">
+        <div class="grid">
+          <label>Stage <select id="add-stage"></select></label>
+          <label>Tag <select id="add-tag"><option value="">No tag</option></select></label>
+        </div>
+        <button id="add-btn" class="primary wide" style="margin-top:10px">Add to AILI</button>
+      </div>
+      <p id="add-done" class="muted hidden"></p>
+      <p id="add-error" class="err hidden"></p>
+    </div>
     <div class="status"><span id="dot" class="dot"></span><span id="line">Checking</span></div>
     <p id="detail" class="muted"></p>
     <p id="error" class="err hidden"></p>

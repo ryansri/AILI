@@ -235,3 +235,35 @@ export function extractCurrentPosition(response: unknown): CurrentPosition | nul
   current.sort((a, b) => b.start - a.start);
   return { title: current[0].title.slice(0, 120), company: current[0].company.slice(0, 120) };
 }
+
+export interface ProfileBasics {
+  urn: string;
+  name: string;
+  headline: string;
+  pictureUrl: string;
+}
+
+/**
+ * Name, headline, photo and member id from a profile response. Reads the dash
+ * profile shape (Profile with publicIdentifier) and the older profileView shape
+ * (MiniProfile with occupation). Prefers the record whose public id matches.
+ */
+export function extractProfile(response: unknown, publicId: string): ProfileBasics | null {
+  const included = ((response as VoyagerResponse)?.included ?? []) as Loose[];
+  const candidates = included.filter(
+    (e) => typeof e.firstName === "string" && /Profile$/.test(String(e.$type)) && typeof e.entityUrn === "string",
+  );
+  const wanted = publicId.toLowerCase();
+  const entity =
+    candidates.find((e) => String(e.publicIdentifier ?? "").toLowerCase() === wanted) ??
+    (candidates.length === 1 ? candidates[0] : undefined);
+  if (!entity) return null;
+  const id = String(entity.entityUrn).split(":").pop() || "";
+  if (!id) return null;
+  return {
+    urn: `urn:li:fsd_profile:${id}`,
+    name: `${entity.firstName} ${entity.lastName ?? ""}`.trim(),
+    headline: String(entity.headline ?? entity.occupation ?? "").slice(0, 200),
+    pictureUrl: pictureFrom(entity.profilePicture ?? entity.picture),
+  };
+}

@@ -10,12 +10,14 @@ import { LinkedInError, jitter, voyagerFetch } from "./client";
 import { encodeUrnChars, extractConversationId, linkedInVariables, raw } from "./encode";
 import {
   extractCurrentPosition,
+  extractProfile,
   extractSentMessage,
   normalizeConversations,
   pictureFrom,
   normalizeMessages,
   type ConversationSummary,
   type CurrentPosition,
+  type ProfileBasics,
   type Loose,
   type PlainMessage,
   type VoyagerResponse,
@@ -198,4 +200,24 @@ export async function fetchCurrentPosition(identity: string): Promise<PositionLo
     await jitter(600, 900);
   }
   return { status: "none" };
+}
+
+/**
+ * One profile, for "Add to AILI": name, headline, photo, member id and the
+ * current role. Only runs when you click Add, on the profile you are viewing.
+ * Returns null if LinkedIn's answer has nothing usable; the popup then adds
+ * the person with the name from the page title.
+ */
+export async function fetchProfile(publicId: string): Promise<(ProfileBasics & { position: CurrentPosition | null }) | null> {
+  for (const index of [0, 2]) {
+    const res = await voyagerFetch(PROFILE_PATHS[index](publicId));
+    if (res.status === 401 || res.status === 429 || res.status >= 500) {
+      throw new LinkedInError(`Profile returned ${res.status}`, res.status);
+    }
+    if (!res.ok) continue;
+    const data = await res.json().catch(() => null);
+    const basics = extractProfile(data, publicId);
+    if (basics) return { ...basics, position: extractCurrentPosition(data) };
+  }
+  return null;
 }

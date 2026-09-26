@@ -83,8 +83,8 @@ are in `extension/README.md`.
 
 ## What you can do
 
-- **Inbox.** A sidebar next to the icon rail picks who the list shows: Now,
-  Waiting, All, Starred, any tag or any stage, each with a count. Now is
+- **Inbox.** A sidebar next to the icon rail picks who the list shows: All,
+  Now, Waiting, Starred, any tag or any stage, each with a count. Now is
   grouped the way an outreach expert works it: They replied, New connections,
   Follow up today, Last try. Tag and stage views use the same groups plus
   Waiting and Older. Every group folds. One header spans the sidebar and the
@@ -135,6 +135,8 @@ are in `extension/README.md`.
   conversation. Tick rows to Message all, Add tag, Move to stage or Archive.
   Import takes a CSV, including LinkedIn's own Connections export, and skips
   anyone already in AILI.
+  Or add people one at a time from LinkedIn: on their profile, click the AILI
+  helper icon in Chrome, pick a stage and tag, and press Add to AILI.
   "Reached" is worked out from each person's current stage plus what their
   record proves (request and connect dates, messages, a reply). People the
   helper imported only count as In conversation once they have replied.
