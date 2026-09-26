@@ -1,15 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Tag } from "@/lib/types";
+import type { Account, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { STATUS, StatusDot } from "@/components/status-dot";
 import { TagDot } from "@/components/tag-chip";
-import { ACCOUNT } from "@/lib/mock/data";
-import type { Filter } from "./inbox-view";
+import { PersonDialog } from "@/components/people/person-dialog";
+import type { Filter } from "@/lib/rows";
 
 const LISTS: { id: Filter; label: string }[] = [
   { id: "all", label: "All people" },
@@ -26,6 +27,8 @@ export function InboxSidebar({
   tags,
   tagFilter,
   onTagFilter,
+  account,
+  onCreated,
 }: {
   filter: Filter;
   onFilter: (f: Filter) => void;
@@ -33,18 +36,24 @@ export function InboxSidebar({
   tags: Tag[];
   tagFilter: string | null;
   onTagFilter: (id: string | null) => void;
+  account: Account;
+  onCreated: (id: string) => void;
 }) {
+  const [adding, setAdding] = useState(false);
+  const pct = account.dailyCap > 0 ? (account.sentToday / account.dailyCap) * 100 : 0;
+
   return (
     <aside className="flex w-[184px] shrink-0 flex-col gap-5 border-r bg-sidebar px-3 py-5">
       <div className="px-2">
         <div className="text-[15px] font-semibold leading-tight">Inbox</div>
-        <div className="text-[11px] text-muted-foreground">{ACCOUNT.name}, LinkedIn</div>
+        <div className="text-[11px] text-muted-foreground">{account.name}, LinkedIn</div>
       </div>
 
-      <Button size="sm" className="w-full">
+      <Button size="sm" className="w-full" onClick={() => setAdding(true)}>
         <Plus />
         Add person
       </Button>
+      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} onSaved={onCreated} />
 
       <nav aria-label="Lists" className="flex flex-col gap-0.5">
         {LISTS.map((l) => {
@@ -83,6 +92,9 @@ export function InboxSidebar({
         <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Tags
         </div>
+        {tags.length === 0 && (
+          <div className="px-2 text-xs text-muted-foreground">No tags yet.</div>
+        )}
         {tags.map((t) => {
           const active = tagFilter === t.id;
           return (
@@ -105,9 +117,9 @@ export function InboxSidebar({
 
       <div className="mt-auto flex flex-col gap-1.5">
         <div className="text-xs font-semibold">Sent today</div>
-        <Progress value={(ACCOUNT.sentToday / ACCOUNT.dailyCap) * 100} className="h-1" />
+        <Progress value={Math.min(100, pct)} className="h-1" />
         <div className="text-[11px] text-muted-foreground">
-          {ACCOUNT.sentToday} of {ACCOUNT.dailyCap} messages
+          {account.sentToday} of {account.dailyCap} messages
         </div>
       </div>
     </aside>

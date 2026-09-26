@@ -1,27 +1,30 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Person, Tag } from "@/lib/types";
-import { KIND_ORDER, nextStep, type NextStep, type StatusKind } from "@/lib/next-step";
+import type { Account, Person, Tag } from "@/lib/types";
+import { nextStep } from "@/lib/next-step";
+import { sortRows, type Filter, type Row, type Sort } from "@/lib/rows";
 import { InboxSidebar } from "./inbox-sidebar";
 import { PeopleList } from "./people-list";
 import { ConversationPane } from "./conversation-pane";
 import { DetailsPanel } from "./details-panel";
 
-export type Filter = "all" | StatusKind;
-export type Sort = "due" | "name";
-
-export interface Row {
-  person: Person;
-  step: NextStep;
-}
-
-export function InboxView({ people, tags }: { people: Person[]; tags: Tag[] }) {
+export function InboxView({
+  people,
+  tags,
+  account,
+  initialPersonId,
+}: {
+  people: Person[];
+  tags: Tag[];
+  account: Account;
+  initialPersonId: string | null;
+}) {
   const [filter, setFilter] = useState<Filter>("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("due");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialPersonId);
 
   const rows = useMemo<Row[]>(() => {
     const now = new Date();
@@ -42,15 +45,7 @@ export function InboxView({ people, tags }: { people: Person[]; tags: Tag[] }) {
       if (q && !`${r.person.name} ${r.person.company} ${r.person.headline}`.toLowerCase().includes(q)) return false;
       return true;
     });
-    list.sort((a, b) => {
-      if (sort === "name") return a.person.name.localeCompare(b.person.name);
-      const dueDiff = Number(b.step.dueNow) - Number(a.step.dueNow);
-      if (dueDiff !== 0) return dueDiff;
-      const kindDiff = KIND_ORDER[a.step.kind] - KIND_ORDER[b.step.kind];
-      if (kindDiff !== 0) return kindDiff;
-      return a.step.dueAt.getTime() - b.step.dueAt.getTime();
-    });
-    return list;
+    return sortRows(list, sort);
   }, [rows, filter, tagFilter, sort, query]);
 
   const selected = rows.find((r) => r.person.id === selectedId) ?? visible[0] ?? null;
@@ -64,6 +59,8 @@ export function InboxView({ people, tags }: { people: Person[]; tags: Tag[] }) {
         tags={tags}
         tagFilter={tagFilter}
         onTagFilter={setTagFilter}
+        account={account}
+        onCreated={setSelectedId}
       />
       <PeopleList
         rows={visible}
@@ -77,12 +74,12 @@ export function InboxView({ people, tags }: { people: Person[]; tags: Tag[] }) {
       />
       {selected ? (
         <>
-          <ConversationPane row={selected} tags={tags} />
-          <DetailsPanel row={selected} tags={tags} />
+          <ConversationPane row={selected} account={account} />
+          <DetailsPanel key={selected.person.id} row={selected} tags={tags} />
         </>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          Nothing here. Try another list.
+          Nothing here. Try another list, or add a person.
         </div>
       )}
     </div>

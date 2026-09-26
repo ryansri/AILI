@@ -6,13 +6,12 @@ import { CalendarDays, FileText, Inbox, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ACCOUNT } from "@/lib/mock/data";
 
 const SECTIONS = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/people", label: "People", icon: Users },
-  { href: "/posts", label: "Posts", icon: FileText },
   { href: "/today", label: "Today", icon: CalendarDays },
+  { href: "/posts", label: "Posts", icon: FileText },
 ] as const;
 
 function RailLink({
@@ -46,7 +45,7 @@ function RailLink({
   );
 }
 
-export function Rail() {
+export function Rail({ initials }: { initials: string }) {
   const pathname = usePathname();
   return (
     <nav
@@ -67,7 +66,7 @@ export function Rail() {
           active={pathname.startsWith("/settings")}
         />
         <Avatar size="sm">
-          <AvatarFallback className="text-[10px]">{ACCOUNT.initials}</AvatarFallback>
+          <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
         </Avatar>
       </div>
     </nav>

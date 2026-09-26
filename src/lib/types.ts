@@ -20,11 +20,23 @@ export const STAGES: { id: Stage; label: string }[] = [
   { id: "lost", label: "Lost" },
 ];
 
-export function stageLabel(stage: Stage): string {
+export const STAGE_IDS = STAGES.map((s) => s.id);
+
+export function isStage(value: string): value is Stage {
+  return (STAGE_IDS as string[]).includes(value);
+}
+
+export function stageLabel(stage: string): string {
   return STAGES.find((s) => s.id === stage)?.label ?? stage;
 }
 
 export type TagColor = "amber" | "green" | "violet" | "blue" | "pink" | "stone";
+
+export const TAG_COLORS: TagColor[] = ["amber", "green", "violet", "blue", "pink", "stone"];
+
+export function isTagColor(value: string): value is TagColor {
+  return (TAG_COLORS as string[]).includes(value);
+}
 
 export interface Tag {
   id: string;
@@ -52,8 +64,17 @@ export interface Person {
   stage: Stage;
   tagIds: string[];
   notes: string;
+  starred?: boolean;
   connectedAt?: string; // ISO
+  requestedAt?: string; // ISO
   /** When the user pressed snooze, the date to resurface. */
   snoozedUntil?: string; // ISO
   messages: Message[];
+}
+
+export interface Account {
+  name: string;
+  initials: string;
+  dailyCap: number;
+  sentToday: number;
 }

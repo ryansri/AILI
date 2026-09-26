@@ -1,4 +1,4 @@
-import type { Row } from "./inbox-view";
+import type { Row } from "@/lib/rows";
 
 /**
  * One plain sentence under the next step. Until the AI layer arrives this is

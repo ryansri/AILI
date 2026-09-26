@@ -1,0 +1,92 @@
+// AILI data model. SQLite for local development; the same schema moves to
+// Postgres by changing the datasource provider and running a migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// One LinkedIn profile being worked from AILI. Multi-user later; one row for now.
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  initials  String
+  dailyCap  Int      @default(20)
+  createdAt DateTime @default(now())
+
+  people Person[]
+  tags   Tag[]
+}
+
+model Person {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name        String
+  headline    String    @default("")
+  company     String    @default("")
+  location    String    @default("")
+  linkedinUrl String    @default("")
+  /// Stage id, see STAGES in src/lib/types.ts
+  stage       String    @default("warming")
+  notes       String    @default("")
+  starred     Boolean   @default(false)
+  connectedAt DateTime?
+  requestedAt DateTime?
+  snoozedUntil DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tags     PersonTag[]
+  messages Message[]
+
+  @@index([workspaceId, stage])
+}
+
+model Tag {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  label       String
+  /// amber | green | violet | blue | pink | stone
+  color       String    @default("stone")
+  createdAt   DateTime  @default(now())
+
+  people PersonTag[]
+
+  @@unique([workspaceId, label])
+}
+
+model PersonTag {
+  personId String
+  tagId    String
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  tag      Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([personId, tagId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  personId  String
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  /// "in" from the prospect, "out" from the user
+  direction String
+  body      String
+  sentAt    DateTime
+  /// 1 or 2 when this outbound message was a planned follow-up
+  followUp  Int?
+  /// "manual" (logged by hand), "helper" (Chrome helper), "api"
+  source    String   @default("manual")
+  /// Id on LinkedIn's side when synced, to avoid duplicates
+  externalId String? @unique
+  createdAt DateTime @default(now())
+
+  @@index([personId, sentAt])
+}

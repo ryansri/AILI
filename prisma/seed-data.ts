@@ -1,4 +1,4 @@
-import type { Person, Tag } from "../types";
+import type { Person, Tag } from "../src/lib/types";
 
 /**
  * Sample people used until the Chrome helper syncs a real inbox.

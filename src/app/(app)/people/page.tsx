@@ -1,10 +1,9 @@
-import { EmptyState } from "@/components/empty-state";
+import { PeopleTable } from "@/components/people/people-table";
+import { loadWorkspaceData } from "@/lib/data";
 
-export default function PeoplePage() {
-  return (
-    <EmptyState
-      title="People"
-      description="Everyone you are working, as a table with stage, tags, last touch and next step. Coming in step 2."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function PeoplePage() {
+  const { people, tags } = await loadWorkspaceData();
+  return <PeopleTable people={people} tags={tags} />;
 }

@@ -1,6 +1,13 @@
 import { InboxView } from "@/components/inbox/inbox-view";
-import { PEOPLE, TAGS } from "@/lib/mock/data";
+import { loadWorkspaceData } from "@/lib/data";
 
-export default function InboxPage() {
-  return <InboxView people={PEOPLE} tags={TAGS} />;
+export const dynamic = "force-dynamic";
+
+export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
+  const { person } = await searchParams;
+  const { people, tags, account } = await loadWorkspaceData();
+  const initialPersonId = typeof person === "string" ? person : null;
+  return (
+    <InboxView people={people} tags={tags} account={account} initialPersonId={initialPersonId} />
+  );
 }

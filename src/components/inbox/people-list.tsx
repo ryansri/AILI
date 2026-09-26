@@ -4,7 +4,6 @@ import { ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dueLabel, relativeTime } from "@/lib/next-step";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { STATUS, StatusDot } from "@/components/status-dot";
-import type { Filter, Row, Sort } from "./inbox-view";
+import type { Filter, Row, Sort } from "@/lib/rows";
 
 function lastLine(row: Row): string {
   const msgs = row.person.messages;
@@ -81,7 +80,7 @@ export function PeopleList({
         </div>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 border-t">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto border-t">
         <ul>
           {rows.map((row) => {
             const active = row.person.id === selectedId;
@@ -93,7 +92,7 @@ export function PeopleList({
                   onClick={() => onSelect(row.person.id)}
                   aria-current={active ? "true" : undefined}
                   className={cn(
-                    "flex w-full flex-col gap-0.5 border-b px-4 py-3 text-left transition-colors hover:bg-accent/60",
+                    "flex w-full min-w-0 flex-col gap-0.5 border-b px-4 py-3 text-left transition-colors hover:bg-accent/60",
                     active && "bg-accent",
                   )}
                 >
@@ -117,7 +116,7 @@ export function PeopleList({
         {rows.length === 0 && (
           <div className="p-6 text-center text-xs text-muted-foreground">No one in this list.</div>
         )}
-      </ScrollArea>
+      </div>
     </section>
   );
 }
