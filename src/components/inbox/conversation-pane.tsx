@@ -8,6 +8,7 @@ import { archivePerson, cancelQueued, markDone, queueSend, reopen, toggleStar, u
 import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { shortDate, shortTime, type NextStep } from "@/lib/next-step";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -41,6 +42,15 @@ function stamp(iso: string): string {
   const diff = Math.round((day(now) - day(d)) / 86400000);
   const when = diff === 0 ? "Today" : diff === 1 ? "Yesterday" : diff < 7 ? WEEKDAYS[d.getDay()] : shortDate(d);
   return `${when} ${shortTime(d)}`;
+}
+
+/** Your avatar in the thread: your initials on black, matching your bubbles. */
+function MyAvatar({ account }: { account: Account }) {
+  return (
+    <Avatar className="size-7" title={account.name}>
+      <AvatarFallback className="bg-foreground text-2xs font-semibold text-background">{account.initials}</AvatarFallback>
+    </Avatar>
+  );
 }
 
 /** The person's stage as a clear control: "Stage  In conversation ▾". Picking one saves it. */
@@ -281,28 +291,40 @@ export function ConversationPane({
                     {stamp(m.sentAt)}
                   </div>
                 )}
-                <div
-                  className={cn(
-                    "max-w-[56%] rounded-2xl px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap",
-                    mine ? "bg-foreground text-background" : "bg-muted",
-                    mine && joinsPrev && "rounded-tr-md",
-                    mine && joinsNext && "rounded-br-md",
-                    !mine && joinsPrev && "rounded-tl-md",
-                    !mine && joinsNext && "rounded-bl-md",
-                  )}
-                >
-                  {m.body}
+                <div className={cn("flex w-full items-end gap-2", mine && "flex-row-reverse")}>
+                  {/* The avatar sits beside the last message of a run; earlier ones keep its space. */}
+                  <span className="size-7 shrink-0">
+                    {!joinsNext &&
+                      (mine ? <MyAvatar account={account} /> : <PersonAvatar person={person} className="size-7" />)}
+                  </span>
+                  <div
+                    className={cn(
+                      "max-w-[56%] rounded-2xl px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap",
+                      mine ? "bg-foreground text-background" : "bg-muted",
+                      mine && joinsPrev && "rounded-tr-md",
+                      mine && joinsNext && "rounded-br-md",
+                      !mine && joinsPrev && "rounded-tl-md",
+                      !mine && joinsNext && "rounded-bl-md",
+                    )}
+                  >
+                    {m.body}
+                  </div>
                 </div>
-                {m.followUp ? <div className="px-1 text-2xs text-muted-foreground">Follow-up {m.followUp}</div> : null}
+                {m.followUp ? <div className="px-10 text-2xs text-muted-foreground">Follow-up {m.followUp}</div> : null}
               </li>
             );
           })}
           {person.pending.map((p) => (
             <li key={p.id} className="mt-5 flex flex-col items-end gap-1">
-              <div className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
-                {p.body}
+              <div className="flex w-full flex-row-reverse items-end gap-2">
+                <span className="size-7 shrink-0">
+                  <MyAvatar account={account} />
+                </span>
+                <div className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
+                  {p.body}
+                </div>
               </div>
-              <div className="flex items-center gap-2 px-1 text-2xs text-muted-foreground">
+              <div className="flex items-center gap-2 px-10 text-2xs text-muted-foreground">
                 {p.status === "sending" ? "Sending now" : "Waiting for the helper"}
                 {p.status === "queued" && (
                   <button
