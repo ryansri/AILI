@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, CheckCheck, ChevronDown, ChevronRight, PanelLeft, Plus, Star } from "lucide-react";
+import { Check, CheckCheck, ChevronDown, ChevronRight, PanelLeft, Plus, Send, Star } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/actions";
@@ -142,6 +142,7 @@ export function PeopleList({
   query,
   conditions,
   helper,
+  onMessageAll,
 }: {
   view: View;
   groups: Group[];
@@ -153,6 +154,8 @@ export function PeopleList({
   query: string;
   conditions: Condition[];
   helper: HelperStatus;
+  /** Tag and stage views: write one message for everyone shown. */
+  onMessageAll?: () => void;
 }) {
   const [, start] = useTransition();
   const narrowed = query.trim().length > 0 || conditions.some((c) => c.value);
@@ -172,7 +175,15 @@ export function PeopleList({
 
   return (
     <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col bg-background">
-
+      {onMessageAll && visible > 0 && (
+        <div className="flex items-center justify-between border-b px-4 py-2">
+          <span className="text-xs text-muted-foreground">{visible === 1 ? "1 person" : `${visible} people`}</span>
+          <Button variant="outline" size="sm" className="h-7 rounded-full px-3 text-xs" onClick={onMessageAll}>
+            <Send />
+            Message all
+          </Button>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-2">
         {groups.map((g) => {
           const isCollapsed = g.band && collapsed.has(g.kind);

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId } from "./auth";
 import { helperOutdated } from "./helper-version";
+import type { Template } from "./templates";
 import { DEFAULT_STAGES, isTagColor, type Account, type Person, type StageDef, type Tag } from "./types";
 
 /** The logged-in workspace. Pages and actions call this; unauthenticated callers go to /login. */
@@ -96,6 +97,11 @@ export async function getStages(workspaceId: string): Promise<StageDef[]> {
   return rows.map((r) => ({ key: r.key, label: r.label }));
 }
 
+export async function getTemplates(workspaceId: string): Promise<Template[]> {
+  const rows = await db.template.findMany({ where: { workspaceId }, orderBy: { name: "asc" } });
+  return rows.map((t) => ({ id: t.id, name: t.name, body: t.body }));
+}
+
 /** The helper counts as connected when it reported in during the last few minutes. */
 export const HELPER_ONLINE_MS = 5 * 60 * 1000;
 
@@ -132,11 +138,12 @@ export async function getAccount(workspaceId: string): Promise<Account> {
 /** Everything the inbox, people table and today page need, in one round trip each. */
 export async function loadWorkspaceData() {
   const workspace = await getWorkspace();
-  const [people, tags, stages, account] = await Promise.all([
+  const [people, tags, stages, templates, account] = await Promise.all([
     getPeople(workspace.id),
     getTags(workspace.id),
     getStages(workspace.id),
+    getTemplates(workspace.id),
     getAccount(workspace.id),
   ]);
-  return { workspace, people, tags, stages, account };
+  return { workspace, people, tags, stages, templates, account };
 }

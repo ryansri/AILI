@@ -31,6 +31,8 @@ import { PersonAvatar } from "./people-list";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
+import { TemplatePicker } from "@/components/templates/template-picker";
+import type { Template } from "@/lib/templates";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -118,6 +120,7 @@ export function ConversationPane({
   account,
   tags,
   stages,
+  templates,
   snoozeOpen,
   onSnoozeOpenChange,
   detailsOpen,
@@ -127,6 +130,7 @@ export function ConversationPane({
   account: Account;
   tags: Tag[];
   stages: StageDef[];
+  templates: Template[];
   snoozeOpen: boolean;
   onSnoozeOpenChange: (open: boolean) => void;
   detailsOpen: boolean;
@@ -386,6 +390,14 @@ export function ConversationPane({
         )}
 
         <div className="flex items-end gap-2.5">
+          <TemplatePicker
+            templates={templates}
+            person={person}
+            onPick={(text) => {
+              setDraft(text);
+              requestAnimationFrame(() => document.getElementById("reply")?.focus());
+            }}
+          />
           <div className="relative flex-1">
             <label htmlFor="reply" className="sr-only">
               Your message

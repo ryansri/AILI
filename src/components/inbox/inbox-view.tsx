@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { Account, Person, StageDef, Tag } from "@/lib/types";
 import { markDone } from "@/lib/actions";
+import type { Template } from "@/lib/templates";
 import { nextStep, type StatusKind } from "@/lib/next-step";
 import {
   groupRows,
@@ -19,6 +20,7 @@ import { InboxSidebar, type SidebarCounts } from "./sidebar";
 import { InboxHeader, PeopleList } from "./people-list";
 import { ConversationPane } from "./conversation-pane";
 import { DetailsPanel } from "./details-panel";
+import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 
 /** Below this width, opening the details closes the sidebar so the conversation keeps room. */
 const ROOMY_WIDTH = 1440;
@@ -49,12 +51,14 @@ export function InboxView({
   people,
   tags,
   stages,
+  templates,
   account,
   initialPersonId,
 }: {
   people: Person[];
   tags: Tag[];
   stages: StageDef[];
+  templates: Template[];
   account: Account;
   initialPersonId: string | null;
 }) {
@@ -64,6 +68,7 @@ export function InboxView({
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(initialPersonId);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [messageAll, setMessageAll] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = usePersistentFlag("aili.inbox.sidebar", true);
   const [detailsOpen, setDetailsOpen] = usePersistentFlag("aili.inbox.details", false);
@@ -214,9 +219,18 @@ export function InboxView({
             query={query}
             conditions={conditions}
             helper={account.helper}
+            onMessageAll={view.kind === "tag" || view.kind === "stage" ? () => setMessageAll(true) : undefined}
           />
         </div>
       </div>
+      <MessageAllDialog
+        open={messageAll}
+        onOpenChange={setMessageAll}
+        groupName={viewTitle(view, tags, stages)}
+        people={inViewRows.map((r) => r.person)}
+        templates={templates}
+        account={account}
+      />
       {selected ? (
         <>
           <ConversationPane
@@ -225,6 +239,7 @@ export function InboxView({
             account={account}
             tags={tags}
             stages={stages}
+            templates={templates}
             snoozeOpen={snoozeOpen}
             onSnoozeOpenChange={setSnoozeOpen}
             detailsOpen={detailsOpen}

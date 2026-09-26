@@ -71,7 +71,12 @@ is open:
 - new conversations and replies appear in AILI on their own,
 - a message you clicked Send on in AILI is delivered from your LinkedIn
   account, one per minute, never more than the daily cap,
-- the sidebar shows when the helper last synced.
+- the sidebar shows when the helper last synced,
+- a new reply pops up as a desktop notification (up to three, then one
+  summary). Clicking it opens that conversation in AILI. Turn it off in
+  Settings, Notifications. The history import does not notify, and neither
+  does a reply older than six hours. On a Mac, Chrome also needs to be allowed
+  in System Settings, Notifications.
 
 The helper never sends anything you did not click. Details and the risk note
 are in `extension/README.md`.
@@ -104,6 +109,17 @@ are in `extension/README.md`.
   delivered from your account. Without it, AILI copies the message, opens
   their profile, and logs it once you confirm. Follow-ups are numbered
   automatically. Send greys out at the daily cap.
+- **Templates.** Save messages in Settings, Templates. {first_name},
+  {name}, {company} and {title} fill in for each person; the Insert buttons put
+  them at the cursor. In a conversation, the page icon left of the message box
+  fills a template in for that person to edit before sending. If a field is
+  empty for someone, it is left out and AILI says so.
+- **Message all.** In a tag or stage view, Message all writes one message for
+  everyone shown (search and filter narrow who). Pick a template or write it,
+  step through the preview person by person, then queue it. People not matched
+  on LinkedIn yet, or with a message already waiting, are skipped, and it stops
+  at the daily cap. The helper still sends one a minute, and each queued
+  message can be cancelled from its conversation until it goes.
 - **Replies.** Synced by the helper, or pasted in by hand. Either way the
   sequence stops and they move to Reply needed.
 - **Snooze.** 3 days to a quarter, or pick a date.
@@ -111,7 +127,8 @@ are in `extension/README.md`.
   earned, won, lost, or archives.
 - **People.** Everyone as a table with stage and tag filters.
 - **Today.** Reply, chase, decide, withdraw old requests, warm up.
-- **Settings.** Helper token and status, daily cap, your account, log out.
+- **Settings.** Helper token and status, daily cap, templates, notifications,
+  your account, log out.
 
 ## How the inbox decides the next step
 
@@ -149,7 +166,7 @@ extension/
   src/aili.ts           calls to the AILI server
   src/linkedin/         Voyager client, encoding, parsing (adapted from inflow)
 prisma/
-  schema.prisma         Workspace, Person, Stage, Tag, PersonTag, Message, Outbox
+  schema.prisma         Workspace, Person, Stage, Tag, PersonTag, Message, Outbox, Template
   seed.ts, seed-data.ts
 scripts/setup-mac.sh
 src/
@@ -164,6 +181,7 @@ src/
                         pane, details panel, send dialog, log-reply dialog, snooze menu
     people/             people table, add/edit dialog, tag picker
     settings/           settings page
+    templates/          template editor, picker, settings list, Message all dialog
     ui/                 shadcn components
   lib/
     next-step.ts        the follow-up engine
@@ -172,6 +190,7 @@ src/
     actions.ts          server actions (writes), including the send queue
     auth.ts             passwords and session cookies
     helper-sync.ts      applies what the helper saw to the database
+    templates.ts        fills {first_name} and the other fields for a person
     types.ts            Person, Message, Tag, Stage, Account
 ```
 

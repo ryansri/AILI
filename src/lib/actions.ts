@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getStages, getWorkspace, HELPER_ONLINE_MS } from "./data";
 import { PROTECTED_STAGE_KEYS } from "./stage-rules";
+import { fillTemplate } from "./templates";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
 import { isTagColor, type Stage, type TagColor } from "./types";
 
@@ -360,6 +361,90 @@ export async function updatePerson(personId: string, input: PersonInput) {
 function publicIdFromUrl(url: string): string | null {
   const m = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+function cleanTemplate(input: { name: string; body: string }) {
+  const name = clean(input.name, 80);
+  const body = String(input.body ?? "").trim().slice(0, 8000);
+  if (!name) throw new Error("The template needs a name.");
+  if (!body) throw new Error("The template needs a message.");
+  return { name, body };
+}
+
+export async function createTemplate(input: { name: string; body: string }) {
+  const workspace = await getWorkspace();
+  const data = cleanTemplate(input);
+  const created = await db.template.create({ data: { workspaceId: workspace.id, ...data } });
+  refresh();
+  return created.id;
+}
+
+export async function updateTemplate(id: string, input: { name: string; body: string }) {
+  const workspace = await getWorkspace();
+  const found = await db.template.findFirst({ where: { id, workspaceId: workspace.id } });
+  if (!found) throw new Error("Not found");
+  await db.template.update({ where: { id }, data: cleanTemplate(input) });
+  refresh();
+}
+
+export async function deleteTemplate(id: string) {
+  const workspace = await getWorkspace();
+  const found = await db.template.findFirst({ where: { id, workspaceId: workspace.id } });
+  if (!found) throw new Error("Not found");
+  await db.template.delete({ where: { id } });
+  refresh();
+}
+
+/**
+ * Queues one message per person, written out from the text (template fields
+ * filled per person). The helper sends them one a minute. Stops at the daily
+ * cap; skips people AILI cannot reach on LinkedIn and people with a message
+ * already waiting. Every send still starts with this click.
+ */
+export async function queueBulk(input: { personIds: string[]; body: string }) {
+  const workspace = await getWorkspace();
+  const body = String(input.body ?? "").trim().slice(0, 8000);
+  if (!body) throw new Error("Write a message first.");
+  const ids = [...new Set(input.personIds)].slice(0, 500);
+  const people = await db.person.findMany({
+    where: { id: { in: ids }, workspaceId: workspace.id, archivedAt: null },
+    include: { outbox: { where: { status: { in: ["queued", "sending"] } }, select: { id: true } } },
+  });
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const [sentToday, queued] = await Promise.all([
+    db.message.count({ where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId: workspace.id } } }),
+    db.outbox.count({ where: { workspaceId: workspace.id, status: { in: ["queued", "sending"] } } }),
+  ]);
+  let room = Math.max(0, workspace.dailyCap - sentToday - queued);
+
+  const result = { queued: 0, noLinkedIn: 0, alreadyWaiting: 0, overCap: 0 };
+  for (const person of people) {
+    if (!person.linkedinUrn) {
+      result.noLinkedIn += 1;
+      continue;
+    }
+    if (person.outbox.length > 0) {
+      result.alreadyWaiting += 1;
+      continue;
+    }
+    if (room <= 0) {
+      result.overCap += 1;
+      continue;
+    }
+    const text = fillTemplate(body, { name: person.name, company: person.company, jobTitle: person.jobTitle });
+    await db.outbox.create({ data: { workspaceId: workspace.id, personId: person.id, body: text } });
+    await db.person.update({ where: { id: person.id }, data: { handledAt: null, ...touched() } });
+    room -= 1;
+    result.queued += 1;
+  }
+  refresh();
+  return result;
 }
 
 // ---------------------------------------------------------------------------

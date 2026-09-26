@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { TemplatesSettings } from "@/components/templates/templates-settings";
+import type { Template } from "@/lib/templates";
 import { PageHeader } from "@/components/page-header";
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -66,11 +68,13 @@ function relative(iso?: string): string {
 
 export function SettingsView({
   account,
+  templates,
   email,
   helperToken,
   helperMemberUrn,
 }: {
   account: Account;
+  templates: Template[];
   email: string;
   helperToken: string;
   helperMemberUrn?: string;
@@ -200,6 +204,15 @@ export function SettingsView({
           </Section>
 
           <Separator />
+
+          <div id="templates" className="scroll-mt-6">
+            <Section
+              title="Templates"
+              hint="Saved messages. {first_name}, {company} and the other fields fill in for each person when you use one."
+            >
+              <TemplatesSettings templates={templates} />
+            </Section>
+          </div>
 
           <Section
             title="Notifications"

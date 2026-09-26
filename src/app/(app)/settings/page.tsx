@@ -1,4 +1,4 @@
-import { getWorkspace, getAccount } from "@/lib/data";
+import { getWorkspace, getAccount, getTemplates } from "@/lib/data";
 import { db } from "@/lib/db";
 import { newHelperToken } from "@/lib/auth";
 import { SettingsView } from "@/components/settings/settings-view";
@@ -11,10 +11,11 @@ export default async function SettingsPage() {
   const helperToken =
     workspace.helperToken ??
     (await db.workspace.update({ where: { id: workspace.id }, data: { helperToken: newHelperToken() } })).helperToken!;
-  const account = await getAccount(workspace.id);
+  const [account, templates] = await Promise.all([getAccount(workspace.id), getTemplates(workspace.id)]);
   return (
     <SettingsView
       account={account}
+      templates={templates}
       email={workspace.email ?? ""}
       helperToken={helperToken}
       helperMemberUrn={workspace.helperMemberUrn ?? undefined}

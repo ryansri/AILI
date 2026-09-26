@@ -37,6 +37,7 @@ model Workspace {
   people Person[]
   tags   Tag[]
   stages Stage[]
+  templates Template[]
   outbox Outbox[]
 }
 
@@ -101,6 +102,17 @@ model Stage {
   createdAt   DateTime  @default(now())
 
   @@unique([workspaceId, key])
+}
+
+/// A saved message. {first_name}, {name}, {company} and {title} fill in per person.
+model Template {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  body        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model Tag {
