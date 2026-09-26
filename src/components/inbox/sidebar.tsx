@@ -41,7 +41,6 @@ function Item({
   icon: Icon,
   lead,
   strong,
-  trail,
 }: {
   label: string;
   count: number;
@@ -50,7 +49,6 @@ function Item({
   icon?: LucideIcon;
   lead?: React.ReactNode;
   strong?: boolean;
-  trail?: React.ReactNode;
 }) {
   return (
     <button
@@ -62,7 +60,6 @@ function Item({
         active && "bg-foreground/[0.08] font-semibold hover:bg-foreground/[0.08]",
       )}
     >
-      {trail}
       {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : lead}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {strong && count > 0 ? (
@@ -74,9 +71,10 @@ function Item({
   );
 }
 
+/** A section heading with a full-width line above it, separating it from the section before. */
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="flex h-8 items-center justify-between pt-3 pr-1 pl-2">
+    <div className="-mx-2 mt-2 flex h-10 items-center justify-between border-t pt-2 pr-3 pl-4">
       <span className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</span>
       {action}
     </div>
@@ -271,10 +269,10 @@ function StageList({
               count={counts[key] ?? 0}
               active={sameView(view, { kind: "stage", key })}
               onClick={() => onView({ kind: "stage", key })}
-              trail={
+              lead={
                 <GripVertical
                   aria-hidden="true"
-                  className="-mx-1 size-3.5 shrink-0 cursor-grab text-muted-foreground/0 group-hover/item:text-muted-foreground"
+                  className="size-4 shrink-0 cursor-grab text-muted-foreground/0 group-hover/item:text-muted-foreground"
                 />
               }
             />
@@ -346,7 +344,7 @@ export function InboxSidebar({
             count={counts.tags[t.id] ?? 0}
             active={sameView(view, { kind: "tag", id: t.id })}
             onClick={() => onView({ kind: "tag", id: t.id })}
-            lead={<TagDot color={t.color} className="mx-[5px] size-2" />}
+            lead={<TagDot color={t.color} className="mx-1 size-2" />}
           />
         ))}
         {tags.length === 0 && <p className="px-2 py-1 text-xs text-muted-foreground">No tags yet.</p>}
@@ -366,7 +364,6 @@ export function InboxSidebar({
         />
         <StageList stages={stages} counts={counts.stages} view={view} onView={onView} />
         {addingStage && <AddStageField onClose={() => setAddingStage(false)} />}
-        <p className="px-2 pt-2 text-2xs text-muted-foreground">Drag a stage to reorder.</p>
       </div>
     </nav>
   );
