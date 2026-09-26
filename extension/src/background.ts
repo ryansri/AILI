@@ -11,11 +11,15 @@
  *      title and company (people who need you first, each person once),
  *   5. tell AILI it is alive.
  *
+ * When a check after the history import finds a new reply, it shows a desktop
+ * notification (if you have them on in AILI Settings). Clicking one opens that
+ * conversation in AILI.
+ *
  * It never sends anything on its own. The queue only holds what a human
  * clicked, and AILI caps it per day.
  */
 
-import { postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox } from "./aili";
+import { postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type ReplyToNotify } from "./aili";
 import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
 import {
   fetchConversationsPage,
@@ -48,6 +52,9 @@ chrome.runtime.onInstalled.addListener(() => schedule());
 chrome.runtime.onStartup.addListener(() => schedule());
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM) void cycle({ force: false });
+});
+chrome.notifications.onClicked.addListener((id) => {
+  void openFromNotification(id);
 });
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === "sync-now") {
@@ -176,7 +183,13 @@ function isOneToOne(conv: ConversationSummary, memberUrn: string): boolean {
  * Returns how many were sent. Records each one's activity time so it is not
  * fetched again until something new happens.
  */
-async function importConversations(pairing: Pairing, memberUrn: string, displayName: string, list: ConversationSummary[]): Promise<number> {
+async function importConversations(
+  pairing: Pairing,
+  memberUrn: string,
+  displayName: string,
+  list: ConversationSummary[],
+  { notify }: { notify: boolean },
+): Promise<number> {
   if (list.length === 0) return 0;
   const syncedAt = await getSyncedAt();
   const payload = { memberUrn, displayName, conversations: [] as Array<ConversationSummary & { messages: PlainMessage[] }> };
@@ -186,7 +199,8 @@ async function importConversations(pairing: Pairing, memberUrn: string, displayN
     const messages = await fetchThread(memberUrn, conv.id, 1);
     payload.conversations.push({ ...conv, messages });
   }
-  await postSync(pairing, payload);
+  const response = await postSync(pairing, payload);
+  if (notify && response?.notify?.length) await showReplies(pairing, response.notify);
   for (const conv of payload.conversations) syncedAt[conv.id] = conv.lastActivityAt;
   await setSyncedAt(syncedAt);
   return payload.conversations.length;
@@ -212,7 +226,8 @@ async function backfillStep(pairing: Pairing, memberUrn: string, displayName: st
 
   // Import this page in chunks; stay on the page until every eligible thread is in.
   const batch = eligible.slice(0, THREADS_PER_TICK);
-  const imported = await importConversations(pairing, memberUrn, displayName, batch);
+  // No notifications while history comes in, only for replies found afterwards.
+  const imported = await importConversations(pairing, memberUrn, displayName, batch, { notify: false });
   const pageDone = eligible.length <= THREADS_PER_TICK;
 
   let next = { ...state, imported: state.imported + imported, page: pageNo };
@@ -260,7 +275,35 @@ async function scanRecent(pairing: Pairing, memberUrn: string, displayName: stri
     }
   }
 
-  const imported = await importConversations(pairing, memberUrn, displayName, changed.slice(0, THREADS_PER_TICK));
+  const imported = await importConversations(pairing, memberUrn, displayName, changed.slice(0, THREADS_PER_TICK), {
+    notify: true,
+  });
   if (imported === 0) await reportStatus(pairing, { state: "ok", memberUrn, displayName });
   await setStatus({ lastSyncAt: Date.now(), conversations: seen, backfillDone: true });
+}
+
+/** At most this many separate notifications per check; more than that become one summary. */
+const MAX_NOTIFICATIONS = 3;
+
+/** Desktop notifications for new replies. Clicking one opens that person in AILI. */
+async function showReplies(pairing: Pairing, replies: ReplyToNotify[]): Promise<void> {
+  const base = pairing.serverUrl.replace(/\/$/, "");
+  const show = (id: string, title: string, message: string) =>
+    new Promise<void>((resolve) =>
+      chrome.notifications.create(id, { type: "basic", iconUrl: "icon-128.png", title, message, priority: 1 }, () => resolve()),
+    );
+  if (replies.length > MAX_NOTIFICATIONS) {
+    await show(`aili|${base}/inbox`, `${replies.length} new replies`, replies.map((r) => r.name).slice(0, 6).join(", "));
+    return;
+  }
+  for (const r of replies) {
+    await show(`aili|${base}/inbox?person=${encodeURIComponent(r.personId)}|${r.sentAt}`, r.name, r.body);
+  }
+}
+
+async function openFromNotification(id: string): Promise<void> {
+  const [prefix, url] = id.split("|");
+  if (prefix !== "aili" || !url) return;
+  await chrome.tabs.create({ url });
+  chrome.notifications.clear(id);
 }

@@ -3,13 +3,14 @@
 import { useState, useTransition } from "react";
 import { Check, Copy, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { changePassword, rotateHelperToken, updateAccount, updateDailyCap } from "@/lib/actions";
+import { changePassword, rotateHelperToken, updateAccount, updateDailyCap, updateNotifyReplies } from "@/lib/actions";
 import { logout } from "@/lib/auth-actions";
 import type { Account } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/page-header";
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -21,6 +22,35 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
       </div>
       <div className="flex max-w-md flex-col gap-3">{children}</div>
     </section>
+  );
+}
+
+function NotifyToggle({ on }: { on: boolean }) {
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="flex items-center gap-3 text-md">
+        <Switch
+          checked={on}
+          disabled={pending}
+          onCheckedChange={(next) =>
+            start(async () => {
+              try {
+                await updateNotifyReplies(next);
+                toast.success(next ? "Reply notifications on." : "Reply notifications off.");
+              } catch {
+                toast.error("That did not save.");
+              }
+            })
+          }
+        />
+        Notify me when someone replies
+      </label>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        On a Mac, if nothing appears, allow Chrome in System Settings, Notifications. Replies from the history
+        import and anything older than six hours never notify.
+      </p>
+    </div>
   );
 }
 
@@ -170,6 +200,13 @@ export function SettingsView({
           </Section>
 
           <Separator />
+
+          <Section
+            title="Notifications"
+            hint="A desktop notice when someone replies on LinkedIn. It comes from the helper, so it works while Chrome is open, even with AILI closed."
+          >
+            <NotifyToggle on={account.notifyReplies} />
+          </Section>
 
           <Section title="Account" hint="Who you are in AILI. This is separate from LinkedIn.">
             <form

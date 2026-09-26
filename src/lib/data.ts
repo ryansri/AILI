@@ -116,6 +116,7 @@ export async function getAccount(workspaceId: string): Promise<Account> {
     initials: workspace.initials,
     pictureUrl: workspace.helperPictureUrl ?? undefined,
     dailyCap: workspace.dailyCap,
+    notifyReplies: workspace.notifyReplies,
     sentToday: sentToday + queued,
     helper: {
       connected: online && workspace.helperState === "ok",

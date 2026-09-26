@@ -39,11 +39,20 @@ export interface SyncPayload {
   conversations: SyncConversation[];
 }
 
+export interface NewReply {
+  personId: string;
+  name: string;
+  body: string;
+  sentAt: number;
+}
+
 export interface SyncResult {
   peopleCreated: number;
   peopleUpdated: number;
   messagesAdded: number;
   skippedGroups: number;
+  /** Messages from other people stored for the first time in this sync. */
+  newReplies: NewReply[];
 }
 
 const COMPANY_SPLIT = /\s+(?:at|@)\s+/i;
@@ -79,6 +88,16 @@ export function myPictureFromSync(payload: SyncPayload): string | null {
     if (isLinkedInImage(me?.pictureUrl)) return me.pictureUrl;
   }
   return null;
+}
+
+/** Replies worth a desktop notification: recent ones only, so an old thread coming in never pings. */
+export const NOTIFY_WITHIN_MS = 6 * 60 * 60 * 1000;
+
+export function repliesToNotify(replies: NewReply[], now: number = Date.now()): NewReply[] {
+  return replies
+    .filter((r) => now - r.sentAt < NOTIFY_WITHIN_MS)
+    .sort((a, b) => b.sentAt - a.sentAt)
+    .map((r) => ({ ...r, body: r.body.slice(0, 200) }));
 }
 
 /** Message bodies match when equal after collapsing whitespace. */
@@ -118,7 +137,7 @@ export function validatePayload(input: unknown): SyncPayload | null {
 }
 
 export async function applySync(workspaceId: string, payload: SyncPayload): Promise<SyncResult> {
-  const result: SyncResult = { peopleCreated: 0, peopleUpdated: 0, messagesAdded: 0, skippedGroups: 0 };
+  const result: SyncResult = { peopleCreated: 0, peopleUpdated: 0, messagesAdded: 0, skippedGroups: 0, newReplies: [] };
 
   for (const conv of payload.conversations) {
     const others = conv.participants.filter((p) => p.urn !== payload.memberUrn);
@@ -208,6 +227,7 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
         },
       });
       result.messagesAdded += 1;
+      if (direction === "in") result.newReplies.push({ personId, name: other.name, body: m.body, sentAt: m.sentAt });
     }
 
     // Anything new means the snooze is over and early stages move on.

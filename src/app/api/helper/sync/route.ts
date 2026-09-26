@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
-import { applySync, myPictureFromSync, validatePayload } from "@/lib/helper-sync";
+import { applySync, myPictureFromSync, repliesToNotify, validatePayload } from "@/lib/helper-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -35,5 +35,7 @@ export async function POST(request: Request) {
   revalidatePath("/inbox");
   revalidatePath("/people");
   revalidatePath("/today");
-  return NextResponse.json(result, { headers: corsHeaders(request) });
+  // The helper shows these as desktop notifications, if you have them turned on.
+  const notify = workspace.notifyReplies ? repliesToNotify(result.newReplies) : [];
+  return NextResponse.json({ ...result, newReplies: undefined, notify }, { headers: corsHeaders(request) });
 }

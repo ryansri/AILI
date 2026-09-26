@@ -18,5 +18,7 @@ await build({
   logLevel: "warning",
 });
 
-for (const file of ["manifest.json", "popup.html"]) copyFileSync(join(here, file), join(out, file));
+for (const file of ["manifest.json", "popup.html", "icon-16.png", "icon-48.png", "icon-128.png"]) {
+  copyFileSync(join(here, file), join(out, file));
+}
 console.log(`Helper built into ${out}`);

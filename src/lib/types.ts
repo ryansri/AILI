@@ -109,6 +109,8 @@ export interface Account {
   /** Your LinkedIn photo, once the helper has reported it. */
   pictureUrl?: string;
   dailyCap: number;
+  /** Desktop notifications for new replies are on. */
+  notifyReplies: boolean;
   /** Sent today plus anything still queued for the helper. */
   sentToday: number;
   helper: HelperStatus;

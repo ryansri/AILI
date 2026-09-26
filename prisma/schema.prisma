@@ -29,6 +29,8 @@ model Workspace {
   helperPictureUrl String?
   /// Version of the Chrome helper that last reported in.
   helperVersion    String?
+  /// Show a desktop notification (through the helper) when someone replies.
+  notifyReplies    Boolean   @default(true)
   helperState      String?
   createdAt    DateTime  @default(now())
 

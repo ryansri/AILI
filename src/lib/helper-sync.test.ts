@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { myPictureFromSync, sameBody, splitHeadline, validatePayload } from "./helper-sync";
+import { myPictureFromSync, repliesToNotify, sameBody, splitHeadline, validatePayload } from "./helper-sync";
 
 describe("splitHeadline", () => {
   it("splits role and company on ' at '", () => {
@@ -68,5 +68,21 @@ describe("myPictureFromSync", () => {
       conversations: [{ id: "c1", lastActivityAt: 1, messages: [], participants: [{ urn: "urn:li:fsd_profile:ME", name: "Ryan Sri", pictureUrl: "https://evil.example.com/me.jpg" }] }],
     };
     expect(myPictureFromSync(payload)).toBeNull();
+  });
+});
+
+describe("repliesToNotify", () => {
+  const now = 1_800_000_000_000;
+  const HOUR = 60 * 60 * 1000;
+  it("keeps recent replies, newest first, and drops old history", () => {
+    const out = repliesToNotify(
+      [
+        { personId: "a", name: "A", body: "old", sentAt: now - 3 * 24 * HOUR },
+        { personId: "b", name: "B", body: "earlier", sentAt: now - 2 * HOUR },
+        { personId: "c", name: "C", body: "just now", sentAt: now - 60_000 },
+      ],
+      now,
+    );
+    expect(out.map((r) => r.name)).toEqual(["C", "B"]);
   });
 });

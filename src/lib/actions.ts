@@ -373,6 +373,13 @@ export async function updateDailyCap(cap: number) {
   refresh();
 }
 
+/** Desktop notifications for new replies, shown by the helper. */
+export async function updateNotifyReplies(on: boolean) {
+  const workspace = await getWorkspace();
+  await db.workspace.update({ where: { id: workspace.id }, data: { notifyReplies: Boolean(on) } });
+  refresh();
+}
+
 export async function updateAccount(input: { name: string; email: string }) {
   const workspace = await getWorkspace();
   const name = clean(input.name, 80);

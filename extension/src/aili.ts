@@ -46,7 +46,14 @@ export function reportStatus(
   return call(pairing, "/api/helper/status", { method: "POST", body: JSON.stringify({ ...body, version }) });
 }
 
-export function postSync(pairing: Pairing, payload: unknown) {
+export interface ReplyToNotify {
+  personId: string;
+  name: string;
+  body: string;
+  sentAt: number;
+}
+
+export function postSync(pairing: Pairing, payload: unknown): Promise<{ notify?: ReplyToNotify[] }> {
   return call(pairing, "/api/helper/sync", { method: "POST", body: JSON.stringify(payload) });
 }
 
