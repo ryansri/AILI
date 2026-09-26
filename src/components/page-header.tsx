@@ -38,7 +38,7 @@ export function PageHeader({
           </>
         )}
       </div>
-      {children && <div className="px-4 py-3">{children}</div>}
+      {children && <div className="px-4 py-4">{children}</div>}
     </header>
   );
 }

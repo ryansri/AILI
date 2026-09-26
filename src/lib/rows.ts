@@ -116,21 +116,23 @@ export function inTab(row: Row, tab: Tab): boolean {
 export interface Group {
   kind: StatusKind | "recent";
   title: string;
-  /** One line that explains the group, so the rows do not have to. */
-  hint: string;
   rows: Row[];
 }
 
-const GROUPS: Record<Tab, { kind: StatusKind | "recent"; title: string; hint: string }[]> = {
+/**
+ * Reply: they wrote last. Chase: you wrote last and a follow-up is due.
+ * Decide: two follow-ups and still nothing.
+ */
+const GROUPS: Record<Tab, { kind: StatusKind | "recent"; title: string }[]> = {
   needs: [
-    { kind: "reply", title: "Reply", hint: "They wrote last" },
-    { kind: "chase", title: "Chase", hint: "You wrote last, no answer" },
-    { kind: "quiet", title: "Decide", hint: "Two follow-ups, still nothing" },
+    { kind: "reply", title: "Reply" },
+    { kind: "chase", title: "Chase" },
+    { kind: "quiet", title: "Decide" },
   ],
-  waiting: [{ kind: "waiting", title: "Waiting", hint: "Nothing to do yet" }],
+  waiting: [{ kind: "waiting", title: "Waiting" }],
   all: [
-    { kind: "recent", title: "Recent", hint: "" },
-    { kind: "stale", title: "Older than 30 days", hint: "No next step until you act" },
+    { kind: "recent", title: "Recent" },
+    { kind: "stale", title: "Older than 30 days" },
   ],
 };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextStep, dueLabel } from "./next-step";
+import { nextStep, dueLabel, relativeTime } from "./next-step";
 import type { Person } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -198,5 +198,18 @@ describe("dueLabel", () => {
       lastActionAt: daysAgo(35),
     });
     expect(nextStep(p, now).kind).toBe("stale");
+  });
+});
+
+describe("relativeTime", () => {
+  it("reads now, hours, then days with no space", () => {
+    // Mid-afternoon local time, so "hours ago" stays on the same calendar day.
+    const at = new Date(2026, 8, 26, 15, 0);
+    const ago = (ms: number) => new Date(at.getTime() - ms).toISOString();
+    const HOUR = 60 * 60 * 1000;
+    expect(relativeTime(ago(20 * 60 * 1000), at)).toBe("now");
+    expect(relativeTime(ago(3 * HOUR), at)).toBe("3h");
+    expect(relativeTime(ago(DAY), at)).toBe("1d");
+    expect(relativeTime(ago(9 * DAY), at)).toBe("9d");
   });
 });

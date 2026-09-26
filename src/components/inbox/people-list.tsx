@@ -204,13 +204,12 @@ export function PeopleList({
         {groups.map((g) => (
           <div key={g.kind} role="group" aria-label={g.title}>
             {(tab !== "all" || g.kind === "stale") && (
-              <div className="flex items-baseline gap-1.5 px-4 pt-4 pb-2 text-2xs">
+              <div className="flex items-center gap-2 border-b bg-muted px-4 py-2 text-2xs">
                 <span className="font-semibold tracking-wider uppercase">{g.title}</span>
-                <span className="text-muted-foreground">{g.rows.length}</span>
-                {g.hint && <span className="ml-auto text-muted-foreground">{g.hint}</span>}
+                <CountBadge count={g.rows.length} variant="outline" className="bg-background text-muted-foreground" />
               </div>
             )}
-            <ul className="border-t">
+            <ul>
               {g.rows.map((row) => {
                 const active = row.person.id === selectedId;
                 const stale = row.step.kind === "stale";
@@ -222,25 +221,25 @@ export function PeopleList({
                       onClick={() => onSelect(row.person.id)}
                       aria-current={active ? "true" : undefined}
                       className={cn(
-                        "flex w-full min-w-0 items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/60",
-                        active && "bg-muted shadow-[inset_3px_0_0_0_var(--color-foreground)] hover:bg-muted",
+                        "flex w-full min-w-0 items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/40",
+                        active && "bg-muted/60 shadow-[inset_3px_0_0_0_var(--color-foreground)] hover:bg-muted/60",
                         stale && !active && "opacity-60",
                       )}
                     >
                       <PersonAvatar person={row.person} className="size-10" />
-                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
                           {row.step.kind === "reply" && (
                             <span aria-label="Needs a reply" className="-mr-0.5 size-1.5 shrink-0 rounded-full bg-foreground" />
                           )}
                           <span className="truncate text-sm font-semibold">{row.person.name}</span>
                           <Chip row={row} grouped={tab !== "all"} />
-                          <span className="ml-auto shrink-0 text-xs text-muted-foreground" suppressHydrationWarning>
-                            {lastTime(row)}
-                          </span>
                         </div>
                         <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
                       </div>
+                      <span className="w-9 shrink-0 pt-0.5 text-right text-xs text-muted-foreground" suppressHydrationWarning>
+                        {lastTime(row)}
+                      </span>
                     </button>
                     <div
                       className={cn(

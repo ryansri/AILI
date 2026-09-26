@@ -205,7 +205,7 @@ export function dueLabel(dueAt: Date, now: Date = new Date()): string {
   return shortDate(dueAt);
 }
 
-/** Time label for the row: "now", "2h", "Yesterday", "4d". */
+/** Time label for the row: "now", "2h", "1d", "4d". */
 export function relativeTime(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   const ms = now.getTime() - date.getTime();
@@ -213,6 +213,5 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
   if (hours < 1) return "now";
   if (daysBetween(date, now) === 0) return `${hours}h`;
   const days = daysBetween(date, now);
-  if (days === 1) return "Yesterday";
   return `${days}d`;
 }
