@@ -1,10 +1,23 @@
-import { EmptyState } from "@/components/empty-state";
+import { getWorkspace, getAccount } from "@/lib/data";
+import { db } from "@/lib/db";
+import { newHelperToken } from "@/lib/auth";
+import { SettingsView } from "@/components/settings/settings-view";
 
-export default function SettingsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const workspace = await getWorkspace();
+  // Accounts created before the helper existed get a token on first visit.
+  const helperToken =
+    workspace.helperToken ??
+    (await db.workspace.update({ where: { id: workspace.id }, data: { helperToken: newHelperToken() } })).helperToken!;
+  const account = await getAccount(workspace.id);
   return (
-    <EmptyState
-      title="Settings"
-      description="Connect LinkedIn, install the Chrome helper, set your daily cap, and choose Claude or ChatGPT for drafting. Coming in step 3."
+    <SettingsView
+      account={account}
+      email={workspace.email ?? ""}
+      helperToken={helperToken}
+      helperMemberUrn={workspace.helperMemberUrn ?? undefined}
     />
   );
 }

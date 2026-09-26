@@ -141,7 +141,7 @@ export function PeopleTable({ people, tags }: { people: Person[]; tags: Tag[] })
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="text-xs text-muted-foreground" suppressHydrationWarning>
                     {last ? relativeTime(last.sentAt) : "Never"}
                   </TableCell>
                   <TableCell className="pr-6 text-right text-xs tabular-nums">{person.messages.length}</TableCell>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Account, Tag } from "@/lib/types";
@@ -9,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { STATUS, StatusDot } from "@/components/status-dot";
 import { TagDot } from "@/components/tag-chip";
+import { relativeTime } from "@/lib/next-step";
 import { PersonDialog } from "@/components/people/person-dialog";
 import type { Filter } from "@/lib/rows";
 
@@ -115,11 +117,26 @@ export function InboxSidebar({
         })}
       </div>
 
-      <div className="mt-auto flex flex-col gap-1.5">
+      <div className="mt-auto flex flex-col gap-3">
+        <Link href="/settings" className="flex items-center gap-2 text-[11px] text-muted-foreground hover:text-foreground" suppressHydrationWarning>
+          <span
+            className={cn(
+              "inline-block size-2 rounded-full",
+              account.helper.connected ? "bg-emerald-500" : account.helper.state === "never" ? "bg-stone-300" : "bg-amber-500",
+            )}
+          />
+          {account.helper.connected
+            ? `Helper synced ${relativeTime(account.helper.lastSeenAt!)}`
+            : account.helper.state === "logged_out"
+              ? "Helper: LinkedIn logged out"
+              : "Helper not connected"}
+        </Link>
+        <div className="flex flex-col gap-1.5">
         <div className="text-xs font-semibold">Sent today</div>
         <Progress value={Math.min(100, pct)} className="h-1" />
         <div className="text-[11px] text-muted-foreground">
           {account.sentToday} of {account.dailyCap} messages
+        </div>
         </div>
       </div>
     </aside>

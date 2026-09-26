@@ -21,7 +21,9 @@ function person(overrides: Partial<Person>): Person {
     stage: "conversation",
     tagIds: [],
     notes: "",
+    source: "manual",
     messages: [],
+    pending: [],
     ...overrides,
   };
 }

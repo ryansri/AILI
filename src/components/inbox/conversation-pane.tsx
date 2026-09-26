@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { MessageSquareReply, MoreHorizontal, Send, Sparkles, Star } from "lucide-react";
+import { MessageSquareReply, MoreHorizontal, Send, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { archivePerson, toggleStar, updateStage } from "@/lib/actions";
+import { archivePerson, cancelQueued, queueSend, toggleStar, updateStage } from "@/lib/actions";
 import type { Account } from "@/lib/types";
 import { stageLabel } from "@/lib/types";
+import type { Row } from "@/lib/rows";
+import { shortDate, shortTime } from "@/lib/next-step";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,15 +24,12 @@ import { NextStepHint } from "./next-step-hint";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
-import type { Row } from "@/lib/rows";
 
 function messageDate(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
-  if (d.toDateString() === today.toDateString()) {
-    return `today ${d.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
-  }
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+  if (d.toDateString() === today.toDateString()) return `today ${shortTime(d)}`;
+  return shortDate(d);
 }
 
 export function ConversationPane({ row, account }: { row: Row; account: Account }) {
@@ -39,7 +38,7 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [logging, setLogging] = useState(false);
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
 
   const messages = [...person.messages].sort(
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
@@ -48,16 +47,31 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
   const capReached = account.sentToday >= account.dailyCap;
   const followUp: 1 | 2 | undefined =
     step.step === "Follow-up 1" ? 1 : step.step === "Follow-up 2" ? 2 : undefined;
+  const first = person.name.split(" ")[0];
+  /** The helper delivers when it is online and knows this person on LinkedIn. */
+  const viaHelper = account.helper.connected && Boolean(person.linkedinUrn);
 
   function run(fn: () => Promise<unknown>, done: string) {
     start(async () => {
       try {
         await fn();
         if (done) toast.success(done);
-      } catch {
-        toast.error("That did not save.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "That did not save.");
       }
     });
+  }
+
+  function send() {
+    if (viaHelper) {
+      const body = draft;
+      run(async () => {
+        await queueSend({ personId: person.id, body, followUp });
+        setDraft("");
+      }, "Handed to the helper. It sends within a minute.");
+    } else {
+      setSending(true);
+    }
   }
 
   return (
@@ -129,10 +143,12 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
             Draft with AI
           </Button>
           <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} />
-          <Button variant="outline" size="sm" onClick={() => setLogging(true)}>
-            <MessageSquareReply />
-            Log their reply
-          </Button>
+          {!viaHelper && (
+            <Button variant="outline" size="sm" onClick={() => setLogging(true)}>
+              <MessageSquareReply />
+              Log their reply
+            </Button>
+          )}
         </div>
       </header>
 
@@ -143,7 +159,7 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
             const isNew = m.id === lastId && !mine && step.kind === "reply";
             return (
               <li key={m.id} className="flex flex-col gap-1.5">
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground" suppressHydrationWarning>
                   {mine ? "You" : person.name}, {messageDate(m.sentAt)}
                   {m.followUp ? ` (follow-up ${m.followUp})` : ""}
                   {isNew && <span className={cn("ml-2 font-medium", status.text)}>New</span>}
@@ -160,7 +176,27 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
               </li>
             );
           })}
-          {messages.length === 0 && (
+          {person.pending.map((p) => (
+            <li key={p.id} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                You, {p.status === "sending" ? "sending now" : "waiting for the helper"}
+                {p.status === "queued" && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                    onClick={() => run(() => cancelQueued(p.id), "Removed from the queue.")}
+                  >
+                    <X className="size-3" />
+                    cancel
+                  </button>
+                )}
+              </div>
+              <div className="max-w-[560px] rounded-lg border border-dashed px-3.5 py-3 text-[13px] leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
+                {p.body}
+              </div>
+            </li>
+          ))}
+          {messages.length === 0 && person.pending.length === 0 && (
             <li className="text-xs text-muted-foreground">No messages yet. Send the first one.</li>
           )}
         </ol>
@@ -176,15 +212,10 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
             rows={2}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={followUp ? `Follow-up ${followUp} to ${person.name.split(" ")[0]}` : `Reply to ${person.name.split(" ")[0]}`}
+            placeholder={followUp ? `Follow-up ${followUp} to ${first}` : `Reply to ${first}`}
             className="min-h-0 resize-none text-[13px]"
           />
-          <Button
-            size="sm"
-            className="h-9"
-            disabled={!draft.trim() || capReached}
-            onClick={() => setSending(true)}
-          >
+          <Button size="sm" className="h-9" disabled={!draft.trim() || capReached || pending} onClick={send}>
             <Send />
             Send
           </Button>
@@ -193,7 +224,11 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
           <span>
             {capReached
               ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`
-              : "Copies the message and logs it once you confirm you sent it on LinkedIn."}
+              : viaHelper
+                ? "The Chrome helper delivers this on LinkedIn from your account."
+                : account.helper.connected
+                  ? "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."
+                  : "Copies the message and logs it once you confirm you sent it on LinkedIn."}
           </span>
           <span>{draft.trim() ? `${draft.trim().split(/\s+/).length} words` : ""}</span>
         </div>

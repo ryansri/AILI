@@ -98,12 +98,14 @@ export function PeopleList({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-[13px] font-semibold">{row.person.name}</span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">{lastTime(row)}</span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
+                      {lastTime(row)}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs font-medium">
                     <StatusDot kind={row.step.kind} />
                     <span className={s.text}>{row.step.step}</span>
-                    <span className="font-normal text-muted-foreground">
+                    <span className="font-normal text-muted-foreground" suppressHydrationWarning>
                       {row.step.dueNow ? "today" : dueLabel(row.step.dueAt)}
                     </span>
                   </div>

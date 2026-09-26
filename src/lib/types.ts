@@ -54,6 +54,14 @@ export interface Message {
   followUp?: 1 | 2;
 }
 
+/** A message the user clicked Send on that the Chrome helper has not delivered yet. */
+export interface PendingMessage {
+  id: string;
+  body: string;
+  status: "queued" | "sending";
+  createdAt: string; // ISO
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -61,6 +69,12 @@ export interface Person {
   company: string;
   location?: string;
   linkedinUrl: string;
+  /** LinkedIn identity from the helper, e.g. urn:li:fsd_profile:ABC. */
+  linkedinUrn?: string;
+  /** LinkedIn conversation id, present once the helper has synced a thread. */
+  conversationId?: string;
+  pictureUrl?: string;
+  source: "manual" | "linkedin";
   stage: Stage;
   tagIds: string[];
   notes: string;
@@ -70,11 +84,23 @@ export interface Person {
   /** When the user pressed snooze, the date to resurface. */
   snoozedUntil?: string; // ISO
   messages: Message[];
+  pending: PendingMessage[];
+}
+
+export interface HelperStatus {
+  /** Reported in recently and LinkedIn is logged in. */
+  connected: boolean;
+  /** "ok" | "logged_out" | "error" | "never" */
+  state: string;
+  lastSeenAt?: string; // ISO
+  linkedinName?: string;
 }
 
 export interface Account {
   name: string;
   initials: string;
   dailyCap: number;
+  /** Sent today plus anything still queued for the helper. */
   sentToday: number;
+  helper: HelperStatus;
 }

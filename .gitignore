@@ -45,3 +45,5 @@ next-env.d.ts
 dev.db
 prisma/dev.db*
 src/generated/
+extension/dist/
+prisma/.auth-secret

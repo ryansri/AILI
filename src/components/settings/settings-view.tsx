@@ -1,0 +1,226 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { Check, Copy, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import { changePassword, rotateHelperToken, updateAccount, updateDailyCap } from "@/lib/actions";
+import { logout } from "@/lib/auth-actions";
+import type { Account } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="grid grid-cols-[220px_1fr] gap-8">
+      <div>
+        <h2 className="text-[13px] font-semibold">{title}</h2>
+        {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      </div>
+      <div className="flex max-w-md flex-col gap-3">{children}</div>
+    </section>
+  );
+}
+
+function relative(iso?: string): string {
+  if (!iso) return "never";
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
+export function SettingsView({
+  account,
+  email,
+  helperToken,
+  helperMemberUrn,
+}: {
+  account: Account;
+  email: string;
+  helperToken: string;
+  helperMemberUrn?: string;
+}) {
+  const [pending, start] = useTransition();
+  const [token, setToken] = useState(helperToken);
+  const [copied, setCopied] = useState(false);
+  const [cap, setCap] = useState(String(account.dailyCap));
+
+  const run = (fn: () => Promise<unknown>, done: string) =>
+    start(async () => {
+      try {
+        await fn();
+        toast.success(done);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "That did not save.");
+      }
+    });
+
+  async function copyToken() {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy. Select the token and copy it yourself.");
+    }
+  }
+
+  const h = account.helper;
+  const helperLine = h.connected
+    ? `Connected as ${h.linkedinName ?? "your LinkedIn account"}. Last sync ${relative(h.lastSeenAt)}.`
+    : h.state === "logged_out"
+      ? `The helper is running but LinkedIn is logged out in Chrome. Last seen ${relative(h.lastSeenAt)}.`
+      : h.state === "error"
+        ? `The helper hit an error. Last seen ${relative(h.lastSeenAt)}. Open the helper popup for details.`
+        : h.lastSeenAt
+          ? `Not connected. Last seen ${relative(h.lastSeenAt)}.`
+          : "Not connected yet.";
+
+  return (
+    <div className="flex h-full w-full flex-col">
+      <header className="border-b px-6 pt-5 pb-4">
+        <h1 className="text-[17px] font-semibold leading-tight">Settings</h1>
+        <p className="text-xs text-muted-foreground">Your account, the Chrome helper, and the daily send cap.</p>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-6">
+          <Section title="Chrome helper" hint="Reads your LinkedIn inbox and delivers the messages you click Send on. Every send is still your click.">
+            <div className="flex items-center gap-2 text-xs">
+              <span
+                className={`inline-block size-2 rounded-full ${h.connected ? "bg-emerald-500" : h.state === "never" ? "bg-stone-300" : "bg-amber-500"}`}
+              />
+              <span suppressHydrationWarning>{helperLine}</span>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="token">Helper token</Label>
+              <div className="flex gap-2">
+                <Input id="token" readOnly value={token} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+                <Button variant="outline" size="sm" className="h-9" onClick={copyToken}>
+                  {copied ? <Check /> : <Copy />}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Paste this into the helper popup along with this app&apos;s address, for local use
+                http://localhost:3000.
+              </p>
+            </div>
+            <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+              <li>Run <code className="rounded bg-muted px-1">npm run helper:build</code> in the project folder. It creates <code className="rounded bg-muted px-1">extension/dist</code>.</li>
+              <li>Open <code className="rounded bg-muted px-1">chrome://extensions</code>, turn on Developer mode, click Load unpacked, choose that folder.</li>
+              <li>Log in to LinkedIn in Chrome. Click the AILI helper icon, paste the address and token, press Connect.</li>
+            </ol>
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  start(async () => {
+                    try {
+                      const next = await rotateHelperToken();
+                      setToken(next);
+                      toast.success("New token made. Paste it into the helper again.");
+                    } catch {
+                      toast.error("Could not make a new token.");
+                    }
+                  })
+                }
+              >
+                <RefreshCw />
+                Make a new token
+              </Button>
+            </div>
+            {helperMemberUrn && (
+              <p className="text-[11px] text-muted-foreground">LinkedIn id seen by the helper: {helperMemberUrn}</p>
+            )}
+          </Section>
+
+          <Separator />
+
+          <Section title="Daily cap" hint="Messages per day, sent and queued. LinkedIn tolerates a handful a day, not hundreds.">
+            <form
+              className="flex items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                run(() => updateDailyCap(Number(cap)), "Daily cap saved.");
+              }}
+            >
+              <div className="grid gap-1.5">
+                <Label htmlFor="cap">Messages per day</Label>
+                <Input id="cap" type="number" min={1} max={100} value={cap} onChange={(e) => setCap(e.target.value)} className="w-32" />
+              </div>
+              <Button type="submit" size="sm" className="h-9" disabled={pending}>
+                Save
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">Today: {account.sentToday} of {account.dailyCap} used.</p>
+          </Section>
+
+          <Separator />
+
+          <Section title="Account" hint="Who you are in AILI. This is separate from LinkedIn.">
+            <form
+              className="grid gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const f = new FormData(e.currentTarget);
+                run(() => updateAccount({ name: String(f.get("name")), email: String(f.get("email")) }), "Account saved.");
+              }}
+            >
+              <div className="grid gap-1.5">
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" name="name" defaultValue={account.name} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" defaultValue={email} />
+              </div>
+              <div>
+                <Button type="submit" size="sm" disabled={pending}>
+                  Save
+                </Button>
+              </div>
+            </form>
+            <form
+              className="grid gap-3 border-t pt-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const f = new FormData(form);
+                run(async () => {
+                  await changePassword({ current: String(f.get("current")), next: String(f.get("next")) });
+                  form.reset();
+                }, "Password changed.");
+              }}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="current">Current password</Label>
+                  <Input id="current" name="current" type="password" autoComplete="current-password" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="next">New password</Label>
+                  <Input id="next" name="next" type="password" autoComplete="new-password" minLength={8} />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" variant="outline" disabled={pending}>
+                  Change password
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => start(() => logout())}>
+                  Log out
+                </Button>
+              </div>
+            </form>
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}

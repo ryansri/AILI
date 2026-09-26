@@ -158,8 +158,17 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
   };
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "26 Sep". Hand-rolled so server and browser render the same text. */
 export function shortDate(date: Date): string {
-  return date.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+}
+
+/** "08:41", 24-hour. */
+export function shortTime(date: Date): string {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 /** "Today", "Tomorrow", "Fri" or "2 Jan" for the row. */
@@ -167,7 +176,7 @@ export function dueLabel(dueAt: Date, now: Date = new Date()): string {
   const diff = daysBetween(now, dueAt);
   if (diff <= 0) return "Today";
   if (diff === 1) return "Tomorrow";
-  if (diff < 7) return dueAt.toLocaleDateString("en-AU", { weekday: "short" });
+  if (diff < 7) return WEEKDAYS[dueAt.getDay()];
   return shortDate(dueAt);
 }
 

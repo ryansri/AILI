@@ -1,0 +1,114 @@
+import { describe, expect, it } from "vitest";
+import { extractConversationId, extractProfileId, linkedInVariables, raw } from "./encode";
+import { extractSentMessage, normalizeConversations, normalizeMessages } from "./normalize";
+
+function participant(convId: string, i: number, profileId: string, first: string, last: string, headline = "") {
+  return {
+    $type: "com.linkedin.messenger.MessagingParticipant",
+    entityUrn: `urn:li:msg_messagingParticipant:${convId}_${i}`,
+    hostIdentityUrn: `urn:li:fsd_profile:${profileId}`,
+    participantType: {
+      member: {
+        firstName: { text: first },
+        lastName: { text: last },
+        headline: { text: headline },
+        profileUrl: `https://www.linkedin.com/in/${first.toLowerCase()}-${last.toLowerCase()}`,
+        profilePicture: null,
+      },
+    },
+  };
+}
+
+describe("encode", () => {
+  it("encodes urn characters the way LinkedIn expects", () => {
+    expect(linkedInVariables({ mailboxUrn: "urn:li:fsd_profile:ME", count: 20, flag: true, list: raw("List(A,B)") })).toBe(
+      "(mailboxUrn:urn%3Ali%3Afsd_profile%3AME,count:20,flag:true,list:List(A,B))",
+    );
+  });
+  it("pulls ids out of urns", () => {
+    expect(extractConversationId("urn:li:msg_conversation:(urn:li:fsd_profile:ME,2-abc==)")).toBe("2-abc==");
+    expect(extractProfileId("urn:li:msg_messagingParticipant:urn:li:fsd_profile:ABC")).toBe("ABC");
+  });
+});
+
+describe("normalizeConversations", () => {
+  it("builds one summary per conversation with both participants", () => {
+    const raw = {
+      included: [
+        {
+          $type: "com.linkedin.messenger.Conversation",
+          entityUrn: "urn:li:msg_conversation:(urn:li:fsd_profile:ME,2-abc)",
+          lastActivityAt: 1700000000000,
+          "*conversationParticipants": ["urn:li:msg_messagingParticipant:2-abc_0", "urn:li:msg_messagingParticipant:2-abc_1"],
+        },
+        participant("2-abc", 0, "ME", "Ryan", "Sri"),
+        participant("2-abc", 1, "SC", "Sarah", "Chen", "Ops Director at Bright Agency"),
+      ],
+    };
+    const [conv] = normalizeConversations(raw);
+    expect(conv.id).toBe("2-abc");
+    expect(conv.lastActivityAt).toBe(1700000000000);
+    expect(conv.participants).toEqual([
+      { urn: "urn:li:fsd_profile:ME", name: "Ryan Sri", headline: undefined, publicId: "ryan-sri", pictureUrl: undefined },
+      { urn: "urn:li:fsd_profile:SC", name: "Sarah Chen", headline: "Ops Director at Bright Agency", publicId: "sarah-chen", pictureUrl: undefined },
+    ]);
+  });
+});
+
+describe("normalizeMessages", () => {
+  it("returns text messages oldest first, drops recalled ones, describes attachments", () => {
+    const raw = {
+      included: [
+        participant("2-abc", 0, "ME", "Ryan", "Sri"),
+        participant("2-abc", 1, "SC", "Sarah", "Chen"),
+        {
+          $type: "com.linkedin.messenger.Message",
+          entityUrn: "urn:li:msg_message:2",
+          "*sender": "urn:li:msg_messagingParticipant:2-abc_1",
+          body: { text: "What does it cost?" },
+          deliveredAt: 2000,
+        },
+        {
+          $type: "com.linkedin.messenger.Message",
+          entityUrn: "urn:li:msg_message:1",
+          "*sender": "urn:li:msg_messagingParticipant:2-abc_0",
+          body: { text: "Good to meet you" },
+          deliveredAt: 1000,
+        },
+        {
+          $type: "com.linkedin.messenger.Message",
+          entityUrn: "urn:li:msg_message:3",
+          "*sender": "urn:li:msg_messagingParticipant:2-abc_0",
+          body: { text: "" },
+          messageBodyRenderFormat: "RECALLED",
+          deliveredAt: 3000,
+        },
+        {
+          $type: "com.linkedin.messenger.Message",
+          entityUrn: "urn:li:msg_message:4",
+          "*sender": "urn:li:msg_messagingParticipant:2-abc_1",
+          body: { text: "" },
+          renderContent: [{ vectorImage: { artifacts: [] } }],
+          deliveredAt: 4000,
+        },
+      ],
+    };
+    const msgs = normalizeMessages(raw);
+    expect(msgs.map((m) => m.id)).toEqual(["urn:li:msg_message:1", "urn:li:msg_message:2", "urn:li:msg_message:4"]);
+    expect(msgs[0].senderUrn).toBe("urn:li:fsd_profile:ME");
+    expect(msgs[1].senderUrn).toBe("urn:li:fsd_profile:SC");
+    expect(msgs[2].body).toBe("[Sent an image]");
+  });
+});
+
+describe("extractSentMessage", () => {
+  it("reads the created message from the usual response shapes", () => {
+    expect(extractSentMessage({ value: { entityUrn: "urn:li:msg_message:9", deliveredAt: 5, conversationUrn: "urn:li:msg_conversation:(urn:li:fsd_profile:ME,2-x)" } })).toEqual({
+      id: "urn:li:msg_message:9",
+      sentAt: 5,
+      conversationId: "2-x",
+    });
+    expect(extractSentMessage({ data: { value: { entityUrn: "urn:li:msg_message:9", deliveredAt: 5 } } })?.id).toBe("urn:li:msg_message:9");
+    expect(extractSentMessage({ nope: true })).toBeNull();
+  });
+});

@@ -12,14 +12,25 @@ datasource db {
 
 /// One LinkedIn profile being worked from AILI. Multi-user later; one row for now.
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  initials  String
-  dailyCap  Int      @default(20)
-  createdAt DateTime @default(now())
+  id           String    @id @default(cuid())
+  name         String
+  initials     String
+  dailyCap     Int       @default(20)
+  /// Login. Null until the owner registers on first run.
+  email        String?   @unique
+  passwordHash String?
+  /// Bearer token the Chrome helper uses. Shown once in Settings, can be rotated.
+  helperToken  String?   @unique
+  /// What the helper last reported about itself.
+  helperLastSeenAt DateTime?
+  helperMemberUrn  String?
+  helperName       String?
+  helperState      String?
+  createdAt    DateTime  @default(now())
 
   people Person[]
   tags   Tag[]
+  outbox Outbox[]
 }
 
 model Person {
@@ -32,6 +43,15 @@ model Person {
   company     String    @default("")
   location    String    @default("")
   linkedinUrl String    @default("")
+  /// LinkedIn identity from the helper, e.g. urn:li:fsd_profile:ABC. Unique per workspace.
+  linkedinUrn String?
+  /// LinkedIn public id, the /in/<id> part of the profile URL.
+  publicId    String?
+  pictureUrl  String    @default("")
+  /// LinkedIn conversation id the helper syncs messages from.
+  conversationId String?
+  /// Where the row came from: "manual" or "linkedin".
+  source      String    @default("manual")
   /// Stage id, see STAGES in src/lib/types.ts
   stage       String    @default("warming")
   notes       String    @default("")
@@ -45,7 +65,9 @@ model Person {
 
   tags     PersonTag[]
   messages Message[]
+  outbox   Outbox[]
 
+  @@unique([workspaceId, linkedinUrn])
   @@index([workspaceId, stage])
 }
 
@@ -89,4 +111,24 @@ model Message {
   createdAt DateTime @default(now())
 
   @@index([personId, sentAt])
+}
+
+/// A message the user clicked Send on, waiting for the Chrome helper to deliver it.
+model Outbox {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  personId    String
+  person      Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  body        String
+  followUp    Int?
+  /// queued | sending | sent | failed
+  status      String    @default("queued")
+  error       String?
+  externalId  String?
+  createdAt   DateTime  @default(now())
+  claimedAt   DateTime?
+  sentAt      DateTime?
+
+  @@index([workspaceId, status])
 }

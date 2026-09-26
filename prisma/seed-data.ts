@@ -1,5 +1,8 @@
 import type { Person, Tag } from "../src/lib/types";
 
+/** Seed rows carry only what the seed script writes. */
+export type SeedPerson = Omit<Person, "source" | "pending">;
+
 /**
  * Sample people used until the Chrome helper syncs a real inbox.
  * Dates are relative to "now" so the next-step engine always has something due.
@@ -27,7 +30,7 @@ export const TAGS: Tag[] = [
   { id: "recruitment", label: "Recruitment", color: "blue" },
 ];
 
-export const PEOPLE: Person[] = [
+export const PEOPLE: SeedPerson[] = [
   {
     id: "sarah-chen",
     name: "Sarah Chen",
