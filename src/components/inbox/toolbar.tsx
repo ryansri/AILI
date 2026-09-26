@@ -60,27 +60,7 @@ export function InboxToolbar({
 
   return (
     <div className="flex h-14 shrink-0 items-center gap-2 border-b bg-sidebar px-5">
-      <span className="mr-2 text-[15px] font-semibold">Inbox</span>
-
-      <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} counts={counts} />
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            <ArrowUpDown />
-            Sort: {SORTS.find((s) => s.id === sort)?.label.toLowerCase()}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuRadioGroup value={sort} onValueChange={(v) => onSort(v as Sort)}>
-            {SORTS.map((s) => (
-              <DropdownMenuRadioItem key={s.id} value={s.id}>
-                {s.label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <span className="text-[15px] font-semibold">Inbox</span>
 
       <div className="ml-auto flex items-center gap-1">
         {showSearch ? (
@@ -121,6 +101,30 @@ export function InboxToolbar({
             <Search />
           </Button>
         )}
+
+        <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} counts={counts} />
+
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Sort">
+                  <ArrowUpDown />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Sort: {SORTS.find((s) => s.id === sort)?.label.toLowerCase()}</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup value={sort} onValueChange={(v) => onSort(v as Sort)}>
+              {SORTS.map((s) => (
+                <DropdownMenuRadioItem key={s.id} value={s.id}>
+                  {s.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Tooltip>
           <TooltipTrigger asChild>
