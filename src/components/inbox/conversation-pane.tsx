@@ -270,7 +270,7 @@ export function ConversationPane({
             <span
               className={cn(
                 "size-2 shrink-0 rounded-full",
-                step.kind === "reply" ? "bg-foreground" : step.kind === "chase" ? "bg-amber-500" : step.kind === "quiet" ? "bg-violet-500" : "bg-stone-400",
+                step.kind === "reply" ? "bg-blue-500" : step.kind === "chase" ? "bg-amber-500" : step.kind === "quiet" ? "bg-violet-500" : "bg-stone-400",
               )}
             />
             <div className="min-w-0 flex-1">

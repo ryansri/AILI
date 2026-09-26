@@ -3,7 +3,7 @@ import type { StatusKind } from "@/lib/next-step";
 
 /**
  * The only colour in the app. One dot per person, four meanings.
- * Black for reply (the Notion accent), amber for chase, violet for decide, greys for the rest.
+ * Blue for reply (the unread dot), amber for chase, violet for decide, greys for the rest.
  */
 export const STATUS: Record<
   StatusKind,
@@ -11,7 +11,7 @@ export const STATUS: Record<
 > = {
   reply: {
     label: "Reply needed",
-    dot: "bg-foreground",
+    dot: "bg-blue-500",
     text: "text-foreground",
     soft: "bg-muted",
     border: "border-foreground",

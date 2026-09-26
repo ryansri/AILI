@@ -230,14 +230,14 @@ export function PeopleList({
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
                           {row.step.kind === "reply" && (
-                            <span aria-label="Needs a reply" className="-mr-0.5 size-1.5 shrink-0 rounded-full bg-foreground" />
+                            <span aria-label="Needs a reply" className="-mr-0.5 size-2 shrink-0 rounded-full bg-blue-500" />
                           )}
                           <span className="truncate text-sm font-semibold">{row.person.name}</span>
                           <Chip row={row} grouped={tab !== "all"} />
                         </div>
                         <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
                       </div>
-                      <span className="w-9 shrink-0 pt-0.5 text-right text-xs text-muted-foreground" suppressHydrationWarning>
+                      <span className="w-9 shrink-0 self-center text-right text-xs text-muted-foreground" suppressHydrationWarning>
                         {lastTime(row)}
                       </span>
                     </button>
