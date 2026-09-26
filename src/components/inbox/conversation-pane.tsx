@@ -44,6 +44,12 @@ function stamp(iso: string): string {
   return `${when} ${shortTime(d)}`;
 }
 
+/**
+ * Room for an avatar beside a bubble: as tall as a one-line bubble (0.5rem
+ * padding top and bottom plus a 1.375rem line), with the avatar in its middle.
+ */
+const AVATAR_SLOT = "flex h-[2.375rem] w-7 shrink-0 items-center";
+
 /** Your avatar in the thread: your initials on black, matching your bubbles. */
 function MyAvatar({ account }: { account: Account }) {
   return (
@@ -293,14 +299,16 @@ export function ConversationPane({
                   </div>
                 )}
                 <div className={cn("flex w-full items-end gap-2", mine && "flex-row-reverse")}>
-                  {/* The avatar sits beside the last message of a run; earlier ones keep its space. */}
-                  <span className="size-7 shrink-0">
+                  {/* The avatar sits beside the last message of a run; earlier ones keep its space.
+                      The slot is one single-line bubble tall and pinned to the bottom, so the avatar is
+                      centred on a one-line message and sits by the last line of a longer one. */}
+                  <span className={AVATAR_SLOT}>
                     {!joinsNext &&
                       (mine ? <MyAvatar account={account} /> : <PersonAvatar person={person} className="size-7" />)}
                   </span>
                   <div
                     className={cn(
-                      "max-w-[56%] rounded-2xl px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap",
+                      "max-w-[56%] rounded-2xl px-3.5 py-2 text-md leading-[1.375rem] break-words whitespace-pre-wrap",
                       mine ? "bg-foreground text-background" : "bg-muted",
                       mine && joinsPrev && "rounded-tr-md",
                       mine && joinsNext && "rounded-br-md",
@@ -318,10 +326,10 @@ export function ConversationPane({
           {person.pending.map((p) => (
             <li key={p.id} className="mt-5 flex flex-col items-end gap-1">
               <div className="flex w-full flex-row-reverse items-end gap-2">
-                <span className="size-7 shrink-0">
+                <span className={AVATAR_SLOT}>
                   <MyAvatar account={account} />
                 </span>
-                <div className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-2 text-md leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
+                <div className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-muted-foreground">
                   {p.body}
                 </div>
               </div>
