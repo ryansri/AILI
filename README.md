@@ -89,8 +89,11 @@ are in `extension/README.md`.
   whatever is open.
 - **Tags and stages.** Add a tag (name and colour) or a stage from the plus in
   the sidebar. Hover a tag for its ••• menu to rename, recolour or delete it;
-  deleting takes it off everyone and keeps the people. Drag stages to reorder
-  them; the order is used everywhere.
+  deleting takes it off everyone and keeps the people. Stages have the same
+  menu: rename, or delete after picking where their people go. Warming up,
+  Request sent, Connected and In conversation drive AILI's rules, so they can
+  be renamed but not deleted. Drag stages to reorder them; the order is used
+  everywhere.
 - **Done.** Hover a row or press E. Nothing more to do until they write
   back; the person moves to Waiting. Reopen puts them back.
 - **Keyboard.** J and K move, R focuses the composer, E is done, S opens

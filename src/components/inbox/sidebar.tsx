@@ -5,7 +5,8 @@ import { GripVertical, Hourglass, Inbox, List, MoreHorizontal, Plus, Star } from
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { createStage, createTag, deleteTag, reorderStages, updateTag } from "@/lib/actions";
+import { createStage, createTag, deleteStage, deleteTag, renameStage, reorderStages, updateTag } from "@/lib/actions";
+import { PROTECTED_STAGE_KEYS } from "@/lib/stage-rules";
 import { sameView, type View } from "@/lib/rows";
 import { TAG_COLORS, type Account, type Person, type StageDef, type Tag, type TagColor } from "@/lib/types";
 import { averageReplyMs, shortDuration } from "@/lib/stats";
@@ -51,8 +52,8 @@ function Item({
   icon?: LucideIcon;
   lead?: React.ReactNode;
   strong?: boolean;
-  /** Hide the count while the row is hovered, to make room for a menu button. */
-  hideCountOnHover?: boolean;
+  /** Hide the count while the row's group is hovered, to make room for a menu button. */
+  hideCountOnHover?: "tag" | "stage";
 }) {
   return (
     <button
@@ -69,7 +70,8 @@ function Item({
       <span
         className={cn(
           "shrink-0 text-xs tabular-nums",
-          hideCountOnHover && "group-hover/tag:invisible group-focus-within/tag:invisible",
+          hideCountOnHover === "tag" && "group-hover/tag:invisible group-focus-within/tag:invisible",
+          hideCountOnHover === "stage" && "group-hover/stage:invisible group-focus-within/stage:invisible",
           strong && count > 0 ? "font-semibold text-foreground" : "font-normal text-muted-foreground",
         )}
       >
@@ -82,7 +84,7 @@ function Item({
 /** A section heading with a full-width line above it, separating it from the section before. */
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="-mx-2 mt-3 flex h-9 items-center justify-between border-t pt-3 pr-2.5 pl-4">
+    <div className="-mx-2 mt-3 flex h-9 items-center justify-between border-t pt-3 pr-2 pl-4">
       <span className="text-xs font-medium text-muted-foreground">{title}</span>
       {action}
     </div>
@@ -287,6 +289,144 @@ function EditTag({ tag, count, onDeleted }: { tag: Tag; count: number; onDeleted
   );
 }
 
+/**
+ * Edit a stage: rename it, or delete it after choosing where its people go.
+ * The stages AILI's rules use can be renamed but not deleted.
+ */
+function EditStage({
+  stage,
+  stages,
+  count,
+  onDeleted,
+}: {
+  stage: StageDef;
+  stages: StageDef[];
+  count: number;
+  onDeleted: () => void;
+}) {
+  const index = stages.findIndex((s) => s.key === stage.key);
+  const fallback = (stages[index - 1] ?? stages[index + 1])?.key ?? "";
+  const locked = PROTECTED_STAGE_KEYS.includes(stage.key);
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState(stage.label);
+  const [confirming, setConfirming] = useState(false);
+  const [moveTo, setMoveTo] = useState(fallback);
+  const [pending, start] = useTransition();
+
+  function onOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) {
+      setLabel(stage.label);
+      setConfirming(false);
+      setMoveTo(fallback);
+    }
+  }
+
+  function save() {
+    start(async () => {
+      try {
+        await renameStage(stage.key, label);
+        setOpen(false);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not rename the stage.");
+      }
+    });
+  }
+
+  function remove() {
+    start(async () => {
+      try {
+        await deleteStage(stage.key, moveTo);
+        toast.success(`Stage "${stage.label}" deleted.`);
+        setOpen(false);
+        onDeleted();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not delete the stage.");
+      }
+    });
+  }
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Edit stage ${stage.label}`}
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 group-focus-within/stage:opacity-100 group-hover/stage:opacity-100 data-[state=open]:opacity-100"
+        >
+          <MoreHorizontal />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="w-64 p-3">
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
+          <div className="text-xs font-medium text-muted-foreground">Rename stage</div>
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} aria-label="Stage name" className="h-8 text-md" />
+          <Button type="submit" size="sm" disabled={!label.trim() || pending}>
+            Save
+          </Button>
+        </form>
+        <div className="mt-3 border-t pt-3">
+          {locked ? (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              AILI moves people into this stage by itself, so it can be renamed but not deleted.
+            </p>
+          ) : confirming ? (
+            <div className="flex flex-col gap-2">
+              {count > 0 ? (
+                <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                  Move its {count} {count === 1 ? "person" : "people"} to
+                  <select
+                    value={moveTo}
+                    onChange={(e) => setMoveTo(e.target.value)}
+                    className="h-8 rounded-md border bg-background px-2 text-md text-foreground"
+                  >
+                    {stages
+                      .filter((s) => s.key !== stage.key)
+                      .map((s) => (
+                        <option key={s.key} value={s.key}>
+                          {s.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ) : (
+                <p className="text-xs text-muted-foreground">No one is in this stage.</p>
+              )}
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" className="flex-1" onClick={() => setConfirming(false)}>
+                  Keep it
+                </Button>
+                <Button type="button" size="sm" variant="destructive" className="flex-1" disabled={pending || !moveTo} onClick={remove}>
+                  Delete stage
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirming(true)}
+            >
+              Delete stage
+            </Button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /** Add a stage: a text field that appears under the Stages heading. */
 function AddStageField({ onClose }: { onClose: () => void }) {
   const [label, setLabel] = useState("");
@@ -400,6 +540,15 @@ function StageList({
               count={counts[key] ?? 0}
               active={sameView(view, { kind: "stage", key })}
               onClick={() => onView({ kind: "stage", key })}
+              hideCountOnHover="stage"
+            />
+            <EditStage
+              stage={s}
+              stages={stages}
+              count={counts[key] ?? 0}
+              onDeleted={() => {
+                if (sameView(view, { kind: "stage", key })) onView({ kind: "now" });
+              }}
             />
             <GripVertical
               aria-hidden="true"
@@ -500,7 +649,7 @@ export function InboxSidebar({
               active={sameView(view, { kind: "tag", id: t.id })}
               onClick={() => onView({ kind: "tag", id: t.id })}
               lead={<TagDot color={t.color} className="mx-1 size-2" />}
-              hideCountOnHover
+              hideCountOnHover="tag"
             />
             <EditTag
               tag={t}

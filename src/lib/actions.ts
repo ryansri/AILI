@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getStages, getWorkspace, HELPER_ONLINE_MS } from "./data";
+import { PROTECTED_STAGE_KEYS } from "./stage-rules";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
 import { isTagColor, type Stage, type TagColor } from "./types";
 
@@ -199,6 +200,36 @@ export async function reorderStages(keys: string[]) {
       db.stage.update({ where: { workspaceId_key: { workspaceId: workspace.id, key } }, data: { position } }),
     ),
   );
+  refresh();
+}
+
+/** Stages the app's rules move people into or out of. They can be renamed, not deleted. */
+const PROTECTED_STAGES = PROTECTED_STAGE_KEYS;
+
+export async function renameStage(key: string, label: string) {
+  const workspace = await getWorkspace();
+  const name = clean(label, 40);
+  if (!name) throw new Error("Stage needs a name");
+  const stages = await getStages(workspace.id);
+  if (!stages.some((s) => s.key === key)) throw new Error("Not found");
+  if (stages.some((s) => s.key !== key && s.label.toLowerCase() === name.toLowerCase())) {
+    throw new Error(`There is already a stage called "${name}".`);
+  }
+  await db.stage.update({ where: { workspaceId_key: { workspaceId: workspace.id, key } }, data: { label: name } });
+  refresh();
+}
+
+/** Deletes a stage after moving everyone in it to another stage. */
+export async function deleteStage(key: string, moveTo: string) {
+  const workspace = await getWorkspace();
+  if (PROTECTED_STAGES.includes(key)) throw new Error("AILI's rules use this stage, so it can be renamed but not deleted.");
+  const stages = await getStages(workspace.id);
+  if (!stages.some((s) => s.key === key)) throw new Error("Not found");
+  if (key === moveTo || !stages.some((s) => s.key === moveTo)) throw new Error("Pick another stage for its people.");
+  await db.$transaction([
+    db.person.updateMany({ where: { workspaceId: workspace.id, stage: key }, data: { stage: moveTo } }),
+    db.stage.delete({ where: { workspaceId_key: { workspaceId: workspace.id, key } } }),
+  ]);
   refresh();
 }
 
