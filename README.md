@@ -75,7 +75,8 @@ are in `extension/README.md`.
   Waiting, All, Starred, any tag or any stage, each with a count. Now is
   grouped the way an outreach expert works it: They replied, New connections,
   Follow up today, Last try. Tag and stage views use the same groups plus
-  Waiting and Older. Every group folds. The icon before the list title hides
+  Waiting and Older. Every group folds. One header spans the sidebar and the
+  list: the icon before "Inbox" hides
   the sidebar; the icon at the right of the conversation header shows the
   details. Both are remembered. Search and an Airtable-style filter narrow
   whatever is open.

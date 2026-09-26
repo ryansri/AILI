@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 export function PageHeader({
   title,
   leading,
+  after,
   actions,
   search,
   children,
@@ -25,6 +26,8 @@ export function PageHeader({
   title: string;
   /** Sits before the title, e.g. a button that shows or hides a sidebar. */
   leading?: React.ReactNode;
+  /** Sits right after the title, e.g. the name of the current view. */
+  after?: React.ReactNode;
   actions?: React.ReactNode;
   /** An open HeaderSearch. While set it takes the whole title row. */
   search?: React.ReactNode;
@@ -37,7 +40,8 @@ export function PageHeader({
         {search ?? (
           <>
             {leading}
-            <h1 className="min-w-0 truncate text-xl font-bold tracking-tight">{title}</h1>
+            <h1 className="shrink-0 text-xl font-bold tracking-tight">{title}</h1>
+            {after}
             {actions && <div className="ml-auto flex items-center gap-0.5">{actions}</div>}
           </>
         )}

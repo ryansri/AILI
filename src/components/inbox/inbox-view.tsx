@@ -16,7 +16,7 @@ import {
 } from "@/lib/rows";
 import { usePersistentFlag } from "@/hooks/use-persistent-flag";
 import { InboxSidebar, type SidebarCounts } from "./sidebar";
-import { PeopleList } from "./people-list";
+import { InboxHeader, PeopleList } from "./people-list";
 import { ConversationPane } from "./conversation-pane";
 import { DetailsPanel } from "./details-panel";
 
@@ -169,41 +169,49 @@ export function InboxView({
 
   return (
     <div className="flex h-full w-full">
-      {sidebarOpen && (
-        <InboxSidebar
-          view={view}
-          onView={pickView}
-          counts={counts}
+      <div className="flex shrink-0 flex-col border-r">
+        <InboxHeader
+          viewName={viewTitle(view, tags, stages)}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          query={query}
+          onQuery={setQuery}
+          conditions={conditions}
+          onConditions={setConditions}
+          statusCounts={statusCounts}
           tags={tags}
           stages={stages}
-          account={account}
-          people={people}
+          onCreated={(id) => {
+            pickView({ kind: "all" });
+            setSelectedId(id);
+          }}
         />
-      )}
-      <PeopleList
-        title={viewTitle(view, tags, stages)}
-        view={view}
-        groups={groups}
-        collapsed={collapsed}
-        onToggleGroup={toggleGroup}
-        total={rows.length}
-        selectedId={selected?.person.id ?? null}
-        onSelect={setSelectedId}
-        query={query}
-        onQuery={setQuery}
-        conditions={conditions}
-        onConditions={setConditions}
-        statusCounts={statusCounts}
-        tags={tags}
-        stages={stages}
-        onCreated={(id) => {
-          pickView({ kind: "all" });
-          setSelectedId(id);
-        }}
-        helper={account.helper}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-      />
+        <div className="flex min-h-0 flex-1">
+          {sidebarOpen && (
+            <InboxSidebar
+              view={view}
+              onView={pickView}
+              counts={counts}
+              tags={tags}
+              stages={stages}
+              account={account}
+              people={people}
+            />
+          )}
+          <PeopleList
+            view={view}
+            groups={groups}
+            collapsed={collapsed}
+            onToggleGroup={toggleGroup}
+            total={rows.length}
+            selectedId={selected?.person.id ?? null}
+            onSelect={setSelectedId}
+            query={query}
+            conditions={conditions}
+            helper={account.helper}
+          />
+        </div>
+      </div>
       {selected ? (
         <>
           <ConversationPane

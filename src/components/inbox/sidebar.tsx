@@ -330,7 +330,6 @@ export function InboxSidebar({
 
   return (
     <nav aria-label="Inbox views" className="flex w-[220px] shrink-0 flex-col border-r bg-sidebar/50">
-      <div className="flex h-14 shrink-0 items-center border-b px-4 text-md font-semibold">Inbox</div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3">
         <div className="flex h-6 items-center px-2 text-xs font-medium text-muted-foreground">Views</div>
         <Item

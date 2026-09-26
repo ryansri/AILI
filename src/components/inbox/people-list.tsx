@@ -132,7 +132,6 @@ function EmptyState({ view, narrowed, total }: { view: View; narrowed: boolean; 
 }
 
 export function PeopleList({
-  title,
   view,
   groups,
   collapsed,
@@ -141,18 +140,9 @@ export function PeopleList({
   selectedId,
   onSelect,
   query,
-  onQuery,
   conditions,
-  onConditions,
-  statusCounts,
-  tags,
-  stages,
-  onCreated,
   helper,
-  sidebarOpen,
-  onToggleSidebar,
 }: {
-  title: string;
   view: View;
   groups: Group[];
   collapsed: Set<string>;
@@ -161,20 +151,10 @@ export function PeopleList({
   selectedId: string | null;
   onSelect: (id: string) => void;
   query: string;
-  onQuery: (q: string) => void;
   conditions: Condition[];
-  onConditions: (c: Condition[]) => void;
-  statusCounts: Parameters<typeof FilterPopover>[0]["counts"];
-  tags: Tag[];
-  stages: StageDef[];
-  onCreated: (id: string) => void;
   helper: HelperStatus;
-  sidebarOpen: boolean;
-  onToggleSidebar: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
   const [, start] = useTransition();
-  const search = useHeaderSearch(query);
   const narrowed = query.trim().length > 0 || conditions.some((c) => c.value);
   const visible = groups.reduce((n, g) => n + g.rows.length, 0);
   const grouped = isGroupedView(view);
@@ -191,30 +171,7 @@ export function PeopleList({
   }
 
   return (
-    <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col border-r bg-background">
-      <PageHeader
-        title={title}
-        leading={
-          <HeaderAction
-            icon={PanelLeft}
-            label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-            onClick={onToggleSidebar}
-          />
-        }
-        search={
-          search.open ? (
-            <HeaderSearch value={query} onChange={onQuery} placeholder="Search people" open onOpenChange={search.setOpen} />
-          ) : undefined
-        }
-        actions={
-          <>
-            <HeaderSearch value={query} onChange={onQuery} open={false} onOpenChange={search.setOpen} />
-            <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} stages={stages} counts={statusCounts} />
-            <HeaderAction icon={Plus} label="Add person" onClick={() => setAdding(true)} />
-          </>
-        }
-      />
-      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} stages={stages} onSaved={onCreated} />
+    <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col bg-background">
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-2">
         {groups.map((g) => {
@@ -321,5 +278,71 @@ export function PeopleList({
         </span>
       </div>
     </section>
+  );
+}
+
+/**
+ * The header over the sidebar and the list together: the sidebar toggle,
+ * "Inbox", then search, filter and add. With the sidebar hidden it also names
+ * the view, since the sidebar is not there to show it.
+ */
+export function InboxHeader({
+  viewName,
+  sidebarOpen,
+  onToggleSidebar,
+  query,
+  onQuery,
+  conditions,
+  onConditions,
+  statusCounts,
+  tags,
+  stages,
+  onCreated,
+}: {
+  viewName: string;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+  query: string;
+  onQuery: (q: string) => void;
+  conditions: Condition[];
+  onConditions: (c: Condition[]) => void;
+  statusCounts: Parameters<typeof FilterPopover>[0]["counts"];
+  tags: Tag[];
+  stages: StageDef[];
+  onCreated: (id: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const search = useHeaderSearch(query);
+  return (
+    <>
+      <PageHeader
+        title="Inbox"
+        after={
+          sidebarOpen ? undefined : (
+            <span className="truncate text-xl font-normal tracking-tight text-muted-foreground">/ {viewName}</span>
+          )
+        }
+        leading={
+          <HeaderAction
+            icon={PanelLeft}
+            label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            onClick={onToggleSidebar}
+          />
+        }
+        search={
+          search.open ? (
+            <HeaderSearch value={query} onChange={onQuery} placeholder="Search people" open onOpenChange={search.setOpen} />
+          ) : undefined
+        }
+        actions={
+          <>
+            <HeaderSearch value={query} onChange={onQuery} open={false} onOpenChange={search.setOpen} />
+            <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} stages={stages} counts={statusCounts} />
+            <HeaderAction icon={Plus} label="Add person" onClick={() => setAdding(true)} />
+          </>
+        }
+      />
+      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} stages={stages} onSaved={onCreated} />
+    </>
   );
 }
