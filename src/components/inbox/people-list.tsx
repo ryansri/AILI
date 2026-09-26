@@ -1,10 +1,15 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dueLabel, relativeTime } from "@/lib/next-step";
 import type { Row } from "@/lib/rows";
 import { STATUS, StatusDot } from "@/components/status-dot";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PersonDialog } from "@/components/people/person-dialog";
+import type { Tag } from "@/lib/types";
 
 function lastLine(row: Row): string {
   const pending = row.person.pending[row.person.pending.length - 1];
@@ -29,23 +34,43 @@ export function PeopleList({
   replyCount,
   selectedId,
   onSelect,
+  tags,
+  onCreated,
 }: {
   rows: Row[];
   total: number;
   replyCount: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  tags: Tag[];
+  onCreated: (id: string) => void;
 }) {
+  const [adding, setAdding] = useState(false);
   const firstStale = rows.findIndex((r) => r.step.kind === "stale");
   const staleCount = rows.filter((r) => r.step.kind === "stale").length;
 
   return (
     <section aria-label="Conversations" className="flex w-[340px] shrink-0 flex-col border-r">
-      <div className="flex items-center justify-between border-b px-4 py-2.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
         <span>
           {rows.length === total ? `${total} conversations` : `${rows.length} of ${total} conversations`}
         </span>
         {replyCount > 0 && <span className={STATUS.reply.text}>{replyCount} need a reply</span>}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-xs"
+              aria-label="Add person"
+              className="ml-auto rounded-full"
+              onClick={() => setAdding(true)}
+            >
+              <Plus />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Add person</TooltipContent>
+        </Tooltip>
+        <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} onSaved={onCreated} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">

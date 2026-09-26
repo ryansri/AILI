@@ -60,7 +60,6 @@ export function InboxView({
         tags={tags}
         counts={counts}
         account={account}
-        onCreated={setSelectedId}
       />
       <div className="flex min-h-0 flex-1">
         <PeopleList
@@ -69,6 +68,8 @@ export function InboxView({
           replyCount={counts.reply}
           selectedId={selected?.person.id ?? null}
           onSelect={setSelectedId}
+          tags={tags}
+          onCreated={setSelectedId}
         />
         {selected ? (
           <>

@@ -124,8 +124,10 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
           linkedinUrn: other.urn,
           conversationId: conv.id,
           // Fill blanks from LinkedIn, never overwrite what the user typed.
+          // A headline stored whole by an earlier import (it still has LinkedIn's
+          // "|" separators) is re-split now.
           name: existing.name || other.name,
-          headline: existing.headline || headline,
+          headline: !existing.headline || (existing.source === "linkedin" && existing.headline.includes("|")) ? headline : existing.headline,
           company: existing.company || company,
           publicId: existing.publicId ?? other.publicId,
           pictureUrl: existing.pictureUrl || other.pictureUrl || "",

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpDown, Plus, Search } from "lucide-react";
+import { ArrowUpDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StatusKind } from "@/lib/next-step";
 import { relativeTime } from "@/lib/next-step";
@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { PersonDialog } from "@/components/people/person-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FilterPopover } from "./filter-popover";
 
 export function InboxToolbar({
@@ -30,7 +30,6 @@ export function InboxToolbar({
   tags,
   counts,
   account,
-  onCreated,
 }: {
   conditions: Condition[];
   onConditions: (c: Condition[]) => void;
@@ -41,10 +40,23 @@ export function InboxToolbar({
   tags: Tag[];
   counts: Record<StatusKind, number>;
   account: Account;
-  onCreated: (id: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const h = account.helper;
+  const showSearch = searching || query.length > 0;
+
+  useEffect(() => {
+    if (searching) inputRef.current?.focus();
+  }, [searching]);
+
+  const helperText = h.connected
+    ? `Helper synced ${relativeTime(h.lastSeenAt!)}. ${account.sentToday} of ${account.dailyCap} sent today.`
+    : h.state === "logged_out"
+      ? "Helper running but LinkedIn is logged out in Chrome. Replies are not coming in."
+      : h.state === "error"
+        ? "The helper hit an error. Open its popup for details."
+        : "Helper not connected. Sends are copy and paste until it is.";
 
   return (
     <div className="flex h-14 shrink-0 items-center gap-2 border-b bg-sidebar px-5">
@@ -70,42 +82,66 @@ export function InboxToolbar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Link
-        href="/settings"
-        className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground hover:text-foreground"
-        suppressHydrationWarning
-      >
-        <span
-          className={cn(
-            "inline-block size-2 rounded-full",
-            h.connected ? "bg-emerald-500" : h.state === "never" ? "bg-stone-300" : "bg-amber-500",
-          )}
-        />
-        {h.connected
-          ? `Helper synced ${relativeTime(h.lastSeenAt!)}`
-          : h.state === "logged_out"
-            ? "Helper: LinkedIn logged out"
-            : "Helper not connected"}
-        <span className="text-stone-300">·</span>
-        {account.sentToday} of {account.dailyCap} sent
-      </Link>
+      <div className="ml-auto flex items-center gap-1">
+        {showSearch ? (
+          <div className="relative w-64">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={inputRef}
+              type="search"
+              value={query}
+              onChange={(e) => onQuery(e.target.value)}
+              onBlur={() => {
+                if (!query) setSearching(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  onQuery("");
+                  setSearching(false);
+                }
+              }}
+              placeholder="Search people"
+              className="h-8 bg-background pr-8 pl-8 text-[13px]"
+            />
+            <button
+              type="button"
+              aria-label="Close search"
+              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onQuery("");
+                setSearching(false);
+              }}
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        ) : (
+          <Button variant="ghost" size="icon-sm" aria-label="Search people" onClick={() => setSearching(true)}>
+            <Search />
+          </Button>
+        )}
 
-      <div className="relative w-56">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search people"
-          className="h-8 bg-background pl-8 text-[13px]"
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              href="/settings"
+              aria-label="Helper status"
+              className="flex size-8 items-center justify-center rounded-md hover:bg-accent"
+            >
+              <span
+                className={cn(
+                  "inline-block size-2 rounded-full",
+                  h.connected ? "bg-emerald-500" : h.state === "never" ? "bg-stone-300" : "bg-amber-500",
+                )}
+              />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="end">
+            <span suppressHydrationWarning>{helperText}</span>
+          </TooltipContent>
+        </Tooltip>
       </div>
-
-      <Button size="sm" onClick={() => setAdding(true)}>
-        <Plus />
-        Add person
-      </Button>
-      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} onSaved={onCreated} />
     </div>
   );
 }

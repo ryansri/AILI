@@ -84,7 +84,10 @@ export function ConversationPane({ row, account }: { row: Row; account: Account 
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-[17px] font-semibold leading-tight">{person.name}</h1>
-            <p className="text-xs text-muted-foreground">
+            <p
+              className="truncate text-xs text-muted-foreground"
+              title={[person.headline, person.company, person.location].filter(Boolean).join(", ")}
+            >
               {[person.headline, person.company, person.location].filter(Boolean).join(", ")}
             </p>
           </div>
