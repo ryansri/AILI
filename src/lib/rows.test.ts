@@ -83,14 +83,22 @@ describe("tabs", () => {
     person({ name: "Chase Cal", messages: [{ id: "1", direction: "out", sentAt: ago(9), body: "hi" }] }),
   ].map((p) => ("step" in p ? (p as Row) : { person: p as Person, step: nextStep(p as Person, now) }));
 
-  it("puts reply and chase in Needs you, waits in Waiting, everything in All", () => {
-    const names = (tab: "needs" | "waiting" | "all") => more.filter((r) => inTab(r, tab)).map((r) => r.person.name);
+  it("puts reply and chase in Now, waits in Waiting, stars in Starred, everything in All", () => {
+    const names = (tab: "needs" | "waiting" | "starred" | "all") => more.filter((r) => inTab(r, tab)).map((r) => r.person.name);
     expect(names("needs")).toEqual(["New Nia", "Chase Cho", "Chase Cal"]);
     expect(names("waiting")).toEqual(["Mid Max"]);
+    expect(names("starred")).toEqual(["Mid Max"]);
     expect(names("all")).toHaveLength(5);
   });
 
-  it("groups Needs you into Reply then Chase, most overdue chase first", () => {
+  it("keeps stale starred people in Starred, newest first", () => {
+    const starred = more.map((r) => ({ ...r, person: { ...r.person, starred: true } }));
+    const groups = groupRows(starred, "starred");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].rows.map((r) => r.person.name).at(-1)).toBe("Old Olly");
+  });
+
+  it("groups Now into Reply then Chase, most overdue chase first", () => {
     const groups = groupRows(more.filter((r) => inTab(r, "needs")), "needs");
     expect(groups.map((g) => g.title)).toEqual(["Reply", "Chase"]);
     expect(groups[1].rows.map((r) => r.person.name)).toEqual(["Chase Cal", "Chase Cho"]);

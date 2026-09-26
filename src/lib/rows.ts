@@ -91,30 +91,35 @@ export function activeConditions(conditions: Condition[]): Condition[] {
 }
 
 // ---------------------------------------------------------------------------
-// Inbox tabs: Needs you, Waiting, All. Inside Needs you the rows sit in groups.
+// Inbox tabs: Now, Waiting, Starred, All. Inside Now the rows sit in groups.
 // ---------------------------------------------------------------------------
 
-export type Tab = "needs" | "waiting" | "all";
+/** "needs" is the Now tab: everything waiting on you. */
+export type Tab = "needs" | "waiting" | "starred" | "all";
 
 export const TABS: { id: Tab; label: string }[] = [
-  { id: "needs", label: "Needs you" },
+  { id: "needs", label: "Now" },
   { id: "waiting", label: "Waiting" },
+  { id: "starred", label: "Starred" },
   { id: "all", label: "All" },
 ];
 
-/** Which tab a row belongs to. Every row is in All. */
-export function tabOf(kind: StatusKind): Exclude<Tab, "all"> | null {
+/** Which status tab a row belongs to. Starred and All cut across these. */
+export function tabOf(kind: StatusKind): "needs" | "waiting" | null {
   if (kind === "reply" || kind === "chase" || kind === "quiet") return "needs";
   if (kind === "waiting") return "waiting";
   return null;
 }
 
 export function inTab(row: Row, tab: Tab): boolean {
-  return tab === "all" || tabOf(row.step.kind) === tab;
+  if (tab === "all") return true;
+  if (tab === "starred") return Boolean(row.person.starred);
+  return tabOf(row.step.kind) === tab;
 }
 
 export interface Group {
-  kind: StatusKind | "recent";
+  /** "recent" is everything but stale; "every" is every row given. */
+  kind: StatusKind | "recent" | "every";
   title: string;
   rows: Row[];
 }
@@ -123,13 +128,14 @@ export interface Group {
  * Reply: they wrote last. Chase: you wrote last and a follow-up is due.
  * Decide: two follow-ups and still nothing.
  */
-const GROUPS: Record<Tab, { kind: StatusKind | "recent"; title: string }[]> = {
+const GROUPS: Record<Tab, { kind: Group["kind"]; title: string }[]> = {
   needs: [
     { kind: "reply", title: "Reply" },
     { kind: "chase", title: "Chase" },
     { kind: "quiet", title: "Decide" },
   ],
   waiting: [{ kind: "waiting", title: "Waiting" }],
+  starred: [{ kind: "every", title: "Starred" }],
   all: [
     { kind: "recent", title: "Recent" },
     { kind: "stale", title: "Older than 30 days" },
@@ -139,15 +145,17 @@ const GROUPS: Record<Tab, { kind: StatusKind | "recent"; title: string }[]> = {
 /**
  * Splits the visible rows of a tab into its groups, in order, dropping empty
  * ones. Reply is newest first (like a chat list). Chase, Decide and Waiting are
- * most overdue or soonest due first. All is newest activity first.
+ * most overdue or soonest due first. Starred and All are newest activity first.
  */
 export function groupRows(rows: Row[], tab: Tab): Group[] {
   return GROUPS[tab]
     .map((g) => {
       const members =
-        g.kind === "recent"
-          ? rows.filter((r) => r.step.kind !== "stale")
-          : rows.filter((r) => r.step.kind === g.kind);
+        g.kind === "every"
+          ? rows
+          : g.kind === "recent"
+            ? rows.filter((r) => r.step.kind !== "stale")
+            : rows.filter((r) => r.step.kind === g.kind);
       const sorted =
         g.kind === "chase" || g.kind === "quiet" || g.kind === "waiting"
           ? [...members].sort((a, b) => a.step.dueAt.getTime() - b.step.dueAt.getTime())

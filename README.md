@@ -71,7 +71,7 @@ are in `extension/README.md`.
 
 ## What you can do
 
-- **Inbox.** Three tabs: Needs you, Waiting, All. Needs you is grouped into
+- **Inbox.** Four tabs: Now, Waiting, Starred, All. Now is grouped into
   Reply (they wrote last), Chase (you wrote last, no answer) and Decide (two
   follow-ups, still nothing), so no row needs a status line. One number, the
   count on the Inbox icon, drops as you clear rows. Search and an
@@ -142,7 +142,7 @@ src/
     (app)/              inbox, people, today, settings, posts (placeholder)
     api/helper/         sync, status, outbox routes the helper calls
   components/
-    shell/rail.tsx      left icon rail with the Needs you badge and helper dot
+    shell/rail.tsx      left icon rail with the Now count badge and helper dot
     inbox/              people list with tabs and filter, conversation pane,
                         details panel, send dialog, log-reply dialog, snooze menu
     people/             people table, add/edit dialog, tag picker

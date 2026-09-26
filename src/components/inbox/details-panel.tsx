@@ -79,7 +79,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
   return (
     <aside
       aria-label="Person details"
-      className="flex w-[260px] shrink-0 flex-col gap-5 overflow-auto border-l bg-sidebar px-4 py-4 text-xs"
+      className="flex w-[360px] shrink-0 flex-col gap-5 overflow-auto border-l bg-sidebar px-5 py-4 text-xs"
     >
       <div className="flex items-start gap-2.5">
         <PersonAvatar person={person} className="size-10" />

@@ -26,7 +26,7 @@ export function InboxView({
   account: Account;
   initialPersonId: string | null;
 }) {
-  // A deep link may point at someone outside Needs you, so open on All then.
+  // A deep link may point at someone outside Now, so open on All then.
   const [tab, setTab] = useState<Tab>(initialPersonId ? "all" : "needs");
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [query, setQuery] = useState("");
@@ -59,6 +59,7 @@ export function InboxView({
     () => ({
       needs: narrowed.filter((r) => inTab(r, "needs")).length,
       waiting: narrowed.filter((r) => inTab(r, "waiting")).length,
+      starred: narrowed.filter((r) => inTab(r, "starred")).length,
       all: narrowed.length,
     }),
     [narrowed],
