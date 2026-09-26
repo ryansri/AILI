@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { Tag, TagColor } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
 
 const TAG_DOT: Record<TagColor, string> = {
   amber: "bg-amber-500",
@@ -19,16 +20,12 @@ export function TagDot({ color, className }: { color: TagColor; className?: stri
   );
 }
 
+/** A tag on the shadcn outline Badge, with its colour dot. */
 export function TagChip({ tag, className }: { tag: Tag; className?: string }) {
   return (
-    <span
-      className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs text-foreground",
-        className,
-      )}
-    >
+    <Badge variant="outline" className={cn("gap-1.5 font-normal", className)}>
       <TagDot color={tag.color} />
       {tag.label}
-    </span>
+    </Badge>
   );
 }

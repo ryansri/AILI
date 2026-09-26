@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { Check, CheckCheck, Plus, Search, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Check, CheckCheck, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/actions";
@@ -11,11 +11,12 @@ import { TABS } from "@/lib/rows";
 import type { HelperStatus, Person, Tag } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PersonDialog } from "@/components/people/person-dialog";
 import { CountBadge } from "@/components/count-badge";
+import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
 
@@ -63,10 +64,18 @@ function lastTime(row: Row): string {
 function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
   const { step } = row;
   if (step.kind === "chase") {
-    return <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-2xs leading-none font-medium text-amber-700">{step.step}</span>;
+    return (
+      <Badge variant="secondary" className="bg-amber-50 text-amber-700">
+        {step.step}
+      </Badge>
+    );
   }
   if (step.kind === "quiet" && !grouped) {
-    return <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-2xs leading-none font-medium text-violet-700">Decide</span>;
+    return (
+      <Badge variant="secondary" className="bg-violet-50 text-violet-700">
+        Decide
+      </Badge>
+    );
   }
   if (step.kind === "waiting") {
     const day = dueLabel(step.dueAt);
@@ -80,9 +89,9 @@ function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
             ? `Follow-up ${followUp} ${day}`
             : `Decide ${day}`;
     return (
-      <span suppressHydrationWarning className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs leading-none font-medium text-muted-foreground">
+      <Badge variant="secondary" className="text-muted-foreground" suppressHydrationWarning>
         {text}
-      </span>
+      </Badge>
     );
   }
   return null;
@@ -141,16 +150,10 @@ export function PeopleList({
   helper: HelperStatus;
 }) {
   const [adding, setAdding] = useState(false);
-  const [searching, setSearching] = useState(false);
   const [, start] = useTransition();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const showSearch = searching || query.length > 0;
+  const search = useHeaderSearch(query);
   const narrowed = query.trim().length > 0 || conditions.some((c) => c.value);
   const visible = groups.reduce((n, g) => n + g.rows.length, 0);
-
-  useEffect(() => {
-    if (searching) inputRef.current?.focus();
-  }, [searching]);
 
   function done(row: Row) {
     start(async () => {
@@ -165,85 +168,37 @@ export function PeopleList({
 
   return (
     <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col border-r bg-background">
-      <div className="flex h-14 items-center gap-0.5 pr-3 pl-4">
-        {showSearch ? (
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={inputRef}
-              type="search"
-              value={query}
-              onChange={(e) => onQuery(e.target.value)}
-              onBlur={() => {
-                if (!query) setSearching(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  onQuery("");
-                  setSearching(false);
-                }
-              }}
-              placeholder="Search people"
-              className="h-8 bg-background pr-8 pl-8 text-md"
-            />
-            <button
-              type="button"
-              aria-label="Close search"
-              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                onQuery("");
-                setSearching(false);
-              }}
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-        ) : (
+      <PageHeader
+        title="Inbox"
+        search={
+          search.open ? (
+            <HeaderSearch value={query} onChange={onQuery} placeholder="Search people" open onOpenChange={search.setOpen} />
+          ) : undefined
+        }
+        actions={
           <>
-            <h1 className="text-xl font-bold tracking-tight">Inbox</h1>
-            <div className="ml-auto flex items-center gap-0.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="Search people" onClick={() => setSearching(true)}>
-                    <Search />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Search</TooltipContent>
-              </Tooltip>
-              <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} counts={statusCounts} />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Add person"
-                    onClick={() => setAdding(true)}
-                  >
-                    <Plus />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Add person</TooltipContent>
-              </Tooltip>
-            </div>
+            <HeaderSearch value={query} onChange={onQuery} open={false} onOpenChange={search.setOpen} />
+            <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} counts={statusCounts} />
+            <HeaderAction icon={Plus} label="Add person" onClick={() => setAdding(true)} />
           </>
-        )}
-        <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} onSaved={onCreated} />
-      </div>
-
-      <Tabs value={tab} onValueChange={(v) => onTab(v as Tab)} className="border-b px-4 pb-4">
-        <TabsList className="h-9 w-full">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id} className="gap-1.5 text-md">
-              {t.label}
-              <CountBadge
-                count={tabCounts[t.id]}
-                tone={tab === t.id && t.id === "needs" && tabCounts[t.id] > 0 ? "strong" : "soft"}
-              />
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+        }
+      >
+        <Tabs value={tab} onValueChange={(v) => onTab(v as Tab)}>
+          <TabsList className="w-full">
+            {TABS.map((t) => (
+              <TabsTrigger key={t.id} value={t.id}>
+                {t.label}
+                <CountBadge
+                  count={tabCounts[t.id]}
+                  variant={tab === t.id && t.id === "needs" && tabCounts[t.id] > 0 ? "default" : "outline"}
+                  className={tab === t.id && t.id === "needs" && tabCounts[t.id] > 0 ? undefined : "bg-background text-muted-foreground"}
+                />
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </PageHeader>
+      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} onSaved={onCreated} />
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-2">
         {groups.map((g) => (

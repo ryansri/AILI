@@ -112,7 +112,7 @@ export function ConversationPane({
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
         <PersonAvatar person={person} className="size-8" />
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold leading-tight">{person.name}</h1>
+          <h2 className="truncate text-sm font-semibold leading-tight">{person.name}</h2>
           <p className="max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
             {subtitle || "No headline yet"}
           </p>

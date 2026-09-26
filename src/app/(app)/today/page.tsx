@@ -2,8 +2,9 @@ import Link from "next/link";
 import { loadWorkspaceData } from "@/lib/data";
 import { nextStep, shortDate, type StatusKind } from "@/lib/next-step";
 import type { Person } from "@/lib/types";
-import { STATUS, StatusDot } from "@/components/status-dot";
+import { StatusDot } from "@/components/status-dot";
 import { sortRows } from "@/lib/rows";
+import { PageHeader } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
 
@@ -90,16 +91,14 @@ export default async function TodayPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="border-b px-6 pt-5 pb-4">
-        <h1 className="text-base font-semibold leading-tight">Today</h1>
-        <p className="text-xs text-muted-foreground">
-          {dateLabel}. {total === 0 ? "Nothing due. " : `${total} things to do. `}
-          {account.sentToday} of {account.dailyCap} messages sent.
-        </p>
-      </header>
+      <PageHeader title="Today" />
 
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-7 px-6 py-6">
+          <p className="text-sm text-muted-foreground">
+            {dateLabel}. {total === 0 ? "Nothing due. " : `${total} things to do. `}
+            {account.sentToday} of {account.dailyCap} messages sent.
+          </p>
           <Section kind="reply" title="Reply" hint="they are waiting on you" rows={pick("reply")} />
           <Section kind="chase" title="Chase" hint="a follow-up is due" rows={pick("chase")} />
           <Section kind="quiet" title="Decide" hint="chase once more or mark as lost" rows={pick("quiet")} />
@@ -110,10 +109,6 @@ export default async function TodayPage() {
             rows={withdraw}
           />
           <Section kind="all" title="Warm up" hint="comment before you connect" rows={warming} />
-          <p className="text-xs text-muted-foreground">
-            Colours: {STATUS.reply.label.toLowerCase()} is red, {STATUS.chase.label.toLowerCase()} amber,
-            {" "}{STATUS.quiet.label.toLowerCase()} violet, {STATUS.waiting.label.toLowerCase()} blue.
-          </p>
         </div>
       </div>
     </div>

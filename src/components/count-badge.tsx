@@ -1,33 +1,32 @@
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 /**
- * A count in a badge. One or two characters sit in a circle; three or more
- * ("100", "99+") stretch into a pill. `size` sets the circle's diameter.
+ * A count on the shadcn Badge, using shadcn's number-badge pattern: a fixed
+ * height with an equal min-width, so one or two digits sit in a circle and
+ * three or more characters ("99+") stretch into a pill.
  */
 export function CountBadge({
   count,
-  tone = "strong",
+  variant = "default",
   size = "md",
   className,
 }: {
   count: number;
-  tone?: "strong" | "soft";
+  variant?: "default" | "secondary" | "outline";
   size?: "sm" | "md";
   className?: string;
 }) {
-  const text = count > 99 ? "99+" : String(count);
-  const round = text.length <= 2;
   return (
-    <span
+    <Badge
+      variant={variant}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold leading-none tabular-nums",
-        size === "sm" ? "h-4 text-3xs" : "h-[18px] text-2xs",
-        round ? (size === "sm" ? "w-4" : "w-[18px]") : "px-1.5",
-        tone === "strong" ? "bg-foreground text-background" : "bg-foreground/10 text-muted-foreground",
+        "rounded-full px-1 tabular-nums",
+        size === "sm" ? "h-4 min-w-4 text-3xs" : "h-5 min-w-5",
         className,
       )}
     >
-      {text}
-    </span>
+      {count > 99 ? "99+" : count}
+    </Badge>
   );
 }

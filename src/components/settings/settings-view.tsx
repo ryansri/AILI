@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { PageHeader } from "@/components/page-header";
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -82,10 +83,7 @@ export function SettingsView({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="border-b px-6 pt-5 pb-4">
-        <h1 className="text-base font-semibold leading-tight">Settings</h1>
-        <p className="text-xs text-muted-foreground">Your account, the Chrome helper, and the daily send cap.</p>
-      </header>
+      <PageHeader title="Settings" />
 
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-6">
