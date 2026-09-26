@@ -5,7 +5,7 @@ import { Check, CheckCheck, ChevronDown, ChevronRight, PanelLeft, Plus, Star } f
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/actions";
-import { dueLabel, relativeTime } from "@/lib/next-step";
+import { dueLabel, relativeTime, syncedLabel } from "@/lib/next-step";
 import { bucketOf, isGroupedView, type Condition, type Group, type Row, type View } from "@/lib/rows";
 import type { HelperStatus, Person, StageDef, Tag } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -271,7 +271,7 @@ export function PeopleList({
         />
         <span suppressHydrationWarning>
           {helper.connected
-            ? `Synced ${relativeTime(helper.lastSeenAt!)}`
+            ? syncedLabel(helper.lastSeenAt!)
             : helper.state === "never"
               ? "Helper not connected"
               : "Helper needs attention"}

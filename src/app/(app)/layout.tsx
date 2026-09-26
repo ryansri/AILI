@@ -1,4 +1,5 @@
 import { Rail } from "@/components/shell/rail";
+import { AutoRefresh } from "@/components/shell/auto-refresh";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadWorkspaceData } from "@/lib/data";
 import { nextStep } from "@/lib/next-step";
@@ -18,6 +19,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           sentLine={`${account.sentToday} of ${account.dailyCap} sent today.`}
         />
         <main className="flex min-w-0 flex-1">{children}</main>
+        <AutoRefresh />
       </div>
     </TooltipProvider>
   );

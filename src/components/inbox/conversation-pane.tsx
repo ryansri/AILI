@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ArrowUp, Check, MoreHorizontal, PanelRight, RotateCcw, Sparkles, Star, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { archivePerson, cancelQueued, markDone, queueSend, reopen, toggleStar, updateStage } from "@/lib/actions";
@@ -13,6 +13,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -38,6 +41,43 @@ function stamp(iso: string): string {
   const diff = Math.round((day(now) - day(d)) / 86400000);
   const when = diff === 0 ? "Today" : diff === 1 ? "Yesterday" : diff < 7 ? WEEKDAYS[d.getDay()] : shortDate(d);
   return `${when} ${shortTime(d)}`;
+}
+
+/** The person's stage as a clear control: "Stage  In conversation ▾". Picking one saves it. */
+function StageMenu({
+  stages,
+  value,
+  onChange,
+}: {
+  stages: StageDef[];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Stage: ${stageLabel(stages, value)}. Change stage`}
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs shadow-xs transition-colors hover:bg-muted"
+        >
+          <span className="text-muted-foreground">Stage</span>
+          <span className="font-semibold text-foreground">{stageLabel(stages, value)}</span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Move to stage</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
+          {stages.map((s) => (
+            <DropdownMenuRadioItem key={s.key} value={s.key}>
+              {s.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /** What the card above the composer says. */
@@ -122,18 +162,29 @@ export function ConversationPane({
   return (
     <section aria-label={`Conversation with ${person.name}`} className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b pr-3 pl-5">
-        <PersonAvatar person={person} className="size-8" />
-        <div className="min-w-0 shrink">
-          <h2 className="truncate text-sm font-semibold leading-tight">{person.name}</h2>
-          <p className="max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
-            {subtitle || "No headline yet"}
-          </p>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleDetails}
+              aria-expanded={detailsOpen}
+              aria-label={detailsOpen ? `Hide details for ${person.name}` : `Show details for ${person.name}`}
+              className="-ml-1.5 flex min-w-0 shrink items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted"
+            >
+              <PersonAvatar person={person} className="size-8" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold leading-tight">{person.name}</span>
+                <span className="block max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
+                  {subtitle || "No headline yet"}
+                </span>
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{detailsOpen ? "Hide details" : "Show details"}</TooltipContent>
+        </Tooltip>
+        <StageMenu stages={stages} value={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
         {!detailsOpen && (
-          <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden lg:flex">
-            <Badge variant="outline" className="font-normal">
-              {stageLabel(stages, person.stage)}
-            </Badge>
+          <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden xl:flex">
             {personTags.slice(0, 2).map((t) => (
               <TagChip key={t.id} tag={t} />
             ))}
@@ -188,6 +239,8 @@ export function ConversationPane({
               <TooltipContent side="bottom">More</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onToggleDetails}>{detailsOpen ? "Hide details" : "Show details"}</DropdownMenuItem>
+              <DropdownMenuSeparator />
               {!viaHelper && (
                 <>
                   <DropdownMenuItem onSelect={() => setLogging(true)}>Log their reply</DropdownMenuItem>
@@ -212,21 +265,6 @@ export function ConversationPane({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={detailsOpen ? "Hide details" : "Show details"}
-                aria-pressed={detailsOpen}
-                onClick={onToggleDetails}
-                className={cn(detailsOpen && "bg-accent")}
-              >
-                <PanelRight />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{detailsOpen ? "Hide details" : "Show details"}</TooltipContent>
-          </Tooltip>
         </div>
       </header>
 

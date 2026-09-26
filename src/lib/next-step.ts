@@ -205,13 +205,21 @@ export function dueLabel(dueAt: Date, now: Date = new Date()): string {
   return shortDate(dueAt);
 }
 
-/** Time label for the row: "now", "2h", "1d", "4d". */
+/** Time label for the row: "now", "12m", "2h", "1d", "4d". */
 export function relativeTime(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   const ms = now.getTime() - date.getTime();
-  const hours = Math.floor(ms / (60 * 60 * 1000));
-  if (hours < 1) return "now";
+  const mins = Math.floor(ms / (60 * 1000));
+  if (mins < 1) return "now";
+  const hours = Math.floor(mins / 60);
+  if (hours < 1) return `${mins}m`;
   if (daysBetween(date, now) === 0) return `${hours}h`;
   const days = daysBetween(date, now);
   return `${days}d`;
+}
+
+/** "Synced just now", "Synced 3m ago", for the helper status. */
+export function syncedLabel(iso: string, now: Date = new Date()): string {
+  const t = relativeTime(iso, now);
+  return t === "now" ? "Synced just now" : `Synced ${t} ago`;
 }

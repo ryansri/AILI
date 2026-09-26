@@ -207,7 +207,8 @@ describe("relativeTime", () => {
     const at = new Date(2026, 8, 26, 15, 0);
     const ago = (ms: number) => new Date(at.getTime() - ms).toISOString();
     const HOUR = 60 * 60 * 1000;
-    expect(relativeTime(ago(20 * 60 * 1000), at)).toBe("now");
+    expect(relativeTime(ago(20 * 1000), at)).toBe("now");
+    expect(relativeTime(ago(20 * 60 * 1000), at)).toBe("20m");
     expect(relativeTime(ago(3 * HOUR), at)).toBe("3h");
     expect(relativeTime(ago(DAY), at)).toBe("1d");
     expect(relativeTime(ago(9 * DAY), at)).toBe("9d");

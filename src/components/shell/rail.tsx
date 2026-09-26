@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, FileText, Inbox, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { relativeTime } from "@/lib/next-step";
+import { syncedLabel } from "@/lib/next-step";
 import type { HelperStatus } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -56,7 +56,7 @@ function RailLink({
 /** One dot for the Chrome helper. Green is synced, amber needs attention, grey never paired. */
 function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: string }) {
   const text = helper.connected
-    ? `Helper synced ${relativeTime(helper.lastSeenAt!)}. ${sentLine}`
+    ? `Helper ${syncedLabel(helper.lastSeenAt!).toLowerCase()}. ${sentLine}`
     : helper.state === "logged_out"
       ? "Helper running but LinkedIn is logged out in Chrome. Replies are not coming in."
       : helper.state === "error"
