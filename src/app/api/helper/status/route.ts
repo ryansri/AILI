@@ -28,7 +28,9 @@ export async function POST(request: Request) {
     memberUrn?: string;
     displayName?: string;
     pictureUrl?: string;
+    version?: string;
   };
+  const version = typeof body.version === "string" && /^\d+\.\d+\.\d+$/.test(body.version) ? body.version : null;
   // Only LinkedIn's image host, so a bad value cannot point your avatar anywhere else.
   const picture =
     typeof body.pictureUrl === "string" && /^https:\/\/media\.licdn\.com\//.test(body.pictureUrl)
@@ -43,6 +45,8 @@ export async function POST(request: Request) {
       helperMemberUrn: typeof body.memberUrn === "string" ? body.memberUrn : workspace.helperMemberUrn,
       helperName: typeof body.displayName === "string" ? body.displayName : workspace.helperName,
       ...(picture ? { helperPictureUrl: picture } : {}),
+      // An old helper sends no version; recording null marks it out of date.
+      helperVersion: version,
     },
   });
   revalidatePath("/inbox");

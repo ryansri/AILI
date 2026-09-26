@@ -23,7 +23,7 @@ npm install          # also generates the Prisma client
 npm run db:push      # creates prisma/dev.db (SQLite)
 npm run db:seed      # loads eight sample people so there is something to click
 npm run helper:build # bundles the Chrome helper into extension/dist
-npm run dev          # also syncs the database layout first
+npm run dev          # also syncs the database layout and rebuilds the helper
 ```
 
 Open http://localhost:3000. The first visit asks you to create your account.
@@ -56,6 +56,12 @@ mode: you copy each message, paste it into LinkedIn, and log replies by hand.
 2. Log in to LinkedIn in Chrome.
 3. In AILI go to Settings, copy the helper token. Click the AILI helper icon in
    Chrome, paste `http://localhost:3000` and the token, press Connect.
+
+After a `git pull` that changes the helper, start AILI with `npm run dev`
+(it rebuilds `extension/dist`), then press the reload arrow on AILI helper in
+`chrome://extensions`. If an old helper is still loaded, Settings, the inbox
+footer and the status dot all say it is out of date. Bump the version in both
+`extension/manifest.json` and `src/lib/helper-version.ts` when the helper changes.
 
 On first connect the helper imports your history, one inbox page a minute,
 back to conversations 180 days old. From then on, once a minute while Chrome

@@ -55,7 +55,9 @@ function RailLink({
 
 /** One dot for the Chrome helper. Green is synced, amber needs attention, grey never paired. */
 function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: string }) {
-  const text = helper.connected
+  const text = helper.connected && helper.outdated
+    ? "The helper in Chrome is out of date. Settings says how to update it."
+    : helper.connected
     ? `Helper ${syncedLabel(helper.lastSeenAt!).toLowerCase()}. ${sentLine}`
     : helper.state === "logged_out"
       ? "Helper running but LinkedIn is logged out in Chrome. Replies are not coming in."
@@ -73,7 +75,11 @@ function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: strin
           <span
             className={cn(
               "inline-block size-2 rounded-full",
-              helper.connected ? "bg-emerald-500" : helper.state === "never" ? "bg-stone-300" : "bg-amber-500",
+              helper.connected && !helper.outdated
+                ? "bg-emerald-500"
+                : helper.state === "never"
+                  ? "bg-stone-300"
+                  : "bg-amber-500",
             )}
           />
         </Link>

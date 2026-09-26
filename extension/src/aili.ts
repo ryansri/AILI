@@ -41,7 +41,9 @@ export function reportStatus(
   pairing: Pairing,
   body: { state: string; memberUrn?: string; displayName?: string; pictureUrl?: string },
 ) {
-  return call(pairing, "/api/helper/status", { method: "POST", body: JSON.stringify(body) });
+  // The version lets AILI spot an old helper still loaded in Chrome.
+  const version = chrome.runtime.getManifest().version;
+  return call(pairing, "/api/helper/status", { method: "POST", body: JSON.stringify({ ...body, version }) });
 }
 
 export function postSync(pairing: Pairing, payload: unknown) {

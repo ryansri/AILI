@@ -27,6 +27,8 @@ model Workspace {
   helperName       String?
   /// Your LinkedIn profile photo, reported by the helper.
   helperPictureUrl String?
+  /// Version of the Chrome helper that last reported in.
+  helperVersion    String?
   helperState      String?
   createdAt    DateTime  @default(now())
 

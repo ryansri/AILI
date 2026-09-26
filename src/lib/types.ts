@@ -97,6 +97,10 @@ export interface HelperStatus {
   state: string;
   lastSeenAt?: string; // ISO
   linkedinName?: string;
+  /** Version the helper reported, if any. */
+  version?: string;
+  /** The helper in Chrome is older than this app expects and needs reloading. */
+  outdated: boolean;
 }
 
 export interface Account {

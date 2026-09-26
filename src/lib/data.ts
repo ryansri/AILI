@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId } from "./auth";
+import { helperOutdated } from "./helper-version";
 import { DEFAULT_STAGES, isTagColor, type Account, type Person, type StageDef, type Tag } from "./types";
 
 /** The logged-in workspace. Pages and actions call this; unauthenticated callers go to /login. */
@@ -121,6 +122,8 @@ export async function getAccount(workspaceId: string): Promise<Account> {
       state: workspace.helperState ?? "never",
       lastSeenAt: workspace.helperLastSeenAt?.toISOString(),
       linkedinName: workspace.helperName ?? undefined,
+      version: workspace.helperVersion ?? undefined,
+      outdated: Boolean(workspace.helperLastSeenAt) && helperOutdated(workspace.helperVersion),
     },
   };
 }

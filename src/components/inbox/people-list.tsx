@@ -266,11 +266,17 @@ export function PeopleList({
         <span
           className={cn(
             "inline-block size-1.5 rounded-full",
-            helper.connected ? "bg-emerald-500" : helper.state === "never" ? "bg-stone-300" : "bg-amber-500",
+            helper.connected && !helper.outdated
+              ? "bg-emerald-500"
+              : helper.state === "never"
+                ? "bg-stone-300"
+                : "bg-amber-500",
           )}
         />
         <span suppressHydrationWarning>
-          {helper.connected
+          {helper.connected && helper.outdated
+            ? "Helper out of date, see Settings"
+            : helper.connected
             ? syncedLabel(helper.lastSeenAt!)
             : helper.state === "never"
               ? "Helper not connected"
