@@ -168,4 +168,35 @@ describe("dueLabel", () => {
     expect(dueLabel(new Date(now.getTime() + 3 * DAY), now)).toMatch(/^[A-Z][a-z]{2}$/);
     expect(dueLabel(new Date(now.getTime() + 30 * DAY), now)).toMatch(/\d+ [A-Z][a-z]{2}/);
   });
+
+  it("waits once you press Done, until a new message arrives", () => {
+    const base = {
+      messages: [
+        { id: "1", direction: "out" as const, sentAt: daysAgo(3), body: "hi" },
+        { id: "2", direction: "in" as const, sentAt: daysAgo(1), body: "no thanks" },
+      ],
+    };
+    const done = nextStep(person({ ...base, handledAt: daysAgo(0, 8) }), now);
+    expect(done.kind).toBe("waiting");
+    expect(done.step).toBe("Done");
+
+    const woken = nextStep(
+      person({
+        ...base,
+        handledAt: daysAgo(1, 12),
+        messages: [...base.messages, { id: "3", direction: "in", sentAt: daysAgo(0, 9), body: "actually, tell me more" }],
+      }),
+      now,
+    );
+    expect(woken.kind).toBe("reply");
+  });
+
+  it("lets Done go stale after a month like anything else", () => {
+    const p = person({
+      messages: [{ id: "1", direction: "in", sentAt: daysAgo(40), body: "hi" }],
+      handledAt: daysAgo(35),
+      lastActionAt: daysAgo(35),
+    });
+    expect(nextStep(p, now).kind).toBe("stale");
+  });
 });

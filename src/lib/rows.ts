@@ -7,7 +7,6 @@ export interface Row {
   step: NextStep;
 }
 
-export type Filter = "all" | StatusKind;
 export type Sort = "recent" | "due" | "name";
 
 export const SORTS: { id: Sort; label: string }[] = [
@@ -89,4 +88,69 @@ export function matchesConditions(row: Row, conditions: Condition[]): boolean {
 /** Conditions that actually narrow the list, for the "Filtered by" label. */
 export function activeConditions(conditions: Condition[]): Condition[] {
   return conditions.filter((c) => c.value);
+}
+
+// ---------------------------------------------------------------------------
+// Inbox tabs: Needs you, Waiting, All. Inside Needs you the rows sit in groups.
+// ---------------------------------------------------------------------------
+
+export type Tab = "needs" | "waiting" | "all";
+
+export const TABS: { id: Tab; label: string }[] = [
+  { id: "needs", label: "Needs you" },
+  { id: "waiting", label: "Waiting" },
+  { id: "all", label: "All" },
+];
+
+/** Which tab a row belongs to. Every row is in All. */
+export function tabOf(kind: StatusKind): Exclude<Tab, "all"> | null {
+  if (kind === "reply" || kind === "chase" || kind === "quiet") return "needs";
+  if (kind === "waiting") return "waiting";
+  return null;
+}
+
+export function inTab(row: Row, tab: Tab): boolean {
+  return tab === "all" || tabOf(row.step.kind) === tab;
+}
+
+export interface Group {
+  kind: StatusKind | "recent";
+  title: string;
+  /** One line that explains the group, so the rows do not have to. */
+  hint: string;
+  rows: Row[];
+}
+
+const GROUPS: Record<Tab, { kind: StatusKind | "recent"; title: string; hint: string }[]> = {
+  needs: [
+    { kind: "reply", title: "Reply", hint: "They wrote last" },
+    { kind: "chase", title: "Chase", hint: "You wrote last, no answer" },
+    { kind: "quiet", title: "Decide", hint: "Two follow-ups, still nothing" },
+  ],
+  waiting: [{ kind: "waiting", title: "Waiting", hint: "Nothing to do yet" }],
+  all: [
+    { kind: "recent", title: "Recent", hint: "" },
+    { kind: "stale", title: "Older than 30 days", hint: "No next step until you act" },
+  ],
+};
+
+/**
+ * Splits the visible rows of a tab into its groups, in order, dropping empty
+ * ones. Reply is newest first (like a chat list). Chase, Decide and Waiting are
+ * most overdue or soonest due first. All is newest activity first.
+ */
+export function groupRows(rows: Row[], tab: Tab): Group[] {
+  return GROUPS[tab]
+    .map((g) => {
+      const members =
+        g.kind === "recent"
+          ? rows.filter((r) => r.step.kind !== "stale")
+          : rows.filter((r) => r.step.kind === g.kind);
+      const sorted =
+        g.kind === "chase" || g.kind === "quiet" || g.kind === "waiting"
+          ? [...members].sort((a, b) => a.step.dueAt.getTime() - b.step.dueAt.getTime())
+          : sortRows(members, "recent");
+      return { ...g, rows: sorted };
+    })
+    .filter((g) => g.rows.length > 0);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { nextStep } from "./next-step";
-import { matchesConditions, sortRows, type Row } from "./rows";
+import { groupRows, inTab, matchesConditions, sortRows, type Row } from "./rows";
 import type { Person } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -73,5 +73,32 @@ describe("matchesConditions", () => {
         { id: "b", field: "stage", op: "is", value: "won" },
       ]),
     ).toBe(false);
+  });
+});
+
+describe("tabs", () => {
+  const more: Row[] = [
+    ...rows,
+    person({ name: "Chase Cho", messages: [{ id: "1", direction: "out", sentAt: ago(5), body: "hi" }] }),
+    person({ name: "Chase Cal", messages: [{ id: "1", direction: "out", sentAt: ago(9), body: "hi" }] }),
+  ].map((p) => ("step" in p ? (p as Row) : { person: p as Person, step: nextStep(p as Person, now) }));
+
+  it("puts reply and chase in Needs you, waits in Waiting, everything in All", () => {
+    const names = (tab: "needs" | "waiting" | "all") => more.filter((r) => inTab(r, tab)).map((r) => r.person.name);
+    expect(names("needs")).toEqual(["New Nia", "Chase Cho", "Chase Cal"]);
+    expect(names("waiting")).toEqual(["Mid Max"]);
+    expect(names("all")).toHaveLength(5);
+  });
+
+  it("groups Needs you into Reply then Chase, most overdue chase first", () => {
+    const groups = groupRows(more.filter((r) => inTab(r, "needs")), "needs");
+    expect(groups.map((g) => g.title)).toEqual(["Reply", "Chase"]);
+    expect(groups[1].rows.map((r) => r.person.name)).toEqual(["Chase Cal", "Chase Cho"]);
+  });
+
+  it("folds stale rows under their own heading in All", () => {
+    const groups = groupRows(more, "all");
+    expect(groups.map((g) => g.title)).toEqual(["Recent", "Older than 30 days"]);
+    expect(groups[1].rows.map((r) => r.person.name)).toEqual(["Old Olly"]);
   });
 });

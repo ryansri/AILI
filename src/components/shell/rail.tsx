@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, FileText, Inbox, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { relativeTime } from "@/lib/next-step";
+import type { HelperStatus } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -19,33 +21,82 @@ function RailLink({
   label,
   icon: Icon,
   active,
+  badge,
 }: {
   href: string;
   label: string;
   icon: typeof Inbox;
   active: boolean;
+  badge?: number;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Link
           href={href}
-          aria-label={label}
+          aria-label={badge ? `${label}, ${badge} need you` : label}
           aria-current={active ? "page" : undefined}
           className={cn(
-            "flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+            "relative flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
             active && "bg-accent text-foreground",
           )}
         >
           <Icon className="size-[18px]" strokeWidth={1.75} />
+          {badge ? (
+            <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold leading-none text-white">
+              {badge > 99 ? "99+" : badge}
+            </span>
+          ) : null}
         </Link>
       </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
+      <TooltipContent side="right">{badge ? `${label}, ${badge} need you` : label}</TooltipContent>
     </Tooltip>
   );
 }
 
-export function Rail({ initials }: { initials: string }) {
+/** One dot for the Chrome helper. Green is synced, amber needs attention, grey never paired. */
+function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: string }) {
+  const text = helper.connected
+    ? `Helper synced ${relativeTime(helper.lastSeenAt!)}. ${sentLine}`
+    : helper.state === "logged_out"
+      ? "Helper running but LinkedIn is logged out in Chrome. Replies are not coming in."
+      : helper.state === "error"
+        ? "The helper hit an error. Open its popup for details."
+        : "Helper not connected. Sends are copy and paste until it is.";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          href="/settings"
+          aria-label="Helper status"
+          className="flex size-8 items-center justify-center rounded-md hover:bg-accent"
+        >
+          <span
+            className={cn(
+              "inline-block size-2 rounded-full",
+              helper.connected ? "bg-emerald-500" : helper.state === "never" ? "bg-stone-300" : "bg-amber-500",
+            )}
+          />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-56">
+        <span suppressHydrationWarning>{text}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function Rail({
+  initials,
+  needsYou,
+  helper,
+  sentLine,
+}: {
+  initials: string;
+  needsYou: number;
+  helper: HelperStatus;
+  sentLine: string;
+}) {
   const pathname = usePathname();
   return (
     <nav
@@ -56,7 +107,12 @@ export function Rail({ initials }: { initials: string }) {
         A
       </div>
       {SECTIONS.map((s) => (
-        <RailLink key={s.href} {...s} active={pathname.startsWith(s.href)} />
+        <RailLink
+          key={s.href}
+          {...s}
+          active={pathname.startsWith(s.href)}
+          badge={s.href === "/inbox" ? needsYou : undefined}
+        />
       ))}
       <div className="mt-auto flex flex-col items-center gap-2">
         <RailLink
@@ -65,6 +121,7 @@ export function Rail({ initials }: { initials: string }) {
           icon={Settings}
           active={pathname.startsWith("/settings")}
         />
+        <HelperDot helper={helper} sentLine={sentLine} />
         <Avatar size="sm">
           <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
         </Avatar>

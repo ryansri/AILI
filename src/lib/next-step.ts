@@ -6,7 +6,7 @@ import type { Person } from "./types";
  *  reply    they wrote last, you owe them an answer
  *  chase    you wrote last and a follow-up is due
  *  quiet    you have chased twice and they never answered
- *  waiting  you wrote last, nothing to do yet, or they are snoozed
+ *  waiting  you wrote last, nothing to do yet, they are snoozed, or you marked it done
  *  stale    nothing has happened for STALE_DAYS, so no next step until you act
  */
 export type StatusKind = "reply" | "chase" | "quiet" | "waiting" | "stale";
@@ -54,7 +54,7 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
-function daysBetween(from: Date, to: Date): number {
+export function daysBetween(from: Date, to: Date): number {
   return Math.floor((startOfDay(to).getTime() - startOfDay(from).getTime()) / DAY);
 }
 
@@ -102,6 +102,15 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
       dueAt: activity,
       dueNow: false,
     };
+  }
+
+  // You pressed Done and nothing has happened since: it waits for them.
+  if (person.handledAt) {
+    const handled = new Date(person.handledAt);
+    const after = messages.some((m) => new Date(m.sentAt) > handled) || person.pending.length > 0;
+    if (!after) {
+      return { kind: "waiting", step: "Done", detail: "marked done", dueAt: handled, dueNow: false };
+    }
   }
 
   // No messages yet: they are connected but nothing has been sent.

@@ -71,10 +71,18 @@ are in `extension/README.md`.
 
 ## What you can do
 
-- **Inbox.** Recent first. One Filter button opens Airtable-style conditions
-  (Status, Tag, Stage, Starred), and tints while a filter is on. Sort by
-  recent, due or name. Conversations quiet for 30 days fold into an Older
-  group with no next step until you act on them.
+- **Inbox.** Three tabs: Needs you, Waiting, All. Needs you is grouped into
+  Reply (they wrote last), Chase (you wrote last, no answer) and Decide (two
+  follow-ups, still nothing), so no row needs a status line. One number, the
+  count on the Inbox icon, drops as you clear rows. Search and an
+  Airtable-style filter (Status, Tag, Stage, Starred) narrow every tab.
+  Conversations quiet for 30 days fold into an Older group in All.
+- **Done.** Hover a row or press E. Nothing more to do until they write
+  back; the person moves to Waiting. Reopen puts them back.
+- **Keyboard.** J and K move, R focuses the composer, E is done, S opens
+  snooze, Cmd+Enter sends.
+- **Next step card.** Above the composer: what to do and why, with Not now
+  (snooze) and Draft with AI.
 - **Send.** Type a message, press Send. With the helper connected it is
   delivered from your account. Without it, AILI copies the message, opens
   their profile, and logs it once you confirm. Follow-ups are numbered
@@ -98,7 +106,7 @@ returns one of four states. The rules come from the outreach playbook.
 | Red | Reply needed | They wrote last, or they accepted and you have not messaged |
 | Amber | Chase today | You wrote last and follow-up 1 (day 4) or follow-up 2 (day 9) is due, or a snooze ended |
 | Violet | Gone quiet | Two follow-ups sent and five more silent days |
-| Blue | Waiting | You wrote last and nothing is due yet, or the person is snoozed |
+| Blue | Waiting | You wrote last and nothing is due yet, the person is snoozed, or you pressed Done |
 | Grey | Older | Nothing from either side, and no action by you, for 30 days |
 
 Any reply from the prospect resets the sequence.
@@ -134,9 +142,9 @@ src/
     (app)/              inbox, people, today, settings, posts (placeholder)
     api/helper/         sync, status, outbox routes the helper calls
   components/
-    shell/rail.tsx      left icon rail
-    inbox/              toolbar with filter and sort, people list, conversation
-                        pane, details panel, send dialog, log-reply dialog, snooze menu
+    shell/rail.tsx      left icon rail with the Needs you badge and helper dot
+    inbox/              people list with tabs and filter, conversation pane,
+                        details panel, send dialog, log-reply dialog, snooze menu
     people/             people table, add/edit dialog, tag picker
     settings/           settings page
     ui/                 shadcn components

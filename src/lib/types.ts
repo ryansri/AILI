@@ -85,6 +85,8 @@ export interface Person {
   snoozedUntil?: string; // ISO
   /** Last time the user acted on this person in AILI. */
   lastActionAt?: string; // ISO
+  /** The user pressed Done. Any message after this wakes the person up again. */
+  handledAt?: string; // ISO
   messages: Message[];
   pending: PendingMessage[];
 }

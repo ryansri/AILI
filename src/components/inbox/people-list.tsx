@@ -1,15 +1,41 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { Plus } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Check, CheckCheck, Plus, Search, X } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { dueLabel, relativeTime } from "@/lib/next-step";
-import type { Row } from "@/lib/rows";
-import { STATUS, StatusDot } from "@/components/status-dot";
+import { markDone } from "@/lib/actions";
+import { daysBetween, dueLabel, relativeTime } from "@/lib/next-step";
+import type { Condition, Group, Row, Tab } from "@/lib/rows";
+import { TABS } from "@/lib/rows";
+import type { HelperStatus, Person, Tag } from "@/lib/types";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PersonDialog } from "@/components/people/person-dialog";
-import type { Tag } from "@/lib/types";
+import { FilterPopover } from "./filter-popover";
+import { SnoozeMenu } from "./snooze-menu";
+
+export function initials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+export function PersonAvatar({ person, className }: { person: Person; className?: string }) {
+  return (
+    <Avatar className={className}>
+      {person.pictureUrl && <AvatarImage src={person.pictureUrl} alt="" />}
+      <AvatarFallback className="text-[11px] font-semibold">{initials(person.name)}</AvatarFallback>
+    </Avatar>
+  );
+}
 
 function lastLine(row: Row): string {
   const pending = row.person.pending[row.person.pending.length - 1];
@@ -28,100 +54,278 @@ function lastTime(row: Row): string {
   return last ? relativeTime(last.sentAt) : "";
 }
 
+/** The one chip a row may carry. Reply rows get a blue dot instead. */
+function Chip({ row }: { row: Row }) {
+  const { step, person } = row;
+  if (step.kind === "chase" || step.kind === "quiet") {
+    const outs = person.messages.filter((m) => m.direction === "out");
+    const lastOut = outs[outs.length - 1];
+    const days = lastOut ? daysBetween(new Date(lastOut.sentAt), new Date()) : 0;
+    const text = step.step === "Check back" ? "Snooze over" : `Day ${days}`;
+    return (
+      <span
+        suppressHydrationWarning
+        className={cn(
+          "shrink-0 rounded-full px-1.5 py-px text-[10.5px] font-medium",
+          step.kind === "chase" ? "bg-amber-50 text-amber-700" : "bg-violet-50 text-violet-700",
+        )}
+      >
+        {text}
+      </span>
+    );
+  }
+  if (step.kind === "waiting") {
+    const text =
+      step.step === "Done" ? "Done" : step.detail === "snoozed" ? `Until ${dueLabel(step.dueAt)}` : dueLabel(step.dueAt);
+    return (
+      <span suppressHydrationWarning className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10.5px] font-medium text-muted-foreground">
+        {text}
+      </span>
+    );
+  }
+  return null;
+}
+
+function EmptyState({ tab, narrowed, total }: { tab: Tab; narrowed: boolean; total: number }) {
+  if (total === 0) {
+    return <p className="p-8 text-center text-xs text-muted-foreground">No one yet. Add a person, or connect the helper.</p>;
+  }
+  if (narrowed) return <p className="p-8 text-center text-xs text-muted-foreground">No one matches.</p>;
+  if (tab === "needs") {
+    return (
+      <div className="flex flex-col items-center gap-2 p-10 text-center">
+        <span className="flex size-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+          <CheckCheck className="size-4" />
+        </span>
+        <p className="text-[13px] font-medium">You are all caught up</p>
+        <p className="text-xs text-muted-foreground">New replies and due follow-ups show up here.</p>
+      </div>
+    );
+  }
+  return <p className="p-8 text-center text-xs text-muted-foreground">Nothing waiting.</p>;
+}
+
 export function PeopleList({
-  rows,
+  groups,
+  tab,
+  onTab,
+  tabCounts,
   total,
-  replyCount,
   selectedId,
   onSelect,
+  query,
+  onQuery,
+  conditions,
+  onConditions,
+  statusCounts,
   tags,
   onCreated,
+  helper,
 }: {
-  rows: Row[];
+  groups: Group[];
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  tabCounts: Record<Tab, number>;
   total: number;
-  replyCount: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  query: string;
+  onQuery: (q: string) => void;
+  conditions: Condition[];
+  onConditions: (c: Condition[]) => void;
+  statusCounts: Parameters<typeof FilterPopover>[0]["counts"];
   tags: Tag[];
   onCreated: (id: string) => void;
+  helper: HelperStatus;
 }) {
   const [adding, setAdding] = useState(false);
-  const firstStale = rows.findIndex((r) => r.step.kind === "stale");
-  const staleCount = rows.filter((r) => r.step.kind === "stale").length;
+  const [searching, setSearching] = useState(false);
+  const [, start] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const showSearch = searching || query.length > 0;
+  const narrowed = query.trim().length > 0 || conditions.some((c) => c.value);
+  const visible = groups.reduce((n, g) => n + g.rows.length, 0);
+
+  useEffect(() => {
+    if (searching) inputRef.current?.focus();
+  }, [searching]);
+
+  function done(row: Row) {
+    start(async () => {
+      try {
+        await markDone(row.person.id);
+        toast.success(`${row.person.name.split(" ")[0]} marked done.`);
+      } catch {
+        toast.error("That did not save.");
+      }
+    });
+  }
 
   return (
-    <section aria-label="Conversations" className="flex w-[340px] shrink-0 flex-col border-r">
-      <div className="flex items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
-        <span>
-          {rows.length === total ? `${total} conversations` : `${rows.length} of ${total} conversations`}
-        </span>
-        {replyCount > 0 && <span className={STATUS.reply.text}>{replyCount} need a reply</span>}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon-xs"
-              aria-label="Add person"
-              className="ml-auto rounded-full"
-              onClick={() => setAdding(true)}
+    <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col border-r bg-sidebar/60">
+      <div className="flex h-12 items-center gap-0.5 pr-2.5 pl-4">
+        {showSearch ? (
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={inputRef}
+              type="search"
+              value={query}
+              onChange={(e) => onQuery(e.target.value)}
+              onBlur={() => {
+                if (!query) setSearching(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  onQuery("");
+                  setSearching(false);
+                }
+              }}
+              placeholder="Search people"
+              className="h-8 bg-background pr-8 pl-8 text-[13px]"
+            />
+            <button
+              type="button"
+              aria-label="Close search"
+              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onQuery("");
+                setSearching(false);
+              }}
             >
-              <Plus />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Add person</TooltipContent>
-        </Tooltip>
+              <X className="size-3.5" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-[17px] font-bold tracking-tight">Inbox</h1>
+            <div className="ml-auto flex items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label="Search people" onClick={() => setSearching(true)}>
+                    <Search />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Search</TooltipContent>
+              </Tooltip>
+              <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} counts={statusCounts} />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Add person"
+                    className="text-blue-600 hover:text-blue-700"
+                    onClick={() => setAdding(true)}
+                  >
+                    <Plus />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Add person</TooltipContent>
+              </Tooltip>
+            </div>
+          </>
+        )}
         <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} onSaved={onCreated} />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <ul>
-          {rows.map((row, i) => {
-            const active = row.person.id === selectedId;
-            const stale = row.step.kind === "stale";
-            const s = STATUS[row.step.kind];
-            return (
-              <Fragment key={row.person.id}>
-                {stale && i === firstStale && (
-                  <li className="border-b bg-sidebar px-4 pt-3 pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                    Older than 30 days, {staleCount}
+      <Tabs value={tab} onValueChange={(v) => onTab(v as Tab)} className="px-3 pb-1">
+        <TabsList className="w-full">
+          {TABS.map((t) => (
+            <TabsTrigger key={t.id} value={t.id} className="text-xs">
+              {t.label}
+              <span className={cn("font-normal", tab === t.id && t.id === "needs" ? "text-blue-600" : "text-muted-foreground")}>
+                {tabCounts[t.id]}
+              </span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-2">
+        {groups.map((g) => (
+          <div key={g.kind} role="group" aria-label={g.title}>
+            {(tab !== "all" || g.kind === "stale") && (
+              <div className="flex items-baseline gap-1.5 px-2.5 pt-3.5 pb-1 text-[11px]">
+                <span className="font-semibold tracking-wide uppercase">{g.title}</span>
+                <span className="text-muted-foreground">{g.rows.length}</span>
+                {g.hint && <span className="ml-auto text-muted-foreground">{g.hint}</span>}
+              </div>
+            )}
+            <ul>
+              {g.rows.map((row) => {
+                const active = row.person.id === selectedId;
+                const stale = row.step.kind === "stale";
+                const canDone = row.step.kind !== "waiting" && !stale;
+                return (
+                  <li key={row.person.id} className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(row.person.id)}
+                      aria-current={active ? "true" : undefined}
+                      className={cn(
+                        "flex w-full min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-accent/70",
+                        active && "bg-blue-50 hover:bg-blue-50",
+                        stale && !active && "opacity-60",
+                      )}
+                    >
+                      <PersonAvatar person={row.person} className="mt-px size-9" />
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          {row.step.kind === "reply" && (
+                            <span aria-label="Needs a reply" className="size-1.5 shrink-0 rounded-full bg-blue-600" />
+                          )}
+                          <span className="truncate text-[13px] font-semibold">{row.person.name}</span>
+                          <Chip row={row} />
+                          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
+                            {lastTime(row)}
+                          </span>
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">{lastLine(row)}</div>
+                      </div>
+                    </button>
+                    <div
+                      className={cn(
+                        "absolute top-1.5 right-2 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
+                        "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
+                      )}
+                    >
+                      {canDone && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon-xs" aria-label="Mark done" onClick={() => done(row)}>
+                              <Check />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Done (E)</TooltipContent>
+                        </Tooltip>
+                      )}
+                      <SnoozeMenu personId={row.person.id} snoozed={Boolean(row.person.snoozedUntil)} size="icon-xs" />
+                    </div>
                   </li>
-                )}
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(row.person.id)}
-                    aria-current={active ? "true" : undefined}
-                    className={cn(
-                      "flex w-full min-w-0 flex-col gap-0.5 border-b px-4 py-3 text-left transition-colors hover:bg-accent/60",
-                      active && "bg-accent",
-                      stale && !active && "opacity-60",
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[13px] font-semibold">{row.person.name}</span>
-                      <span className="shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
-                        {lastTime(row)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-medium">
-                      <StatusDot kind={row.step.kind} />
-                      <span className={s.text}>{row.step.step}</span>
-                      <span className="font-normal text-muted-foreground" suppressHydrationWarning>
-                        {stale ? row.step.detail : row.step.dueNow ? "today" : dueLabel(row.step.dueAt)}
-                      </span>
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">{lastLine(row)}</div>
-                  </button>
-                </li>
-              </Fragment>
-            );
-          })}
-        </ul>
-        {rows.length === 0 && (
-          <div className="p-6 text-center text-xs text-muted-foreground">
-            {total === 0 ? "No one yet. Add a person, or connect the helper." : "No one matches this filter."}
+                );
+              })}
+            </ul>
           </div>
-        )}
+        ))}
+        {visible === 0 && <EmptyState tab={tab} narrowed={narrowed} total={total} />}
+      </div>
+
+      <div className="flex items-center justify-center gap-1.5 border-t py-2 text-[11px] text-muted-foreground">
+        <span
+          className={cn(
+            "inline-block size-1.5 rounded-full",
+            helper.connected ? "bg-emerald-500" : helper.state === "never" ? "bg-stone-300" : "bg-amber-500",
+          )}
+        />
+        <span suppressHydrationWarning>
+          {helper.connected
+            ? `Synced ${relativeTime(helper.lastSeenAt!)}`
+            : helper.state === "never"
+              ? "Helper not connected"
+              : "Helper needs attention"}
+        </span>
       </div>
     </section>
   );

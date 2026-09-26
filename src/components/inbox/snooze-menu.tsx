@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Clock } from "lucide-react";
 import { toast } from "sonner";
 import { snooze } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const CHOICES: { label: string; days: number }[] = [
   { label: "3 days", days: 3 },
@@ -22,32 +24,76 @@ const CHOICES: { label: string; days: number }[] = [
   { label: "1 quarter", days: 90 },
 ];
 
-export function SnoozeMenu({ personId, snoozed }: { personId: string; snoozed: boolean }) {
+/**
+ * Snooze choices in a menu. The trigger is an icon by default; pass `label`
+ * for a text button (the "Not now" on the next-step card). `open` makes it
+ * controlled so a keyboard shortcut can open it.
+ */
+export function SnoozeMenu({
+  personId,
+  snoozed,
+  label,
+  size = "icon-sm",
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  personId: string;
+  snoozed: boolean;
+  label?: string;
+  size?: "icon-sm" | "icon-xs";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onDone?: () => void;
+}) {
   const [pending, start] = useTransition();
   const [customOpen, setCustomOpen] = useState(false);
   const [date, setDate] = useState("");
 
-  function apply(until: number | string | null, label: string) {
+  function apply(until: number | string | null, text: string) {
     start(async () => {
       try {
         await snooze(personId, until);
-        toast.success(until === null ? "Snooze removed." : `Snoozed ${label}.`);
+        toast.success(until === null ? "Snooze removed." : `Snoozed ${text}.`);
         setCustomOpen(false);
+        onDone?.();
       } catch {
         toast.error("Could not snooze.");
       }
     });
   }
 
+  const trigger = label ? (
+    <Button variant="outline" size="sm" className="h-7 rounded-full px-3 text-xs" disabled={pending}>
+      {label}
+    </Button>
+  ) : (
+    <Button
+      variant="ghost"
+      size={size}
+      aria-label={snoozed ? "Snoozed, change" : "Snooze"}
+      aria-pressed={snoozed}
+      disabled={pending}
+      className={snoozed ? "text-blue-600" : undefined}
+    >
+      <Clock />
+    </Button>
+  );
+
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={pending}>
-            {snoozed ? "Snoozed" : "Snooze"}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
+      <DropdownMenu open={open} onOpenChange={onOpenChange}>
+        {label ? (
+          <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{snoozed ? "Snoozed" : "Snooze"} (S)</TooltipContent>
+          </Tooltip>
+        )}
+        <DropdownMenuContent align="end">
           {CHOICES.map((c) => (
             <DropdownMenuItem key={c.days} onSelect={() => apply(c.days, `for ${c.label}`)}>
               {c.label}
@@ -67,7 +113,7 @@ export function SnoozeMenu({ personId, snoozed }: { personId: string; snoozed: b
         <PopoverTrigger asChild>
           <span />
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-56 p-3">
+        <PopoverContent align="end" className="w-56 p-3">
           <form
             className="flex flex-col gap-2"
             onSubmit={(e) => {

@@ -72,6 +72,26 @@ export async function snooze(personId: string, until: number | string | null) {
   refresh();
 }
 
+/** Done: nothing more to do with this person until a new message arrives. Clears any snooze. */
+export async function markDone(personId: string) {
+  await ownPerson(personId);
+  // Stamp it after the newest message, so a clock that runs ahead cannot undo Done.
+  const latest = await db.message.findFirst({ where: { personId }, orderBy: { sentAt: "desc" }, select: { sentAt: true } });
+  const handledAt = new Date(Math.max(Date.now(), latest?.sentAt.getTime() ?? 0));
+  await db.person.update({
+    where: { id: personId },
+    data: { handledAt, snoozedUntil: null, ...touched() },
+  });
+  refresh();
+}
+
+/** Undo Done: the next step comes back from the messages. */
+export async function reopen(personId: string) {
+  await ownPerson(personId);
+  await db.person.update({ where: { id: personId }, data: { handledAt: null, ...touched() } });
+  refresh();
+}
+
 export async function archivePerson(personId: string) {
   await ownPerson(personId);
   await db.person.update({ where: { id: personId }, data: { archivedAt: new Date() } });
@@ -103,7 +123,11 @@ export async function logMessage(input: {
       source: "manual",
     },
   });
-  const updates: { snoozedUntil: null; stage?: Stage; connectedAt?: Date; lastActionAt: Date } = { snoozedUntil: null, ...touched() };
+  const updates: { snoozedUntil: null; handledAt: null; stage?: Stage; connectedAt?: Date; lastActionAt: Date } = {
+    snoozedUntil: null,
+    handledAt: null,
+    ...touched(),
+  };
   if (["warming", "requested", "connected"].includes(person.stage)) updates.stage = "conversation";
   if (!person.connectedAt) updates.connectedAt = sentAt;
   await db.person.update({ where: { id: input.personId }, data: updates });
@@ -133,7 +157,7 @@ export async function queueSend(input: { personId: string; body: string; followU
   await db.outbox.create({
     data: { workspaceId: workspace.id, personId: person.id, body, followUp: input.followUp ?? null },
   });
-  await db.person.update({ where: { id: person.id }, data: touched() });
+  await db.person.update({ where: { id: person.id }, data: { handledAt: null, ...touched() } });
   refresh();
 }
 

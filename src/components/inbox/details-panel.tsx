@@ -6,9 +6,9 @@ import { toast } from "sonner";
 import { updateNotes, updateStage } from "@/lib/actions";
 import type { Tag } from "@/lib/types";
 import { STAGES } from "@/lib/types";
-import { shortDate } from "@/lib/next-step";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { shortDate, shortTime } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import {
   Select,
   SelectContent,
@@ -16,29 +16,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { TagChip } from "@/components/tag-chip";
 import { TagPicker } from "@/components/people/tag-picker";
 import { PersonDialog } from "@/components/people/person-dialog";
 import type { Row } from "@/lib/rows";
+import { PersonAvatar } from "./people-list";
 
-function initials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function Field({ label, children, action }: { label: string; children: React.ReactNode; action?: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold">{label}</div>
-        {action}
-      </div>
+    <div className="flex flex-col gap-1.5">
+      <div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{label}</div>
       {children}
     </div>
   );
@@ -46,22 +34,36 @@ function Field({ label, children, action }: { label: string; children: React.Rea
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between text-xs">
+    <div className="flex justify-between border-b px-3 py-2 text-xs last:border-b-0">
       <span className="text-muted-foreground">{label}</span>
-      <span>{value}</span>
+      <span suppressHydrationWarning>{value}</span>
     </div>
   );
 }
 
+function Shortcut({ keys, label }: { keys: string[]; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {keys.map((k) => (
+        <Kbd key={k}>{k}</Kbd>
+      ))}
+      {label}
+    </span>
+  );
+}
+
+/** Who this person is. It never repeats the next step; the list and the card do that. */
 export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
-  const { person, step } = row;
+  const { person } = row;
   const [pending, start] = useTransition();
   const [notes, setNotes] = useState(person.notes);
   const [editing, setEditing] = useState(false);
 
   const personTags = tags.filter((t) => person.tagIds.includes(t.id));
   const inbound = person.messages.filter((m) => m.direction === "in");
+  const outbound = person.messages.filter((m) => m.direction === "out");
   const lastIn = inbound[inbound.length - 1];
+  const where = [person.company, person.location].filter(Boolean).join(" · ");
 
   function saveNotes() {
     if (notes === person.notes) return;
@@ -77,28 +79,19 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
   return (
     <aside
       aria-label="Person details"
-      className="flex w-[230px] shrink-0 flex-col gap-5 overflow-auto border-l px-5 py-5 text-xs"
+      className="flex w-[260px] shrink-0 flex-col gap-5 overflow-auto border-l bg-sidebar/60 px-4 py-4 text-xs"
     >
-      <div className="flex items-center justify-between">
-        <div className="text-[15px] font-semibold">Details</div>
-        <Button variant="ghost" size="icon-xs" aria-label="Edit person" onClick={() => setEditing(true)}>
-          <Pencil />
-        </Button>
-      </div>
-      <PersonDialog open={editing} onOpenChange={setEditing} tags={tags} person={person} />
-
-      <div className="flex items-center gap-2.5">
-        <Avatar>
-          <AvatarFallback className="text-xs">{initials(person.name)}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
+      <div className="flex items-start gap-2.5">
+        <PersonAvatar person={person} className="size-10" />
+        <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold">{person.name}</div>
+          {where && <div className="truncate text-[11px] text-muted-foreground">{where}</div>}
           {person.linkedinUrl ? (
             <a
               href={person.linkedinUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
             >
               Open on LinkedIn
               <ExternalLink className="size-3" />
@@ -107,7 +100,11 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
             <span className="text-[11px] text-muted-foreground">No LinkedIn URL yet</span>
           )}
         </div>
+        <Button variant="ghost" size="icon-xs" aria-label="Edit person" onClick={() => setEditing(true)}>
+          <Pencil />
+        </Button>
       </div>
+      <PersonDialog open={editing} onOpenChange={setEditing} tags={tags} person={person} />
 
       <Field label="Stage">
         <Select
@@ -123,7 +120,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
             })
           }
         >
-          <SelectTrigger size="sm" className="w-full text-xs">
+          <SelectTrigger size="sm" className="w-full bg-background text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -139,7 +136,7 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
       <Field label="Tags">
         <div className="flex flex-wrap gap-1.5">
           {personTags.map((t) => (
-            <TagChip key={t.id} tag={t} />
+            <TagChip key={t.id} tag={t} className="bg-background" />
           ))}
           <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
         </div>
@@ -152,21 +149,29 @@ export function DetailsPanel({ row, tags }: { row: Row; tags: Tag[] }) {
           onBlur={saveNotes}
           rows={4}
           placeholder="The trigger, the process, anything to remember."
-          className="min-h-0 resize-none text-xs leading-relaxed"
+          className="min-h-0 resize-none bg-background text-xs leading-relaxed"
         />
       </Field>
 
-      <Separator />
-
-      <Field label="Timeline">
-        <Fact label="Connected" value={person.connectedAt ? shortDate(new Date(person.connectedAt)) : "Not yet"} />
-        <Fact label="Messages" value={String(person.messages.length)} />
-        <Fact label="Last reply" value={lastIn ? shortDate(new Date(lastIn.sentAt)) : "None"} />
-        <Fact label="Next step" value={step.kind === "stale" ? "None" : step.dueNow ? "Today" : shortDate(step.dueAt)} />
-        {person.snoozedUntil && (
-          <Fact label="Snoozed until" value={shortDate(new Date(person.snoozedUntil))} />
-        )}
+      <Field label="Activity">
+        <div className="rounded-lg border bg-background">
+          <Fact label="Connected" value={person.connectedAt ? shortDate(new Date(person.connectedAt)) : "Not yet"} />
+          <Fact label="You sent" value={String(outbound.length + person.pending.length)} />
+          <Fact label="They sent" value={String(inbound.length)} />
+          <Fact
+            label="Last reply"
+            value={lastIn ? `${shortDate(new Date(lastIn.sentAt))}, ${shortTime(new Date(lastIn.sentAt))}` : "None"}
+          />
+          {person.snoozedUntil && <Fact label="Snoozed until" value={shortDate(new Date(person.snoozedUntil))} />}
+        </div>
       </Field>
+
+      <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1.5 pt-2 text-[11px] text-muted-foreground">
+        <Shortcut keys={["J", "K"]} label="move" />
+        <Shortcut keys={["R"]} label="reply" />
+        <Shortcut keys={["E"]} label="done" />
+        <Shortcut keys={["S"]} label="snooze" />
+      </div>
     </aside>
   );
 }

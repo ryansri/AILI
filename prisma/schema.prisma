@@ -62,6 +62,8 @@ model Person {
   archivedAt  DateTime?
   /// Last time the user did something to this person in AILI (stage, note, tag, send, snooze).
   lastActionAt DateTime?
+  /// The user pressed Done: nothing more to do until a new message arrives either way.
+  handledAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

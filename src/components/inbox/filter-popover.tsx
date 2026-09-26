@@ -7,6 +7,7 @@ import { activeConditions, FILTER_FIELDS, type Condition, type FilterField, type
 import { STAGES, type Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -56,18 +57,22 @@ export function FilterPopover({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn(
-            active.length && "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800",
-          )}
-        >
-          <ListFilter />
-          {label}
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={label}
+              aria-pressed={active.length > 0}
+              className={cn(active.length && "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700")}
+            >
+              <ListFilter />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
       <PopoverContent align="start" className="w-[560px] p-3">
         <div className="mb-2 text-xs text-muted-foreground">
           {conditions.length ? "Show conversations where" : "No filter. Add a condition to narrow the list."}
