@@ -234,10 +234,17 @@ export function PeopleList({
       <Tabs value={tab} onValueChange={(v) => onTab(v as Tab)} className="px-3 pb-1">
         <TabsList className="w-full">
           {TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id} className="text-xs">
+            <TabsTrigger key={t.id} value={t.id} className="gap-1.5 text-xs">
               {t.label}
-              <span className={cn("font-normal", tab === t.id && t.id === "needs" ? "text-blue-600" : "text-muted-foreground")}>
-                {tabCounts[t.id]}
+              <span
+                className={cn(
+                  "flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none",
+                  tab === t.id && t.id === "needs" && tabCounts[t.id] > 0
+                    ? "bg-blue-600 text-white"
+                    : "bg-foreground/10 text-muted-foreground",
+                )}
+              >
+                {tabCounts[t.id] > 99 ? "99+" : tabCounts[t.id]}
               </span>
             </TabsTrigger>
           ))}
