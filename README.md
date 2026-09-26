@@ -88,7 +88,9 @@ are in `extension/README.md`.
   details. Both are remembered. Search and an Airtable-style filter narrow
   whatever is open.
 - **Tags and stages.** Add a tag (name and colour) or a stage from the plus in
-  the sidebar. Drag stages to reorder them; the order is used everywhere.
+  the sidebar. Hover a tag for its ••• menu to rename, recolour or delete it;
+  deleting takes it off everyone and keeps the people. Drag stages to reorder
+  them; the order is used everywhere.
 - **Done.** Hover a row or press E. Nothing more to do until they write
   back; the person moves to Waiting. Reopen puts them back.
 - **Keyboard.** J and K move, R focuses the composer, E is done, S opens

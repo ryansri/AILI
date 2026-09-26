@@ -219,6 +219,31 @@ export async function createTag(label: string, color: string) {
   return tag.id;
 }
 
+/** Renames or recolours a tag. A name already used by another tag is refused. */
+export async function updateTag(tagId: string, input: { label?: string; color?: string }) {
+  const workspace = await getWorkspace();
+  const tag = await db.tag.findFirst({ where: { id: tagId, workspaceId: workspace.id } });
+  if (!tag) throw new Error("Not found");
+  const label = input.label === undefined ? tag.label : clean(input.label, 40);
+  if (!label) throw new Error("Tag needs a name");
+  const clash = await db.tag.findFirst({ where: { workspaceId: workspace.id, label, NOT: { id: tagId } } });
+  if (clash) throw new Error(`There is already a tag called "${label}".`);
+  await db.tag.update({
+    where: { id: tagId },
+    data: { label, color: input.color && isTagColor(input.color) ? input.color : tag.color },
+  });
+  refresh();
+}
+
+/** Deletes a tag. It comes off everyone who had it; the people stay. */
+export async function deleteTag(tagId: string) {
+  const workspace = await getWorkspace();
+  const tag = await db.tag.findFirst({ where: { id: tagId, workspaceId: workspace.id } });
+  if (!tag) throw new Error("Not found");
+  await db.tag.delete({ where: { id: tagId } });
+  refresh();
+}
+
 export async function setPersonTag(personId: string, tagId: string, on: boolean) {
   const { workspace } = await ownPerson(personId);
   const tag = await db.tag.findFirst({ where: { id: tagId, workspaceId: workspace.id } });

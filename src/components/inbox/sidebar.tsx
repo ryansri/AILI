@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { GripVertical, Hourglass, Inbox, List, Plus, Star } from "lucide-react";
+import { GripVertical, Hourglass, Inbox, List, MoreHorizontal, Plus, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { createStage, createTag, reorderStages } from "@/lib/actions";
+import { createStage, createTag, deleteTag, reorderStages, updateTag } from "@/lib/actions";
 import { sameView, type View } from "@/lib/rows";
 import { TAG_COLORS, type Account, type Person, type StageDef, type Tag, type TagColor } from "@/lib/types";
 import { averageReplyMs, shortDuration } from "@/lib/stats";
@@ -42,6 +42,7 @@ function Item({
   icon: Icon,
   lead,
   strong,
+  hideCountOnHover,
 }: {
   label: string;
   count: number;
@@ -50,6 +51,8 @@ function Item({
   icon?: LucideIcon;
   lead?: React.ReactNode;
   strong?: boolean;
+  /** Hide the count while the row is hovered, to make room for a menu button. */
+  hideCountOnHover?: boolean;
 }) {
   return (
     <button
@@ -66,6 +69,7 @@ function Item({
       <span
         className={cn(
           "shrink-0 text-xs tabular-nums",
+          hideCountOnHover && "group-hover/tag:invisible group-focus-within/tag:invisible",
           strong && count > 0 ? "font-semibold text-foreground" : "font-normal text-muted-foreground",
         )}
       >
@@ -155,6 +159,129 @@ function AddTag() {
             Add tag
           </Button>
         </form>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Edit a tag from the sidebar: rename it, change its colour, or delete it. */
+function EditTag({ tag, count, onDeleted }: { tag: Tag; count: number; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState(tag.label);
+  const [color, setColor] = useState<TagColor>(tag.color);
+  const [confirming, setConfirming] = useState(false);
+  const [pending, start] = useTransition();
+
+  function onOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) {
+      setLabel(tag.label);
+      setColor(tag.color);
+      setConfirming(false);
+    }
+  }
+
+  function save() {
+    start(async () => {
+      try {
+        await updateTag(tag.id, { label, color });
+        setOpen(false);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not save the tag.");
+      }
+    });
+  }
+
+  function remove() {
+    start(async () => {
+      try {
+        await deleteTag(tag.id);
+        toast.success(`Tag "${tag.label}" deleted.`);
+        setOpen(false);
+        onDeleted();
+      } catch {
+        toast.error("Could not delete the tag.");
+      }
+    });
+  }
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Edit tag ${tag.label}`}
+          className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 group-focus-within/tag:opacity-100 group-hover/tag:opacity-100 data-[state=open]:opacity-100"
+        >
+          <MoreHorizontal />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="w-64 p-3">
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
+          <div className="text-xs font-medium text-muted-foreground">Edit tag</div>
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            aria-label="Tag name"
+            className="h-8 text-md"
+          />
+          <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Tag colour">
+            {TAG_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={color === c}
+                aria-label={c}
+                onClick={() => setColor(c)}
+                className={cn(
+                  "size-5 rounded-full ring-offset-2 ring-offset-popover",
+                  SWATCH[c],
+                  color === c && "ring-2 ring-foreground",
+                )}
+              />
+            ))}
+          </div>
+          <Button type="submit" size="sm" disabled={!label.trim() || pending}>
+            Save
+          </Button>
+        </form>
+        <div className="mt-3 border-t pt-3">
+          {confirming ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">
+                {count === 0
+                  ? "No one has this tag."
+                  : `It comes off ${count} ${count === 1 ? "person" : "people"}. They stay in AILI.`}
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" className="flex-1" onClick={() => setConfirming(false)}>
+                  Keep it
+                </Button>
+                <Button type="button" size="sm" variant="destructive" className="flex-1" disabled={pending} onClick={remove}>
+                  Delete tag
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirming(true)}
+            >
+              Delete tag
+            </Button>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -366,14 +493,23 @@ export function InboxSidebar({
 
         <SectionHeader title="Tags" action={<AddTag />} />
         {tags.map((t) => (
-          <Item
-            key={t.id}
-            label={t.label}
-            count={counts.tags[t.id] ?? 0}
-            active={sameView(view, { kind: "tag", id: t.id })}
-            onClick={() => onView({ kind: "tag", id: t.id })}
-            lead={<TagDot color={t.color} className="mx-1 size-2" />}
-          />
+          <div key={t.id} className="group/tag relative">
+            <Item
+              label={t.label}
+              count={counts.tags[t.id] ?? 0}
+              active={sameView(view, { kind: "tag", id: t.id })}
+              onClick={() => onView({ kind: "tag", id: t.id })}
+              lead={<TagDot color={t.color} className="mx-1 size-2" />}
+              hideCountOnHover
+            />
+            <EditTag
+              tag={t}
+              count={counts.tags[t.id] ?? 0}
+              onDeleted={() => {
+                if (sameView(view, { kind: "tag", id: t.id })) onView({ kind: "now" });
+              }}
+            />
+          </div>
         ))}
         {tags.length === 0 && <p className="px-2 py-1 text-xs text-muted-foreground">No tags yet.</p>}
 
