@@ -114,4 +114,17 @@
     @apply bg-background text-foreground font-sans;
     -webkit-font-smoothing: antialiased;
   }
+  /* Tailwind 4 resets buttons to the arrow cursor. Anything clickable gets the hand. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  [role="menuitem"],
+  [role="option"],
+  [role="combobox"],
+  label:has(> input[type="checkbox"]),
+  a[href] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
 }
