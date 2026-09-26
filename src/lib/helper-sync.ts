@@ -63,6 +63,24 @@ export function splitHeadline(headline: string): { headline: string; company: st
   return { headline: first || headline.trim(), company: "" };
 }
 
+/** Only LinkedIn's image host is trusted for photos, so a bad value cannot point an avatar elsewhere. */
+export function isLinkedInImage(url: unknown): url is string {
+  return typeof url === "string" && url.length <= 1000 && /^https:\/\/media\.licdn\.com\//.test(url);
+}
+
+/**
+ * Your own LinkedIn photo, taken from the conversations being synced: you are
+ * a participant in every one, with the same picture data as the people you
+ * message. Null when none of them carries a usable photo of you.
+ */
+export function myPictureFromSync(payload: SyncPayload): string | null {
+  for (const conv of payload.conversations) {
+    const me = conv.participants.find((p) => p.urn === payload.memberUrn);
+    if (isLinkedInImage(me?.pictureUrl)) return me.pictureUrl;
+  }
+  return null;
+}
+
 /** Message bodies match when equal after collapsing whitespace. */
 export function sameBody(a: string, b: string): boolean {
   return a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();

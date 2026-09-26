@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { isLinkedInImage } from "@/lib/helper-sync";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +32,7 @@ export async function POST(request: Request) {
     version?: string;
   };
   const version = typeof body.version === "string" && /^\d+\.\d+\.\d+$/.test(body.version) ? body.version : null;
-  // Only LinkedIn's image host, so a bad value cannot point your avatar anywhere else.
-  const picture =
-    typeof body.pictureUrl === "string" && /^https:\/\/media\.licdn\.com\//.test(body.pictureUrl)
-      ? body.pictureUrl.slice(0, 1000)
-      : undefined;
+  const picture = isLinkedInImage(body.pictureUrl) ? body.pictureUrl : undefined;
   const state = ["ok", "logged_out", "error"].includes(body.state ?? "") ? body.state! : "error";
   await db.workspace.update({
     where: { id: workspace.id },

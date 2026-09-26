@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
-import { applySync, validatePayload } from "@/lib/helper-sync";
+import { applySync, myPictureFromSync, validatePayload } from "@/lib/helper-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   }
 
   const result = await applySync(workspace.id, payload);
+  const myPicture = myPictureFromSync(payload);
   await db.workspace.update({
     where: { id: workspace.id },
     data: {
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       helperMemberUrn: payload.memberUrn,
       helperName: payload.displayName ?? workspace.helperName,
       helperState: "ok",
+      ...(myPicture ? { helperPictureUrl: myPicture } : {}),
     },
   });
   revalidatePath("/inbox");

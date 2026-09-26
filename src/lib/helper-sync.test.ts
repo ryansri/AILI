@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sameBody, splitHeadline, validatePayload } from "./helper-sync";
+import { myPictureFromSync, sameBody, splitHeadline, validatePayload } from "./helper-sync";
 
 describe("splitHeadline", () => {
   it("splits role and company on ' at '", () => {
@@ -46,5 +46,27 @@ describe("validatePayload", () => {
   it("rejects payloads without a member urn", () => {
     expect(validatePayload({ conversations: [] })).toBeNull();
     expect(validatePayload(null)).toBeNull();
+  });
+});
+
+describe("myPictureFromSync", () => {
+  const base = { memberUrn: "urn:li:fsd_profile:ME", displayName: "Ryan Sri" };
+  it("takes your photo from the conversations you are in", () => {
+    const payload = {
+      ...base,
+      conversations: [
+        { id: "c1", lastActivityAt: 1, messages: [], participants: [{ urn: "urn:li:fsd_profile:ME", name: "Ryan Sri" }, { urn: "urn:li:fsd_profile:X", name: "X", pictureUrl: "https://media.licdn.com/x.jpg" }] },
+        { id: "c2", lastActivityAt: 1, messages: [], participants: [{ urn: "urn:li:fsd_profile:ME", name: "Ryan Sri", pictureUrl: "https://media.licdn.com/me.jpg" }] },
+      ],
+    };
+    expect(myPictureFromSync(payload)).toBe("https://media.licdn.com/me.jpg");
+  });
+
+  it("ignores photos from anywhere but LinkedIn's image host", () => {
+    const payload = {
+      ...base,
+      conversations: [{ id: "c1", lastActivityAt: 1, messages: [], participants: [{ urn: "urn:li:fsd_profile:ME", name: "Ryan Sri", pictureUrl: "https://evil.example.com/me.jpg" }] }],
+    };
+    expect(myPictureFromSync(payload)).toBeNull();
   });
 });
