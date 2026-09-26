@@ -283,8 +283,8 @@ export function PeopleList({
 
 /**
  * The header over the sidebar and the list together: the sidebar toggle,
- * "Inbox", then search, filter and add. With the sidebar hidden it also names
- * the view, since the sidebar is not there to show it.
+ * "Inbox", a small breadcrumb naming the view (Inbox › Waiting), then search,
+ * filter and add.
  */
 export function InboxHeader({
   viewName,
@@ -318,9 +318,10 @@ export function InboxHeader({
       <PageHeader
         title="Inbox"
         after={
-          sidebarOpen ? undefined : (
-            <span className="truncate text-xl font-normal tracking-tight text-muted-foreground">/ {viewName}</span>
-          )
+          <span className="flex min-w-0 items-center gap-1 pt-1 text-sm text-muted-foreground">
+            <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
+            <span className="truncate font-medium">{viewName}</span>
+          </span>
         }
         leading={
           <HeaderAction
