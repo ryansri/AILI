@@ -5,7 +5,7 @@ import { Check, CheckCheck, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/actions";
-import { daysBetween, dueLabel, relativeTime } from "@/lib/next-step";
+import { dueLabel, relativeTime } from "@/lib/next-step";
 import type { Condition, Group, Row, Tab } from "@/lib/rows";
 import { TABS } from "@/lib/rows";
 import type { HelperStatus, Person, Tag } from "@/lib/types";
@@ -54,29 +54,30 @@ function lastTime(row: Row): string {
   return last ? relativeTime(last.sentAt) : "";
 }
 
-/** The one chip a row may carry. Reply rows get a blue dot instead. */
-function Chip({ row }: { row: Row }) {
-  const { step, person } = row;
-  if (step.kind === "chase" || step.kind === "quiet") {
-    const outs = person.messages.filter((m) => m.direction === "out");
-    const lastOut = outs[outs.length - 1];
-    const days = lastOut ? daysBetween(new Date(lastOut.sentAt), new Date()) : 0;
-    const text = step.step === "Check back" ? "Snooze over" : `Day ${days}`;
-    return (
-      <span
-        suppressHydrationWarning
-        className={cn(
-          "shrink-0 rounded-full px-1.5 py-px text-[10.5px] font-medium",
-          step.kind === "chase" ? "bg-amber-50 text-amber-700" : "bg-violet-50 text-violet-700",
-        )}
-      >
-        {text}
-      </span>
-    );
+/**
+ * The one chip a row may carry. Reply rows get a blue dot instead.
+ * Amber means due now, grey means later and names the day. The time on the
+ * right is the last message, so the chip never repeats a day count.
+ */
+function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
+  const { step } = row;
+  if (step.kind === "chase") {
+    return <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-px text-[10.5px] font-medium text-amber-700">{step.step}</span>;
+  }
+  if (step.kind === "quiet" && !grouped) {
+    return <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-px text-[10.5px] font-medium text-violet-700">Decide</span>;
   }
   if (step.kind === "waiting") {
+    const day = dueLabel(step.dueAt);
+    const followUp = step.detail.match(/^follow-up (\d)/)?.[1];
     const text =
-      step.step === "Done" ? "Done" : step.detail === "snoozed" ? `Until ${dueLabel(step.dueAt)}` : dueLabel(step.dueAt);
+      step.step === "Done"
+        ? "Done"
+        : step.detail === "snoozed"
+          ? `Snoozed to ${day}`
+          : followUp
+            ? `Follow-up ${followUp} ${day}`
+            : `Decide ${day}`;
     return (
       <span suppressHydrationWarning className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10.5px] font-medium text-muted-foreground">
         {text}
@@ -243,29 +244,29 @@ export function PeopleList({
         </TabsList>
       </Tabs>
 
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-2">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-2">
         {groups.map((g) => (
           <div key={g.kind} role="group" aria-label={g.title}>
             {(tab !== "all" || g.kind === "stale") && (
-              <div className="flex items-baseline gap-1.5 px-2.5 pt-3.5 pb-1 text-[11px]">
+              <div className="flex items-baseline gap-1.5 px-4 pt-3.5 pb-1.5 text-[11px]">
                 <span className="font-semibold tracking-wide uppercase">{g.title}</span>
                 <span className="text-muted-foreground">{g.rows.length}</span>
                 {g.hint && <span className="ml-auto text-muted-foreground">{g.hint}</span>}
               </div>
             )}
-            <ul>
+            <ul className="border-t">
               {g.rows.map((row) => {
                 const active = row.person.id === selectedId;
                 const stale = row.step.kind === "stale";
                 const canDone = row.step.kind !== "waiting" && !stale;
                 return (
-                  <li key={row.person.id} className="group relative">
+                  <li key={row.person.id} className="group relative border-b">
                     <button
                       type="button"
                       onClick={() => onSelect(row.person.id)}
                       aria-current={active ? "true" : undefined}
                       className={cn(
-                        "flex w-full min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-accent/70",
+                        "flex w-full min-w-0 items-start gap-2.5 px-4 py-3 text-left transition-colors hover:bg-accent/70",
                         active && "bg-blue-50 hover:bg-blue-50",
                         stale && !active && "opacity-60",
                       )}
@@ -274,20 +275,20 @@ export function PeopleList({
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
                           {row.step.kind === "reply" && (
-                            <span aria-label="Needs a reply" className="size-1.5 shrink-0 rounded-full bg-blue-600" />
+                            <span aria-label="Needs a reply" className="-mr-0.5 size-1.5 shrink-0 rounded-full bg-blue-600" />
                           )}
                           <span className="truncate text-[13px] font-semibold">{row.person.name}</span>
-                          <Chip row={row} />
-                          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
+                          <Chip row={row} grouped={tab !== "all"} />
+                          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground/80" suppressHydrationWarning>
                             {lastTime(row)}
                           </span>
                         </div>
-                        <div className="truncate text-xs text-muted-foreground">{lastLine(row)}</div>
+                        <div className="truncate text-xs text-foreground/70">{lastLine(row)}</div>
                       </div>
                     </button>
                     <div
                       className={cn(
-                        "absolute top-1.5 right-2 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
+                        "absolute top-2 right-3 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
                         "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
                       )}
                     >

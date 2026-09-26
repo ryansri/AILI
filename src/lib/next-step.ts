@@ -205,14 +205,14 @@ export function dueLabel(dueAt: Date, now: Date = new Date()): string {
   return shortDate(dueAt);
 }
 
-/** Time label for the row: "now", "2 h", "Yesterday", "4 d". */
+/** Time label for the row: "now", "2h", "Yesterday", "4d". */
 export function relativeTime(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   const ms = now.getTime() - date.getTime();
   const hours = Math.floor(ms / (60 * 60 * 1000));
   if (hours < 1) return "now";
-  if (daysBetween(date, now) === 0) return `${hours} h`;
+  if (daysBetween(date, now) === 0) return `${hours}h`;
   const days = daysBetween(date, now);
   if (days === 1) return "Yesterday";
-  return `${days} d`;
+  return `${days}d`;
 }
