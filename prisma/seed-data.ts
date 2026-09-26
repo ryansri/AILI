@@ -1,7 +1,7 @@
 import type { Person, Tag } from "../src/lib/types";
 
 /** Seed rows carry only what the seed script writes. */
-export type SeedPerson = Omit<Person, "source" | "pending">;
+export type SeedPerson = Omit<Person, "source" | "pending" | "jobTitle">;
 
 /**
  * Sample people used until the Chrome helper syncs a real inbox.

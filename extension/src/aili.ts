@@ -57,3 +57,21 @@ export function reportOutbox(
 ) {
   return call(pairing, `/api/helper/outbox/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(body) });
 }
+
+export interface LookupItem {
+  id: string;
+  name: string;
+  identity: string;
+}
+
+export async function takeLookups(pairing: Pairing): Promise<LookupItem[]> {
+  const data = await call<{ items?: LookupItem[] }>(pairing, "/api/helper/profiles");
+  return Array.isArray(data?.items) ? data.items : [];
+}
+
+export function reportLookups(
+  pairing: Pairing,
+  results: { id: string; status: "found" | "none"; title?: string; company?: string }[],
+) {
+  return call(pairing, "/api/helper/profiles", { method: "POST", body: JSON.stringify({ results }) });
+}

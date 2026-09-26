@@ -16,6 +16,7 @@ function person(overrides: Partial<Person>): Person {
     id: "p",
     name: "Test Person",
     headline: "Founder",
+    jobTitle: "",
     company: "Test Co",
     linkedinUrl: "https://www.linkedin.com/in/test",
     stage: "conversation",

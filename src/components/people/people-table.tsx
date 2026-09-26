@@ -33,7 +33,7 @@ export function PeopleTable({ people, tags, stages }: { people: Person[]; tags: 
     const list = people
       .filter((p) => stage === "all" || p.stage === stage)
       .filter((p) => tagId === "all" || p.tagIds.includes(tagId))
-      .filter((p) => !q || `${p.name} ${p.company} ${p.headline} ${p.location ?? ""}`.toLowerCase().includes(q))
+      .filter((p) => !q || `${p.name} ${p.jobTitle} ${p.company} ${p.headline} ${p.location ?? ""}`.toLowerCase().includes(q))
       .map((person) => ({ person, step: nextStep(person, now) }));
     return sortRows(list, "recent");
   }, [people, query, stage, tagId]);
@@ -113,7 +113,7 @@ export function PeopleTable({ people, tags, stages }: { people: Person[]; tags: 
                     <Link href={`/inbox?person=${person.id}`} className="block">
                       <div className="text-md font-semibold">{person.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {[person.headline, person.company].filter(Boolean).join(", ")}
+                        {[person.jobTitle || person.headline, person.company].filter(Boolean).join(", ")}
                       </div>
                     </Link>
                   </TableCell>

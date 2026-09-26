@@ -34,6 +34,7 @@ async function main() {
         workspaceId: workspace.id,
         name: person.name,
         headline: person.headline,
+        jobTitle: person.headline,
         company: person.company,
         location: person.location ?? "",
         linkedinUrl: person.linkedinUrl,

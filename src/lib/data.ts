@@ -26,6 +26,7 @@ function toPerson(row: PersonRow): Person {
     id: row.id,
     name: row.name,
     headline: row.headline,
+    jobTitle: row.jobTitle,
     company: row.company,
     location: row.location || undefined,
     linkedinUrl: row.linkedinUrl || (row.publicId ? `https://www.linkedin.com/in/${row.publicId}` : ""),

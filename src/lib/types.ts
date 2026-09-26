@@ -61,7 +61,10 @@ export interface PendingMessage {
 export interface Person {
   id: string;
   name: string;
+  /** The LinkedIn headline, e.g. "Get FOUND + WIN Clients On LinkedIn". */
   headline: string;
+  /** Current job title, e.g. "Founder". Empty until looked up or typed. */
+  jobTitle: string;
   company: string;
   location?: string;
   linkedinUrl: string;

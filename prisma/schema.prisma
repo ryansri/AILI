@@ -65,6 +65,12 @@ model Person {
   lastActionAt DateTime?
   /// The user pressed Done: nothing more to do until a new message arrives either way.
   handledAt   DateTime?
+  /// Current job title, from the person's LinkedIn profile or typed by the user.
+  jobTitle    String    @default("")
+  /// When the helper last looked up the LinkedIn profile for title and company.
+  profileCheckedAt DateTime?
+  /// When the user last saved this person by hand. Profile lookups never overwrite after that.
+  profileEditedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

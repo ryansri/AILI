@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractConversationId, extractProfileId, linkedInVariables, raw } from "./encode";
-import { extractSentMessage, normalizeConversations, normalizeMessages } from "./normalize";
+import { extractCurrentPosition, extractSentMessage, normalizeConversations, normalizeMessages } from "./normalize";
 
 function participant(convId: string, i: number, profileId: string, first: string, last: string, headline = "") {
   return {
@@ -110,5 +110,39 @@ describe("extractSentMessage", () => {
     });
     expect(extractSentMessage({ data: { value: { entityUrn: "urn:li:msg_message:9", deliveredAt: 5 } } })?.id).toBe("urn:li:msg_message:9");
     expect(extractSentMessage({ nope: true })).toBeNull();
+  });
+});
+
+describe("extractCurrentPosition", () => {
+  it("reads the dash profile shape, preferring the current, latest-started role", () => {
+    const res = {
+      data: {},
+      included: [
+        { $type: "com.linkedin.voyager.dash.identity.profile.Position", title: "Analyst", companyName: "Old Co", dateRange: { start: { year: 2015 }, end: { year: 2019 } } },
+        { $type: "com.linkedin.voyager.dash.identity.profile.Position", title: "Advisor", companyName: "Side Co", dateRange: { start: { year: 2018, month: 3 } } },
+        { $type: "com.linkedin.voyager.dash.identity.profile.Position", title: "Founder", companyName: "Lounds Consulting", dateRange: { start: { year: 2021, month: 6 } } },
+        { $type: "com.linkedin.voyager.dash.identity.profile.Education", title: "MBA", schoolName: "RMIT", companyName: "RMIT" },
+      ],
+    };
+    expect(extractCurrentPosition(res)).toEqual({ title: "Founder", company: "Lounds Consulting" });
+  });
+
+  it("reads the older positionGroups shape", () => {
+    const res = {
+      elements: [
+        {
+          positions: [
+            { title: "Ops Director", companyName: "Bright Agency", timePeriod: { startDate: { year: 2022, month: 1 } } },
+          ],
+        },
+        { positions: [{ title: "Manager", companyName: "Past Ltd", timePeriod: { startDate: { year: 2016 }, endDate: { year: 2021 } } }] },
+      ],
+    };
+    expect(extractCurrentPosition(res)).toEqual({ title: "Ops Director", company: "Bright Agency" });
+  });
+
+  it("returns null when every role has ended or there are none", () => {
+    expect(extractCurrentPosition({ included: [{ title: "X", companyName: "Y", dateRange: { start: { year: 2010 }, end: { year: 2012 } } }] })).toBeNull();
+    expect(extractCurrentPosition({ included: [] })).toBeNull();
   });
 });

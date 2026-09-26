@@ -62,7 +62,7 @@ export function DetailsPanel({ row, tags, stages }: { row: Row; tags: Tag[]; sta
   const inbound = person.messages.filter((m) => m.direction === "in");
   const outbound = person.messages.filter((m) => m.direction === "out");
   const lastIn = inbound[inbound.length - 1];
-  const where = [person.company, person.location].filter(Boolean).join(" · ");
+  const where = [person.jobTitle, person.company, person.location].filter(Boolean).join(" · ");
 
   function saveNotes() {
     if (notes === person.notes) return;
@@ -104,6 +104,12 @@ export function DetailsPanel({ row, tags, stages }: { row: Row; tags: Tag[]; sta
         </Button>
       </div>
       <PersonDialog open={editing} onOpenChange={setEditing} tags={tags} stages={stages} person={person} />
+
+      {person.headline && (
+        <Field label="LinkedIn headline">
+          <p className="text-xs leading-relaxed text-muted-foreground">{person.headline}</p>
+        </Field>
+      )}
 
       <Field label="Stage">
         <Select

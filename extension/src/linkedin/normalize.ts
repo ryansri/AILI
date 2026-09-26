@@ -163,3 +163,73 @@ export function extractSentMessage(data: unknown): { id: string; sentAt: number;
   if (typeof convUrn === "string") return { id: "", sentAt: Date.now(), conversationId: extractConversationId(convUrn) || undefined };
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Current position, for job title and company
+// ---------------------------------------------------------------------------
+
+export interface CurrentPosition {
+  title: string;
+  company: string;
+}
+
+interface YearMonth {
+  year?: number;
+  month?: number;
+}
+
+function toYm(v: unknown): YearMonth | null {
+  const o = v as Loose;
+  return o && typeof o === "object" && typeof o.year === "number" ? { year: o.year, month: o.month } : null;
+}
+
+function ymValue(ym: YearMonth | null): number {
+  return ym ? (ym.year ?? 0) * 12 + (ym.month ?? 1) : 0;
+}
+
+/** Start and end of a position, from either dateRange {start, end} or timePeriod {startDate, endDate}. */
+function period(o: Loose): { start: YearMonth | null; end: YearMonth | null } {
+  if (o.dateRange && typeof o.dateRange === "object") return { start: toYm(o.dateRange.start), end: toYm(o.dateRange.end) };
+  if (o.timePeriod && typeof o.timePeriod === "object") return { start: toYm(o.timePeriod.startDate), end: toYm(o.timePeriod.endDate) };
+  return { start: null, end: null };
+}
+
+function textOf(v: unknown): string {
+  if (typeof v === "string") return v.trim();
+  return text(v).trim();
+}
+
+/**
+ * Finds the person's current job in a LinkedIn profile response. LinkedIn
+ * has several profile shapes (positionGroups, profileView, dash profiles), so
+ * this walks the whole response for position-like records: a title plus a
+ * company name. Current means no end date; the latest start wins. Returns
+ * null when nothing current is there.
+ */
+export function extractCurrentPosition(response: unknown): CurrentPosition | null {
+  const found: { title: string; company: string; start: number; current: boolean }[] = [];
+  const seen = new Set<unknown>();
+
+  function walk(node: unknown, depth: number) {
+    if (!node || typeof node !== "object" || depth > 12 || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    const o = node as Loose;
+    const title = textOf(o.title);
+    const company = textOf(o.companyName) || textOf(o.company?.name) || textOf(o.multiLocaleCompanyName?.en_US);
+    if (title && company && !o.schoolName) {
+      const { start, end } = period(o);
+      found.push({ title, company, start: ymValue(start), current: !end });
+    }
+    for (const value of Object.values(o)) walk(value, depth + 1);
+  }
+
+  walk(response, 0);
+  const current = found.filter((f) => f.current);
+  if (current.length === 0) return null;
+  current.sort((a, b) => b.start - a.start);
+  return { title: current[0].title.slice(0, 120), company: current[0].company.slice(0, 120) };
+}

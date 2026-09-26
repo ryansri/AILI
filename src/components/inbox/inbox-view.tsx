@@ -98,7 +98,7 @@ export function InboxView({
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
       if (!matchesConditions(r, conditions)) return false;
-      if (q && !`${r.person.name} ${r.person.company} ${r.person.headline}`.toLowerCase().includes(q)) return false;
+      if (q && !`${r.person.name} ${r.person.jobTitle} ${r.person.company} ${r.person.headline}`.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [rows, conditions, query]);

@@ -239,6 +239,7 @@ export async function setPersonTag(personId: string, tagId: string, on: boolean)
 export interface PersonInput {
   name: string;
   headline?: string;
+  jobTitle?: string;
   company?: string;
   location?: string;
   linkedinUrl?: string;
@@ -261,6 +262,7 @@ export async function createPerson(input: PersonInput) {
       workspaceId: workspace.id,
       name,
       headline: clean(input.headline, 200),
+      jobTitle: clean(input.jobTitle, 120),
       company: clean(input.company, 120),
       location: clean(input.location, 120),
       linkedinUrl: clean(input.linkedinUrl, 300),
@@ -286,11 +288,13 @@ export async function updatePerson(personId: string, input: PersonInput) {
     where: { id: personId },
     data: {
       name,
-      headline: clean(input.headline, 200),
+      ...(input.headline !== undefined ? { headline: clean(input.headline, 200) } : {}),
+      jobTitle: clean(input.jobTitle, 120),
       company: clean(input.company, 120),
       location: clean(input.location, 120),
       linkedinUrl,
       publicId: publicIdFromUrl(linkedinUrl) ?? undefined,
+      profileEditedAt: new Date(),
       ...touched(),
     },
   });

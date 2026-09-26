@@ -12,6 +12,7 @@ function person(over: Partial<Person>): Person {
     id: over.id ?? over.name ?? "p",
     name: "Test",
     headline: "",
+    jobTitle: "",
     company: "",
     linkedinUrl: "",
     source: "linkedin",

@@ -48,7 +48,7 @@ export function PersonDialog({
   function submit(form: FormData) {
     const input = {
       name: String(form.get("name") ?? ""),
-      headline: String(form.get("headline") ?? ""),
+      jobTitle: String(form.get("jobTitle") ?? ""),
       company: String(form.get("company") ?? ""),
       location: String(form.get("location") ?? ""),
       linkedinUrl: String(form.get("linkedinUrl") ?? ""),
@@ -97,12 +97,12 @@ export function PersonDialog({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
-                <Label htmlFor="p-headline">Role</Label>
-                <Input id="p-headline" name="headline" defaultValue={person?.headline} placeholder="Founder" />
+                <Label htmlFor="p-title">Job title</Label>
+                <Input id="p-title" name="jobTitle" defaultValue={person?.jobTitle} placeholder="Founder" />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="p-company">Company</Label>
-                <Input id="p-company" name="company" defaultValue={person?.company} />
+                <Input id="p-company" name="company" defaultValue={person?.company} placeholder="Ledger & Co" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

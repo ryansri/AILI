@@ -7,15 +7,25 @@
  *      one-to-one conversation active in the last BACKFILL_DAYS is in AILI,
  *   3. after that, every other tick, re-read the first pages of the inbox and
  *      push anything with new activity,
- *   4. tell AILI it is alive.
+ *   4. once history is in, look up at most two profiles for a current job
+ *      title and company (people who need you first, each person once),
+ *   5. tell AILI it is alive.
  *
  * It never sends anything on its own. The queue only holds what a human
  * clicked, and AILI caps it per day.
  */
 
-import { postSync, reportOutbox, reportStatus, takeOutbox } from "./aili";
+import { postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox } from "./aili";
 import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
-import { fetchConversationsPage, fetchThread, getMe, sendToConversation, sendToRecipient, type InboxCategory } from "./linkedin/api";
+import {
+  fetchConversationsPage,
+  fetchCurrentPosition,
+  fetchThread,
+  getMe,
+  sendToConversation,
+  sendToRecipient,
+  type InboxCategory,
+} from "./linkedin/api";
 import type { ConversationSummary, PlainMessage } from "./linkedin/normalize";
 import { getBackfill, getPairing, getStatus, getSyncedAt, setBackfill, setStatus, setSyncedAt, type Pairing } from "./storage";
 
@@ -85,6 +95,7 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
       synced = true;
     }
     if (!synced) await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName });
+    if (backfill.category === "done") await lookupProfiles(pairing);
 
     await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName });
   } catch (err) {
@@ -98,6 +109,28 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
     if (pairing) await reportStatus(pairing, { state: loggedOut ? "logged_out" : "error" }).catch(() => {});
   } finally {
     running = false;
+  }
+}
+
+/**
+ * Fills in job titles and companies, two people a tick at most. Whatever was
+ * looked up before a pause is reported, so nobody is looked up twice.
+ */
+async function lookupProfiles(pairing: Pairing): Promise<void> {
+  const items = await takeLookups(pairing);
+  const results: { id: string; status: "found" | "none"; title?: string; company?: string }[] = [];
+  try {
+    for (const item of items) {
+      await jitter(2000, 3000);
+      const found = await fetchCurrentPosition(item.identity);
+      results.push(
+        found.status === "found"
+          ? { id: item.id, status: "found", title: found.position.title, company: found.position.company }
+          : { id: item.id, status: "none" },
+      );
+    }
+  } finally {
+    if (results.length) await reportLookups(pairing, results).catch(() => {});
   }
 }
 

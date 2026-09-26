@@ -11,6 +11,7 @@ function person(messages: [Message["direction"], number][]): Person {
     id: "p",
     name: "P",
     headline: "",
+    jobTitle: "",
     company: "",
     linkedinUrl: "",
     source: "linkedin",

@@ -132,7 +132,7 @@ export function ConversationPane({
   const viaHelper = account.helper.connected && Boolean(person.linkedinUrn);
   const actionable = step.kind === "reply" || step.kind === "chase" || step.kind === "quiet";
   const isDone = step.kind === "waiting" && step.step === "Done";
-  const subtitle = [person.headline, person.company].filter(Boolean).join(" · ");
+  const subtitle = [person.jobTitle || person.headline, person.company].filter(Boolean).join(" · ");
   const personTags = tags.filter((t) => person.tagIds.includes(t.id));
 
   function run(fn: () => Promise<unknown>, done: string) {

@@ -9,10 +9,12 @@
 import { LinkedInError, jitter, voyagerFetch } from "./client";
 import { encodeUrnChars, extractConversationId, linkedInVariables, raw } from "./encode";
 import {
+  extractCurrentPosition,
   extractSentMessage,
   normalizeConversations,
   normalizeMessages,
   type ConversationSummary,
+  type CurrentPosition,
   type Loose,
   type PlainMessage,
   type VoyagerResponse,
@@ -152,4 +154,44 @@ export async function sendToRecipient(memberUrn: string, recipientUrn: string, b
   await jitter();
   const found = await findConversationWith(memberUrn, recipientUrn);
   return { ...(sent ?? { id: "", sentAt: Date.now() }), conversationId: found ?? undefined };
+}
+
+/*
+ * Profile lookups for a current job title and company. LinkedIn has more than
+ * one profile endpoint and retires them now and then, so these are tried in
+ * order and the one that last worked goes first next time.
+ */
+const PROFILE_PATHS = [
+  (id: string) =>
+    `/identity/dash/profiles?q=memberIdentity&memberIdentity=${encodeURIComponent(id)}&decorationId=com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-93`,
+  (id: string) => `/identity/profiles/${encodeURIComponent(id)}/positionGroups`,
+  (id: string) => `/identity/profiles/${encodeURIComponent(id)}/profileView`,
+];
+let preferredPath = 0;
+
+export type PositionLookup = { status: "found"; position: CurrentPosition } | { status: "none" };
+
+/**
+ * Looks up one person's current position. Throws LinkedInError on 401 (logged
+ * out), 429 or a server error, so the caller pauses like it does for syncing.
+ * Any other refusal means that endpoint is no use for this profile, so the next
+ * one is tried; if none has a current role the answer is "none".
+ */
+export async function fetchCurrentPosition(identity: string): Promise<PositionLookup> {
+  const order = [preferredPath, ...PROFILE_PATHS.keys()].filter((v, i, a) => a.indexOf(v) === i);
+  for (const index of order) {
+    const res = await voyagerFetch(PROFILE_PATHS[index](identity));
+    if (res.status === 401 || res.status === 429 || res.status >= 500) {
+      throw new LinkedInError(`Profile lookup returned ${res.status}`, res.status);
+    }
+    if (res.ok) {
+      const position = extractCurrentPosition(await res.json().catch(() => null));
+      if (position) {
+        preferredPath = index;
+        return { status: "found", position };
+      }
+    }
+    await jitter(600, 900);
+  }
+  return { status: "none" };
 }
