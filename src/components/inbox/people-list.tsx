@@ -204,7 +204,7 @@ export function PeopleList({
         {groups.map((g) => (
           <div key={g.kind} role="group" aria-label={g.title}>
             {(tab !== "all" || g.kind === "stale") && (
-              <div className="flex items-baseline gap-1.5 px-4 pt-5 pb-2 text-2xs">
+              <div className="flex items-baseline gap-1.5 px-4 pt-4 pb-2 text-2xs">
                 <span className="font-semibold tracking-wider uppercase">{g.title}</span>
                 <span className="text-muted-foreground">{g.rows.length}</span>
                 {g.hint && <span className="ml-auto text-muted-foreground">{g.hint}</span>}

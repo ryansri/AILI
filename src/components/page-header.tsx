@@ -10,8 +10,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 /**
  * The one page header used across the app: a 20px bold title on the left and
- * icon actions on the right, 56px tall. Anything passed as `children` (tabs,
- * a filter row) sits underneath, and the border closes the whole block.
+ * icon actions on the right, 56px tall with its border at the bottom, so it
+ * lines up with the conversation header beside it. Anything passed as
+ * `children` (tabs, a filter row) sits underneath without a border of its own.
  */
 export function PageHeader({
   title,
@@ -28,8 +29,8 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <header className={cn("shrink-0 border-b", className)}>
-      <div className="flex h-14 items-center gap-2 pr-3 pl-4">
+    <header className={cn("shrink-0", className)}>
+      <div className="flex h-14 items-center gap-2 border-b pr-3 pl-4">
         {search ?? (
           <>
             <h1 className="truncate text-xl font-bold tracking-tight">{title}</h1>
@@ -37,7 +38,7 @@ export function PageHeader({
           </>
         )}
       </div>
-      {children && <div className="px-4 pb-4">{children}</div>}
+      {children && <div className="px-4 py-3">{children}</div>}
     </header>
   );
 }
