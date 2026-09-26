@@ -86,6 +86,10 @@ export interface Person {
   lastActionAt?: string; // ISO
   /** The user pressed Done. Any message after this wakes the person up again. */
   handledAt?: string; // ISO
+  /** When the person was added to AILI. */
+  createdAt?: string; // ISO
+  /** When the person last moved stage. */
+  stageChangedAt?: string; // ISO
   messages: Message[];
   pending: PendingMessage[];
 }

@@ -125,7 +125,19 @@ are in `extension/README.md`.
 - **Snooze.** 3 days to a quarter, or pick a date.
 - **Details.** Stage, tags, notes, edit the person. The more menu marks call
   earned, won, lost, or archives.
-- **People.** Everyone as a table with stage and tag filters.
+- **People.** The tracking page. On top, your funnel: every stage in your
+  order with how many people reached it, the rate from the step before, how
+  many are there now, and Lost on its own. Narrow it to a tag or to people
+  added in the last 7, 30 or 90 days. One line names the biggest drop and
+  shows the people stuck there. Click a stage to list who is in it now. The
+  table shows stage, tags, last touch, messages sent and received, and days in
+  stage (sort by it to find who has stalled); click a row to open the
+  conversation. Tick rows to Message all, Add tag, Move to stage or Archive.
+  Import takes a CSV, including LinkedIn's own Connections export, and skips
+  anyone already in AILI.
+  "Reached" is worked out from each person's current stage plus what their
+  record proves (request and connect dates, messages, a reply). People the
+  helper imported only count as In conversation once they have replied.
 - **Today.** Reply, chase, decide, withdraw old requests, warm up.
 - **Settings.** Helper token and status, daily cap, templates, notifications,
   your account, log out.
@@ -179,7 +191,7 @@ src/
     shell/rail.tsx      left icon rail with the Now count badge and helper dot
     inbox/              sidebar (views, tags, stages), people list, conversation
                         pane, details panel, send dialog, log-reply dialog, snooze menu
-    people/             people table, add/edit dialog, tag picker
+    people/             funnel, people table and bulk bar, import, add/edit dialog, tag picker
     settings/           settings page
     templates/          template editor, picker, settings list, Message all dialog
     ui/                 shadcn components
@@ -190,6 +202,8 @@ src/
     actions.ts          server actions (writes), including the send queue
     auth.ts             passwords and session cookies
     helper-sync.ts      applies what the helper saw to the database
+    funnel.ts           who reached each stage, rates, the biggest drop
+    csv.ts              reads CSV imports, including LinkedIn's Connections export
     templates.ts        fills {first_name} and the other fields for a person
     types.ts            Person, Message, Tag, Stage, Account
 ```

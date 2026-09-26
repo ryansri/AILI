@@ -611,6 +611,13 @@ export function InboxSidebar({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3">
         <div className="flex h-6 items-center px-2 text-xs font-medium text-muted-foreground">Views</div>
         <Item
+          icon={List}
+          label="All"
+          count={counts.all}
+          active={sameView(view, { kind: "all" })}
+          onClick={() => onView({ kind: "all" })}
+        />
+        <Item
           icon={Inbox}
           label="Now"
           count={counts.now}
@@ -624,13 +631,6 @@ export function InboxSidebar({
           count={counts.waiting}
           active={sameView(view, { kind: "waiting" })}
           onClick={() => onView({ kind: "waiting" })}
-        />
-        <Item
-          icon={List}
-          label="All"
-          count={counts.all}
-          active={sameView(view, { kind: "all" })}
-          onClick={() => onView({ kind: "all" })}
         />
         <Item
           icon={Star}

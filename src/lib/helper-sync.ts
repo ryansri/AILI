@@ -188,6 +188,7 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
           source: "linkedin",
           stage: "conversation",
           connectedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
+          stageChangedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
         },
       });
       personId = created.id;
@@ -234,7 +235,7 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
     const person = await db.person.findUniqueOrThrow({ where: { id: personId } });
     const hasInbound = conv.messages.some((m) => m.senderUrn !== payload.memberUrn);
     if (hasInbound && ["warming", "requested", "connected"].includes(person.stage)) {
-      await db.person.update({ where: { id: personId }, data: { stage: "conversation" } });
+      await db.person.update({ where: { id: personId }, data: { stage: "conversation", stageChangedAt: new Date() } });
     }
   }
 

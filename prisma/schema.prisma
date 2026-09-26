@@ -62,6 +62,9 @@ model Person {
   source      String    @default("manual")
   /// Stage key, see the Stage model
   stage       String    @default("warming")
+  /// When the person last moved stage. Drives "days in stage" on the People page.
+  /// Empty for people from before it was recorded; the page estimates from other dates.
+  stageChangedAt DateTime?
   notes       String    @default("")
   starred     Boolean   @default(false)
   connectedAt DateTime?

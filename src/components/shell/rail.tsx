@@ -38,8 +38,8 @@ function RailLink({
           aria-label={badge ? `${label}, ${badge} need you` : label}
           aria-current={active ? "page" : undefined}
           className={cn(
-            "relative flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-            active && "bg-accent text-foreground",
+            "relative flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground",
+            active && "bg-foreground/[0.08] text-foreground hover:bg-foreground/[0.08]",
           )}
         >
           <Icon className="size-4.5" strokeWidth={1.75} />
@@ -70,7 +70,7 @@ function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: strin
         <Link
           href="/settings"
           aria-label="Helper status"
-          className="flex size-8 items-center justify-center rounded-md hover:bg-accent"
+          className="flex size-8 items-center justify-center rounded-md hover:bg-foreground/[0.05]"
         >
           <span
             className={cn(

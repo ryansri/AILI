@@ -31,6 +31,7 @@ export function MessageAllDialog({
   open,
   onOpenChange,
   groupName,
+  title,
   people,
   templates,
   account,
@@ -38,6 +39,8 @@ export function MessageAllDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   groupName: string;
+  /** Overrides "Message everyone in {groupName}". */
+  title?: string;
   people: Person[];
   templates: Template[];
   account: Account;
@@ -102,7 +105,7 @@ export function MessageAllDialog({
     <Dialog open={open} onOpenChange={reset}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Message everyone in {groupName}</DialogTitle>
+          <DialogTitle>{title ?? `Message everyone in ${groupName}`}</DialogTitle>
           <DialogDescription>
             Write it once. Each person gets their own copy with their name filled in.
           </DialogDescription>

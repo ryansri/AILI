@@ -50,7 +50,11 @@ async function stageExists(workspaceId: string, key: string) {
 export async function updateStage(personId: string, stage: string) {
   const { workspace, person } = await ownPerson(personId);
   if (!(await stageExists(workspace.id, stage))) throw new Error("Unknown stage");
-  const data: { stage: Stage; connectedAt?: Date; requestedAt?: Date; lastActionAt: Date } = { stage, ...touched() };
+  const data: { stage: Stage; stageChangedAt?: Date; connectedAt?: Date; requestedAt?: Date; lastActionAt: Date } = {
+    stage,
+    ...touched(),
+  };
+  if (stage !== person.stage) data.stageChangedAt = new Date();
   if (stage === "requested" && !person.requestedAt) data.requestedAt = new Date();
   if (TALKING.includes(stage) && !person.connectedAt) data.connectedAt = new Date();
   await db.person.update({ where: { id: personId }, data });
@@ -131,12 +135,22 @@ export async function logMessage(input: {
       source: "manual",
     },
   });
-  const updates: { snoozedUntil: null; handledAt: null; stage?: Stage; connectedAt?: Date; lastActionAt: Date } = {
+  const updates: {
+    snoozedUntil: null;
+    handledAt: null;
+    stage?: Stage;
+    stageChangedAt?: Date;
+    connectedAt?: Date;
+    lastActionAt: Date;
+  } = {
     snoozedUntil: null,
     handledAt: null,
     ...touched(),
   };
-  if (["warming", "requested", "connected"].includes(person.stage)) updates.stage = "conversation";
+  if (["warming", "requested", "connected"].includes(person.stage)) {
+    updates.stage = "conversation";
+    updates.stageChangedAt = new Date();
+  }
   if (!person.connectedAt) updates.connectedAt = sentAt;
   await db.person.update({ where: { id: input.personId }, data: updates });
   refresh();
@@ -228,7 +242,7 @@ export async function deleteStage(key: string, moveTo: string) {
   if (!stages.some((s) => s.key === key)) throw new Error("Not found");
   if (key === moveTo || !stages.some((s) => s.key === moveTo)) throw new Error("Pick another stage for its people.");
   await db.$transaction([
-    db.person.updateMany({ where: { workspaceId: workspace.id, stage: key }, data: { stage: moveTo } }),
+    db.person.updateMany({ where: { workspaceId: workspace.id, stage: key }, data: { stage: moveTo, stageChangedAt: new Date() } }),
     db.stage.delete({ where: { workspaceId_key: { workspaceId: workspace.id, key } } }),
   ]);
   refresh();
@@ -325,6 +339,7 @@ export async function createPerson(input: PersonInput) {
       linkedinUrl: clean(input.linkedinUrl, 300),
       publicId: publicIdFromUrl(clean(input.linkedinUrl, 300)),
       stage,
+      stageChangedAt: new Date(),
       notes: clean(input.notes, 5000),
       requestedAt: stage === "requested" ? new Date() : null,
       connectedAt: TALKING.includes(stage) ? new Date() : null,
@@ -361,6 +376,121 @@ export async function updatePerson(personId: string, input: PersonInput) {
 function publicIdFromUrl(url: string): string | null {
   const m = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Many people at once (People page)
+// ---------------------------------------------------------------------------
+
+/** The ids that belong to the caller's workspace, capped so one click stays small. */
+async function ownIds(workspaceId: string, personIds: string[]) {
+  const ids = [...new Set(personIds)].slice(0, 500);
+  const rows = await db.person.findMany({
+    where: { id: { in: ids }, workspaceId, archivedAt: null },
+    select: { id: true, stage: true, requestedAt: true, connectedAt: true },
+  });
+  return rows;
+}
+
+export async function bulkSetStage(personIds: string[], stage: string) {
+  const workspace = await getWorkspace();
+  if (!(await stageExists(workspace.id, stage))) throw new Error("Unknown stage");
+  const people = await ownIds(workspace.id, personIds);
+  const now = new Date();
+  for (const p of people) {
+    if (p.stage === stage) continue;
+    await db.person.update({
+      where: { id: p.id },
+      data: {
+        stage,
+        stageChangedAt: now,
+        ...(stage === "requested" && !p.requestedAt ? { requestedAt: now } : {}),
+        ...(TALKING.includes(stage) && !p.connectedAt ? { connectedAt: now } : {}),
+        ...touched(),
+      },
+    });
+  }
+  refresh();
+  return people.length;
+}
+
+export async function bulkAddTag(personIds: string[], tagId: string) {
+  const workspace = await getWorkspace();
+  const tag = await db.tag.findFirst({ where: { id: tagId, workspaceId: workspace.id } });
+  if (!tag) throw new Error("Unknown tag");
+  const people = await ownIds(workspace.id, personIds);
+  for (const p of people) {
+    await db.personTag.upsert({
+      where: { personId_tagId: { personId: p.id, tagId } },
+      update: {},
+      create: { personId: p.id, tagId },
+    });
+  }
+  refresh();
+  return people.length;
+}
+
+export async function bulkArchive(personIds: string[]) {
+  const workspace = await getWorkspace();
+  const people = await ownIds(workspace.id, personIds);
+  await db.person.updateMany({
+    where: { id: { in: people.map((p) => p.id) }, workspaceId: workspace.id },
+    data: { archivedAt: new Date() },
+  });
+  refresh();
+  return people.length;
+}
+
+export interface ImportRow {
+  name: string;
+  linkedinUrl?: string;
+  company?: string;
+  jobTitle?: string;
+}
+
+/**
+ * Adds people from a CSV. Anyone whose LinkedIn profile is already in AILI is
+ * skipped, so importing the same list twice is harmless.
+ */
+export async function importPeople(input: { rows: ImportRow[]; stage?: string; tagId?: string }) {
+  const workspace = await getWorkspace();
+  const stage = input.stage && (await stageExists(workspace.id, input.stage)) ? input.stage : "warming";
+  const tag = input.tagId ? await db.tag.findFirst({ where: { id: input.tagId, workspaceId: workspace.id } }) : null;
+  const existing = await db.person.findMany({
+    where: { workspaceId: workspace.id, publicId: { not: null } },
+    select: { publicId: true },
+  });
+  const known = new Set(existing.map((p) => p.publicId!.toLowerCase()));
+  const now = new Date();
+  const result = { added: 0, skipped: 0 };
+  for (const row of input.rows.slice(0, 1000)) {
+    const name = clean(row.name, 120);
+    const linkedinUrl = clean(row.linkedinUrl, 300);
+    const publicId = publicIdFromUrl(linkedinUrl);
+    if (!name || (publicId && known.has(publicId.toLowerCase()))) {
+      result.skipped += 1;
+      continue;
+    }
+    if (publicId) known.add(publicId.toLowerCase());
+    await db.person.create({
+      data: {
+        workspaceId: workspace.id,
+        name,
+        company: clean(row.company, 120),
+        jobTitle: clean(row.jobTitle, 120),
+        linkedinUrl,
+        publicId,
+        stage,
+        stageChangedAt: now,
+        requestedAt: stage === "requested" ? now : null,
+        connectedAt: TALKING.includes(stage) ? now : null,
+        ...(tag ? { tags: { create: [{ tagId: tag.id }] } } : {}),
+      },
+    });
+    result.added += 1;
+  }
+  refresh();
+  return result;
 }
 
 // ---------------------------------------------------------------------------

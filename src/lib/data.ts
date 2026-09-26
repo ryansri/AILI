@@ -45,6 +45,8 @@ function toPerson(row: PersonRow): Person {
     snoozedUntil: row.snoozedUntil?.toISOString(),
     lastActionAt: row.lastActionAt?.toISOString(),
     handledAt: row.handledAt?.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    stageChangedAt: row.stageChangedAt?.toISOString(),
     messages: row.messages.map((m) => ({
       id: m.id,
       direction: m.direction === "in" ? "in" : "out",
