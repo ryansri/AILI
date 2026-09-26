@@ -6,6 +6,9 @@
  */
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+
+// Same default as prisma.config.ts so the seed runs with no .env file.
+process.env.DATABASE_URL ??= "file:./dev.db";
 import { ACCOUNT, PEOPLE, TAGS } from "./seed-data";
 
 const db = new PrismaClient();

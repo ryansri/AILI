@@ -4,6 +4,10 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// Local SQLite by default so a fresh clone runs with no .env file.
+// The schema reads env("DATABASE_URL"), so it must exist before validation.
+process.env.DATABASE_URL ??= "file:./dev.db";
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -11,7 +15,6 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    // Local SQLite by default so a fresh clone runs with no .env file.
-    url: process.env.DATABASE_URL ?? "file:./dev.db",
+    url: process.env.DATABASE_URL,
   },
 });
