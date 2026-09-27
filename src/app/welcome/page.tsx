@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { EXTENSION_HINT_COOKIE, readExtensionHint } from "@/lib/extension";
 import { db } from "@/lib/db";
 import { getAccount, getWorkspace, helperTokenFor } from "@/lib/data";
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -10,6 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function WelcomePage() {
   const workspace = await getWorkspace();
   if (workspace.onboardedAt) redirect("/inbox");
+  const hint = readExtensionHint((await cookies()).get(EXTENSION_HINT_COOKIE)?.value);
   const [account, people, token] = await Promise.all([
     getAccount(workspace.id),
     db.person.count({ where: { workspaceId: workspace.id, archivedAt: null } }),
@@ -17,7 +20,7 @@ export default async function WelcomePage() {
   ]);
   return (
     <AuthShell>
-      <Welcome helper={account.helper} people={people} token={token} accountName={workspace.name} />
+      <Welcome helper={account.helper} people={people} token={token} accountName={workspace.name} hint={hint} />
     </AuthShell>
   );
 }

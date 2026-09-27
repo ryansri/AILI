@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ExternalLink, Loader2, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { finishOnboarding } from "@/lib/actions";
-import { EXTENSION_URL } from "@/lib/extension";
+import { EXTENSION_URL, rememberExtension, type ExtensionHint } from "@/lib/extension";
 import { useHelperPresence } from "@/hooks/use-helper-presence";
 import type { HelperStatus } from "@/lib/types";
 import { AuthCard } from "@/components/auth/auth-shell";
@@ -85,11 +85,14 @@ export function Welcome({
   people,
   token,
   accountName,
+  hint,
 }: {
   helper: HelperStatus;
   people: number;
   token: string;
   accountName: string;
+  /** What the log in or sign up page found, so there is no Checking screen here. */
+  hint?: ExtensionHint;
 }) {
   const router = useRouter();
   // One check when the page loads; the extension screen does no checking of its own.
@@ -98,6 +101,14 @@ export function Welcome({
   const paired = useRef(false);
   // Came back through Next: if the extension is still not there, say so.
   const checked = useSearchParams().get("checked") === "1";
+  // Keep the hint current for the next visit.
+  useEffect(() => {
+    if (presence.state !== "checking") rememberExtension(presence.browser === "other" ? "other" : presence.state);
+  }, [presence.state, presence.browser]);
+  // Until this page's own check answers (well under a second), go by what log in found.
+  // After Next the page checks for itself, so the hint is set aside.
+  const known = presence.state !== "checking" ? presence.state : checked ? undefined : hint;
+  const otherBrowser = presence.browser === "other" || (presence.state === "checking" && known === "other");
 
   // Keep reading the server so each step moves on by itself.
   useEffect(() => {
@@ -149,7 +160,7 @@ export function Welcome({
   }
 
   // Safari, Firefox, phones: the extension cannot run here.
-  if (presence.browser === "other" && !helper.lastSeenAt) {
+  if (otherBrowser && !helper.lastSeenAt) {
     return (
       <AuthCard centered>
         <Icon>
@@ -168,16 +179,8 @@ export function Welcome({
     );
   }
 
-  // The first check takes about a second: show that rather than flash the install screen.
-  if (presence.state === "checking" && !helper.lastSeenAt) {
-    return (
-      <AuthCard centered>
-        <Waiting>Checking</Waiting>
-      </AuthCard>
-    );
-  }
-
-  const installed = presence.state === "found" || Boolean(helper.lastSeenAt);
+  const installed = known === "found" || Boolean(helper.lastSeenAt);
+  const checking = presence.state === "checking";
   const step = !installed ? 1 : !helper.lastSeenAt || helper.state === "logged_out" ? 2 : 3;
 
   return (
@@ -196,10 +199,15 @@ export function Welcome({
             </a>
           </Button>
           {/* Next reloads the page, so a newly installed extension can answer, then checks once. */}
-          <Button variant="outline" className="w-full" onClick={() => window.location.assign("/welcome?checked=1")}>
-            Next
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={checked && checking}
+            onClick={() => window.location.assign("/welcome?checked=1")}
+          >
+            {checked && checking ? "Checking" : "Next"}
           </Button>
-          {checked && (
+          {checked && presence.state === "missing" && (
             <p className="text-xs text-destructive">The extension is not installed yet. Install it, then press Next.</p>
           )}
         </AuthCard>

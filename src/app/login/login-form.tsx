@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useHelperPresence } from "@/hooks/use-helper-presence";
+import { rememberExtension } from "@/lib/extension";
 import { login, register, type AuthResult } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +12,13 @@ import { Label } from "@/components/ui/label";
 export function LoginForm({ mode, next }: { mode: "register" | "login"; next: string }) {
   const action = mode === "register" ? register : login;
   const [state, formAction, pending] = useActionState<AuthResult, FormData>(action, {});
+
+  // Look for the extension quietly while they type, so onboarding opens on the right step.
+  const presence = useHelperPresence({ poll: false });
+  useEffect(() => {
+    if (presence.state === "checking") return;
+    rememberExtension(presence.browser === "other" ? "other" : presence.state);
+  }, [presence.state, presence.browser]);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
