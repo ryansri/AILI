@@ -24,6 +24,12 @@ model Workspace {
   /// What the helper last reported about itself.
   helperLastSeenAt DateTime?
   helperMemberUrn  String?
+  /// What the helper last said about its work, for the status line and import card.
+  helperImported   Int       @default(0)
+  helperImporting  Boolean   @default(false)
+  helperPhase      String?
+  helperPausedUntil DateTime?
+  helperError      String?
   /// When the people from before leads existed were sorted into leads and Other, once.
   leadsSortedAt    DateTime?
   helperName       String?

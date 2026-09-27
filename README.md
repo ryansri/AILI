@@ -79,6 +79,21 @@ is open:
   does a reply older than six hours. On a Mac, Chrome also needs to be allowed
   in System Settings, Notifications.
 
+AILI itself always says what sync is doing:
+
+- Before anything has synced, the inbox shows a setup card that ticks its own
+  steps: helper installed (AILI asks the page script the helper adds to the
+  AILI page only), connected with your token (with Copy buttons for the
+  address and token), LinkedIn logged in. In Safari or Firefox it says to open
+  AILI in Chrome.
+- During the first import, a progress card shows how many conversations are
+  in, which inbox and page is next, and how many are leads or in Other. The
+  page refreshes itself every few seconds while setting up or importing.
+- After that, one line at the top of the list: "Synced 1m ago" when all is
+  well, amber with the reason and the fix when not (sync stopped, LinkedIn
+  logged out, slowed down by LinkedIn, helper out of date, an error). The dot
+  on the icon rail matches it.
+
 The helper never sends anything you did not click. Details and the risk note
 are in `extension/README.md`.
 

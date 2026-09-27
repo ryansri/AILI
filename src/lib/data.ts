@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { db } from "./db";
-import { currentWorkspaceId } from "./auth";
+import { currentWorkspaceId, newHelperToken } from "./auth";
 import { helperOutdated } from "./helper-version";
 import { startsAsLead } from "./leads";
 import type { Template } from "./templates";
@@ -106,6 +106,13 @@ export async function getTemplates(workspaceId: string): Promise<Template[]> {
   return rows.map((t) => ({ id: t.id, name: t.name, body: t.body }));
 }
 
+/** The helper token, created on first use for accounts from before the helper existed. */
+export async function helperTokenFor(workspace: { id: string; helperToken: string | null }): Promise<string> {
+  if (workspace.helperToken) return workspace.helperToken;
+  const updated = await db.workspace.update({ where: { id: workspace.id }, data: { helperToken: newHelperToken() } });
+  return updated.helperToken!;
+}
+
 /** The helper counts as connected when it reported in during the last few minutes. */
 export const HELPER_ONLINE_MS = 5 * 60 * 1000;
 
@@ -135,6 +142,14 @@ export async function getAccount(workspaceId: string): Promise<Account> {
       linkedinName: workspace.helperName ?? undefined,
       version: workspace.helperVersion ?? undefined,
       outdated: Boolean(workspace.helperLastSeenAt) && helperOutdated(workspace.helperVersion),
+      importing: workspace.helperImporting,
+      imported: workspace.helperImported,
+      phase: workspace.helperPhase ?? undefined,
+      pausedUntil:
+        workspace.helperPausedUntil && workspace.helperPausedUntil.getTime() > Date.now()
+          ? workspace.helperPausedUntil.toISOString()
+          : undefined,
+      error: workspace.helperState === "error" ? (workspace.helperError ?? undefined) : undefined,
     },
   };
 }

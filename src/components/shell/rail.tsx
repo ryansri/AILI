@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, FileText, Inbox, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { syncedLabel } from "@/lib/next-step";
+import { syncLine } from "@/lib/sync-status";
 import type { HelperStatus } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -53,17 +53,10 @@ function RailLink({
   );
 }
 
-/** One dot for the Chrome helper. Green is synced, amber needs attention, grey never paired. */
+/** One dot for the Chrome helper, the same colour as the line at the top of the inbox list. */
 function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: string }) {
-  const text = helper.connected && helper.outdated
-    ? "The helper in Chrome is out of date. Settings says how to update it."
-    : helper.connected
-    ? `Helper ${syncedLabel(helper.lastSeenAt!).toLowerCase()}. ${sentLine}`
-    : helper.state === "logged_out"
-      ? "Helper running but LinkedIn is logged out in Chrome. Replies are not coming in."
-      : helper.state === "error"
-        ? "The helper hit an error. Open its popup for details."
-        : "Helper not connected. Sends are copy and paste until it is.";
+  const line = syncLine(helper);
+  const text = [line.title, line.detail, line.tone === "ok" ? sentLine : ""].filter(Boolean).join(" ");
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -75,9 +68,9 @@ function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: strin
           <span
             className={cn(
               "inline-block size-2 rounded-full",
-              helper.connected && !helper.outdated
+              line.tone === "ok" || line.tone === "busy"
                 ? "bg-emerald-500"
-                : helper.state === "never"
+                : line.tone === "off"
                   ? "bg-stone-300"
                   : "bg-amber-500",
             )}

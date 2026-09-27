@@ -107,6 +107,16 @@ export interface HelperStatus {
   version?: string;
   /** The helper in Chrome is older than this app expects and needs reloading. */
   outdated: boolean;
+  /** The first-run history import is still going. */
+  importing: boolean;
+  /** Conversations the history import has brought in so far. */
+  imported: number;
+  /** Where the import is, e.g. "Focused inbox, page 3 next". */
+  phase?: string;
+  /** LinkedIn asked the helper to slow down; it resumes at this time. */
+  pausedUntil?: string; // ISO
+  /** What went wrong on the last run, when it did. */
+  error?: string;
 }
 
 export interface Account {

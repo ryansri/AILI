@@ -30,7 +30,10 @@ export async function POST(request: Request) {
     displayName?: string;
     pictureUrl?: string;
     version?: string;
+    progress?: { imported?: number; importing?: boolean; phase?: string; pausedUntil?: number; error?: string };
   };
+  const p = body.progress;
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : null);
   const version = typeof body.version === "string" && /^\d+\.\d+\.\d+$/.test(body.version) ? body.version : null;
   const picture = isLinkedInImage(body.pictureUrl) ? body.pictureUrl : undefined;
   const state = ["ok", "logged_out", "error"].includes(body.state ?? "") ? body.state! : "error";
@@ -44,6 +47,16 @@ export async function POST(request: Request) {
       ...(picture ? { helperPictureUrl: picture } : {}),
       // An old helper sends no version; recording null marks it out of date.
       helperVersion: version,
+      // An older helper sends no progress; leave what we had.
+      ...(p
+        ? {
+            helperImported: Number.isFinite(p.imported) ? Math.max(0, Math.round(p.imported!)) : 0,
+            helperImporting: p.importing === true,
+            helperPhase: text(p.phase, 80),
+            helperPausedUntil: Number.isFinite(p.pausedUntil) ? new Date(p.pausedUntil!) : null,
+            helperError: text(p.error, 300),
+          }
+        : {}),
     },
   });
   revalidatePath("/inbox");

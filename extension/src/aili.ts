@@ -1,6 +1,6 @@
 /** Calls to the AILI server. */
 
-import type { Pairing } from "./storage";
+import { getStatus, type Pairing } from "./storage";
 
 export interface OutboxItem {
   id: string;
@@ -46,13 +46,22 @@ export function checkPairing(pairing: Pairing): Promise<{ workspace: string; dai
   return call<{ workspace: string; dailyCap: number }>(pairing, "/api/helper/status");
 }
 
-export function reportStatus(
+export async function reportStatus(
   pairing: Pairing,
   body: { state: string; memberUrn?: string; displayName?: string; pictureUrl?: string },
 ) {
   // The version lets AILI spot an old helper still loaded in Chrome.
   const version = chrome.runtime.getManifest().version;
-  return call(pairing, "/api/helper/status", { method: "POST", body: JSON.stringify({ ...body, version }) });
+  // Progress, so AILI can show the import and any problem without opening the popup.
+  const status = await getStatus();
+  const progress = {
+    imported: status.imported ?? 0,
+    importing: status.backfillDone === false,
+    phase: status.importPhase,
+    pausedUntil: status.pausedUntil && status.pausedUntil > Date.now() ? status.pausedUntil : undefined,
+    error: body.state === "error" ? status.lastError : undefined,
+  };
+  return call(pairing, "/api/helper/status", { method: "POST", body: JSON.stringify({ ...body, version, progress }) });
 }
 
 export interface ReplyToNotify {

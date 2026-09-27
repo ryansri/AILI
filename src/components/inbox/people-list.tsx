@@ -17,6 +17,7 @@ import { CountBadge } from "@/components/count-badge";
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
+import { SyncLineBar } from "./sync-line";
 
 export function initials(name: string): string {
   return name
@@ -105,7 +106,7 @@ function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
 
 function EmptyState({ view, narrowed, total }: { view: View; narrowed: boolean; total: number }) {
   const note = (text: string) => <p className="p-8 text-center text-xs text-muted-foreground">{text}</p>;
-  if (total === 0) return note("No one yet. Add a person, or connect the helper.");
+  if (total === 0) return note("Your LinkedIn conversations will appear here.");
   if (narrowed) return note("No one matches.");
   switch (view.kind) {
     case "now":
@@ -175,6 +176,7 @@ export function PeopleList({
 
   return (
     <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col bg-background">
+      <SyncLineBar helper={helper} />
       {view.kind === "other" && (
         <p className="border-b bg-muted/40 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
           <span className="font-medium text-foreground">
@@ -285,27 +287,6 @@ export function PeopleList({
         {visible === 0 && <EmptyState view={view} narrowed={narrowed} total={total} />}
       </div>
 
-      <div className="flex items-center justify-center gap-1.5 border-t py-2.5 text-xs text-muted-foreground">
-        <span
-          className={cn(
-            "inline-block size-1.5 rounded-full",
-            helper.connected && !helper.outdated
-              ? "bg-emerald-500"
-              : helper.state === "never"
-                ? "bg-stone-300"
-                : "bg-amber-500",
-          )}
-        />
-        <span suppressHydrationWarning>
-          {helper.connected && helper.outdated
-            ? "Helper out of date, see Settings"
-            : helper.connected
-            ? syncedLabel(helper.lastSeenAt!)
-            : helper.state === "never"
-              ? "Helper not connected"
-              : "Helper needs attention"}
-        </span>
-      </div>
     </section>
   );
 }

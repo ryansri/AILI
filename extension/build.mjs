@@ -18,6 +18,17 @@ await build({
   logLevel: "warning",
 });
 
+// The AILI page script is a classic content script, so it is its own bundle.
+await build({
+  entryPoints: [join(here, "src/aili-page.ts")],
+  bundle: true,
+  format: "iife",
+  target: "chrome120",
+  outdir: out,
+  sourcemap: false,
+  logLevel: "warning",
+});
+
 for (const file of ["manifest.json", "popup.html", "icon-16.png", "icon-48.png", "icon-128.png"]) {
   copyFileSync(join(here, file), join(out, file));
 }

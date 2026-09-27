@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Account, Person, StageDef, Tag } from "@/lib/types";
 import { markDone } from "@/lib/actions";
@@ -21,6 +22,10 @@ import { InboxHeader, PeopleList } from "./people-list";
 import { ConversationPane } from "./conversation-pane";
 import { DetailsPanel } from "./details-panel";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
+import { ImportCard, SetupCard } from "./sync-cards";
+
+/** While setting up or importing, re-read the server this often so steps tick and rows appear. */
+const LIVE_REFRESH_MS = 3000;
 
 /** Below this width, opening the details closes the sidebar so the conversation keeps room. */
 const ROOMY_WIDTH = 1440;
@@ -56,6 +61,7 @@ export function InboxView({
   stages,
   templates,
   account,
+  helperToken,
   initialPersonId,
 }: {
   /** Leads. Everything below counts only these. */
@@ -66,6 +72,8 @@ export function InboxView({
   stages: StageDef[];
   templates: Template[];
   account: Account;
+  /** For the setup card, which shows it to paste into the helper. */
+  helperToken: string;
   initialPersonId: string | null;
 }) {
   // A deep link may point at someone outside Now, so open on All (or Other) then.
@@ -85,6 +93,18 @@ export function InboxView({
   const [sidebarOpen, setSidebarOpen] = usePersistentFlag("aili.inbox.sidebar", true);
   const [detailsOpen, setDetailsOpen] = usePersistentFlag("aili.inbox.details", false);
   const [, start] = useTransition();
+  const router = useRouter();
+
+  // Nothing synced yet, or the first import running: keep the page live so it moves on by itself.
+  const noData = people.length === 0 && others.length === 0;
+  const live = noData || account.helper.importing;
+  useEffect(() => {
+    if (!live) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, LIVE_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [live, router]);
 
   const rows = useMemo<Row[]>(() => {
     const now = new Date();
@@ -247,7 +267,11 @@ export function InboxView({
         templates={templates}
         account={account}
       />
-      {selected ? (
+      {noData && !account.helper.importing ? (
+        <SetupCard helper={account.helper} token={helperToken} />
+      ) : account.helper.importing && (noData || !selectedId) ? (
+        <ImportCard helper={account.helper} leads={people.length} others={others.length} />
+      ) : selected ? (
         <>
           <ConversationPane
             key={selected.person.id}
