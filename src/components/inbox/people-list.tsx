@@ -257,7 +257,7 @@ export function PeopleList({
                         {row.person.lead !== false && (
                           <div
                             className={cn(
-                              "absolute top-2.5 right-3 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
+                              "absolute top-1/2 right-3 flex -translate-y-1/2 gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
                               "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
                             )}
                           >
