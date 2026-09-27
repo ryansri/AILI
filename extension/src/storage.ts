@@ -12,6 +12,8 @@ export interface HelperStatus {
   lastError?: string;
   memberUrn?: string;
   displayName?: string;
+  /** Your own /in/<id>, so the popup does not offer to add you. */
+  publicId?: string;
   conversations?: number;
   sentToday?: number;
   /** Conversations imported so far by the first-run history import. */

@@ -30,6 +30,8 @@ export interface Me {
   displayName: string;
   /** Your LinkedIn profile photo, when you have one. */
   pictureUrl?: string;
+  /** Your /in/<id> address, so the popup can tell your own profile apart. */
+  publicId?: string;
 }
 
 let cachedMe: { me: Me; at: number } | null = null;
@@ -48,6 +50,7 @@ export async function getMe(): Promise<Me> {
     memberUrn: `urn:li:fsd_profile:${memberId}`,
     displayName: `${mini?.firstName || ""} ${mini?.lastName || ""}`.trim(),
     pictureUrl: pictureFrom(mini?.picture) || undefined,
+    publicId: typeof mini?.publicIdentifier === "string" ? mini.publicIdentifier : undefined,
   };
   cachedMe = { me, at: Date.now() };
   return me;

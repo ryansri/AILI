@@ -28,7 +28,16 @@ async function call<T = unknown>(pairing: Pairing, path: string, init: RequestIn
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new AiliError(res.status === 401 ? "AILI rejected the token. Paste a fresh one from Settings." : `AILI returned ${res.status} ${text.slice(0, 120)}`, res.status);
+    let said = "";
+    try {
+      said = JSON.parse(text)?.error ?? "";
+    } catch {}
+    throw new AiliError(
+      res.status === 401
+        ? "AILI rejected the token. Paste a fresh one from Settings."
+        : said || `AILI returned ${res.status} ${text.slice(0, 120)}`,
+      res.status,
+    );
   }
   return (await res.json()) as T;
 }

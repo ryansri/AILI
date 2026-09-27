@@ -205,8 +205,14 @@ function fill(select: HTMLSelectElement, options: { value: string; label: string
   for (const o of options) select.add(new Option(o.label, o.value));
 }
 
-/** Who it is, then one of: Add to AILI, Added, or Already in AILI. */
-function renderPerson(name: string, mode: "add" | "added" | "already", sub: string, personId?: string) {
+/** Your own profile: nothing to add. Old status without your id falls back to the name. */
+function isYou(tab: ProfileTab, status: HelperStatus): boolean {
+  if (status.publicId) return status.publicId.toLowerCase() === tab.publicId.toLowerCase();
+  return Boolean(status.displayName && tab.name && status.displayName === tab.name);
+}
+
+/** Who it is, then one of: Add to AILI, Added, Already in AILI, or This is you. */
+function renderPerson(name: string, mode: "add" | "added" | "already" | "you", sub: string, personId?: string) {
   viewOnly("profile");
   show($("p-badge"), mode === "added");
   show($("p-av"), mode !== "added");
@@ -218,7 +224,9 @@ function renderPerson(name: string, mode: "add" | "added" | "already", sub: stri
   if (mode !== "add") show($("p-options"), false);
   pOpen.className = `btn ${mode === "already" ? "pri" : "sec"}`;
   show(pOpen, mode !== "add");
-  pOpen.onclick = () => current && personId && aili(current.pairing, `/inbox?person=${encodeURIComponent(personId)}`);
+  $("p-open-label").textContent = mode === "you" ? "Open AILI" : "Open in AILI";
+  pOpen.onclick = () =>
+    current && aili(current.pairing, personId ? `/inbox?person=${encodeURIComponent(personId)}` : "/inbox");
   show(pError, false);
 }
 
@@ -311,6 +319,11 @@ async function render() {
   }
 
   const tab = await profileTab();
+  if (tab && isYou(tab, status)) {
+    current = { tab, pairing };
+    renderPerson(status.displayName || tab.name || tab.publicId, "you", "This is your profile");
+    return;
+  }
   if (tab) {
     try {
       await renderProfile(tab, pairing, await checkPerson(pairing, tab.publicId));

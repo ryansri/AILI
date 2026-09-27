@@ -107,7 +107,7 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
     await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName, pictureUrl: me.pictureUrl });
     if (backfill.category === "done") await lookupProfiles(pairing);
 
-    await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName });
+    await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName, publicId: me.publicId });
   } catch (err) {
     let message = err instanceof Error ? err.message : String(err);
     const loggedOut = err instanceof LinkedInError && (err.status === 401 || err.status === 403);

@@ -74,6 +74,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Open a LinkedIn profile first." }, { status: 400, headers: corsHeaders(request) });
   }
   const urn = /^urn:li:fsd_profile:[\w-]+$/.test(String(body.urn)) ? String(body.urn) : undefined;
+  if (urn && urn === workspace.helperMemberUrn) {
+    return NextResponse.json({ error: "That is your own profile." }, { status: 400, headers: corsHeaders(request) });
+  }
 
   const existing = await findExisting(workspace.id, publicId, urn);
   if (existing) {
