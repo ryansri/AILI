@@ -136,12 +136,12 @@
   }
 }
 
-/* The import card's bar: a sliver that sweeps across while the import runs. */
-@keyframes aili-progress {
-  0% {
-    transform: translateX(-100%);
+/* The import bar's stripes drift while the import runs. */
+@keyframes aili-stripes {
+  from {
+    background-position: 0 0;
   }
-  100% {
-    transform: translateX(300%);
+  to {
+    background-position: 16px 0;
   }
 }

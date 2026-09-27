@@ -10,6 +10,7 @@ import type { HelperStatus } from "@/lib/types";
 import { AuthCard } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/copy-field";
+import { ImportProgress } from "@/components/import-progress";
 
 /** Where "Install extension" goes. Set NEXT_PUBLIC_EXTENSION_URL once it is on the Chrome Web Store. */
 const EXTENSION_URL = process.env.NEXT_PUBLIC_EXTENSION_URL || "https://chromewebstore.google.com/";
@@ -209,9 +210,7 @@ export function Welcome({
         <AuthCard centered>
           <h1 className="text-xl font-bold tracking-tight">Syncing your LinkedIn</h1>
           <p className="text-md text-muted-foreground">Setting up your account</p>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div className="h-full w-1/3 animate-[aili-progress_1.6s_ease-in-out_infinite] rounded-full bg-foreground" />
-          </div>
+          <ImportProgress imported={helper.imported} />
           <p className="text-xs text-muted-foreground">
             {helper.imported > 0 ? `${helper.imported} conversations` : "Reading your inbox"}
           </p>

@@ -7,6 +7,7 @@ import { useHelperPresence } from "@/hooks/use-helper-presence";
 import type { HelperStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/copy-field";
+import { ImportProgress } from "@/components/import-progress";
 
 /*
  * What the conversation area shows before there is anything to read: a setup
@@ -180,9 +181,7 @@ export function ImportCard({ helper, leads, others }: { helper: HelperStatus; le
       title="Importing your LinkedIn inbox"
       intro="The helper reads one page of 20 conversations a minute, so LinkedIn sees a normal pace. People appear in the list as they come in."
     >
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full w-1/3 animate-[aili-progress_1.6s_ease-in-out_infinite] rounded-full bg-foreground" />
-      </div>
+      <ImportProgress imported={helper.imported} />
       <div className="flex justify-between text-xs text-muted-foreground" suppressHydrationWarning>
         <span>
           {helper.imported === 1 ? "1 conversation" : `${helper.imported} conversations`} so far

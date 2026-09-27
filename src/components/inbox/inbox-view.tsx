@@ -269,7 +269,7 @@ export function InboxView({
       />
       {noData && !account.helper.importing ? (
         <SetupCard helper={account.helper} token={helperToken} />
-      ) : account.helper.importing && (noData || !selectedId) ? (
+      ) : noData && account.helper.importing ? (
         <ImportCard helper={account.helper} leads={people.length} others={others.length} />
       ) : selected ? (
         <>
