@@ -2,8 +2,9 @@
  * Clears the people and conversations of one account so the Chrome helper can
  * import them again from scratch. Keeps the login, tags, stages, templates,
  * daily cap and helper token. Messages queued to send are removed too.
- * With --all it also clears tags, templates and your own stages, and puts the
- * stages back to the defaults: a fresh account with the same login.
+ * With --all it also clears tags, templates and your own stages, puts the
+ * stages back to the defaults and forgets the extension's last check-in: a
+ * fresh account with the same login, which starts onboarding from step 1.
  *
  *   npm run reset:conversations -- you@example.com                (shows what would go)
  *   npm run reset:conversations -- you@example.com --yes          (clears people and messages)
@@ -66,6 +67,18 @@ async function main() {
     await db.template.deleteMany({ where: { workspaceId: workspace.id } });
     // AILI recreates the default stages the next time a page loads.
     await db.stage.deleteMany({ where: { workspaceId: workspace.id } });
+    // Forget what the extension last reported, so onboarding starts at step 1.
+    await db.workspace.update({
+      where: { id: workspace.id },
+      data: {
+        helperLastSeenAt: null,
+        helperState: null,
+        helperImporting: false,
+        helperImported: 0,
+        helperPhase: null,
+        helperError: null,
+      },
+    });
     console.log("Cleared everything. Your login, daily cap and helper token are unchanged.");
   } else {
     console.log("Cleared. Your login, tags, stages, templates, daily cap and helper token are unchanged.");
