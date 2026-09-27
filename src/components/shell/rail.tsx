@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { CalendarDays, FileText, Inbox, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { syncLine } from "@/lib/sync-status";
+import { useExtensionGone } from "@/components/inbox/sync-line";
 import type { HelperStatus } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -55,7 +56,10 @@ function RailLink({
 
 /** One dot for the Chrome helper, the same colour as the line at the top of the inbox list. */
 function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: string }) {
-  const line = syncLine(helper);
+  const gone = useExtensionGone(helper);
+  const line = gone
+    ? { tone: "warn" as const, title: "The AILI extension is off or missing.", detail: "Turn it on or reinstall it." }
+    : syncLine(helper);
   const text = [line.title, line.detail, line.tone === "ok" ? sentLine : ""].filter(Boolean).join(" ");
   return (
     <Tooltip>

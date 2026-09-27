@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ExternalLink, Loader2, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { finishOnboarding } from "@/lib/actions";
+import { EXTENSION_URL } from "@/lib/extension";
 import { useHelperPresence } from "@/hooks/use-helper-presence";
 import type { HelperStatus } from "@/lib/types";
 import { AuthCard } from "@/components/auth/auth-shell";
@@ -12,8 +13,6 @@ import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/copy-field";
 import { ImportProgress } from "@/components/import-progress";
 
-/** Where "Install extension" goes. Set NEXT_PUBLIC_EXTENSION_URL once it is on the Chrome Web Store. */
-const EXTENSION_URL = process.env.NEXT_PUBLIC_EXTENSION_URL || "https://chromewebstore.google.com/";
 /** How often the page re-reads the server while it waits for the next step. */
 const EVERY_MS = 2500;
 

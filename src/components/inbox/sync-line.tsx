@@ -3,10 +3,42 @@
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { syncLine } from "@/lib/sync-status";
+import { EXTENSION_URL } from "@/lib/extension";
+import { useHelperPresence } from "@/hooks/use-helper-presence";
 import type { HelperStatus } from "@/lib/types";
+
+/**
+ * True when this Chrome ran the extension before but it no longer answers on
+ * this page: switched off, removed, or its site access limited.
+ */
+export function useExtensionGone(helper: HelperStatus): boolean {
+  const presence = useHelperPresence();
+  // An old extension has no page script at all; "out of date" is the better message for it.
+  return Boolean(helper.lastSeenAt) && !helper.outdated && presence.browser === "chromium" && presence.state === "missing";
+}
 
 /** The line at the top of the inbox list: what sync is doing, or what to fix. */
 export function SyncLineBar({ helper }: { helper: HelperStatus }) {
+  const gone = useExtensionGone(helper);
+  if (gone) {
+    return (
+      <div role="status" className="flex shrink-0 items-start gap-2 border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
+        <AlertCircle className="mt-px size-3.5 shrink-0 text-amber-600" />
+        <span className="min-w-0">
+          <span className="font-semibold">The AILI extension is off or missing.</span> Turn it on in
+          chrome://extensions or{" "}
+          <a href={EXTENSION_URL} target="_blank" rel="noreferrer" className="font-medium underline underline-offset-2">
+            reinstall it
+          </a>
+          , then{" "}
+          <button type="button" onClick={() => window.location.reload()} className="font-medium underline underline-offset-2">
+            reload
+          </button>
+          .
+        </span>
+      </div>
+    );
+  }
   const line = syncLine(helper);
   return (
     <div
