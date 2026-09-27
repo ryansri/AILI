@@ -31,12 +31,15 @@ changes.
 - Uses the LinkedIn cookies already in your browser. Nothing is copied
   elsewhere. Requests to LinkedIn carry those cookies through a
   declarativeNetRequest rule scoped to this extension only.
-- **Add to AILI.** On someone's LinkedIn profile, click the helper icon. The
-  popup names the person and offers Add to AILI with a stage and tag (it
-  remembers your last pick). Clicking Add reads that one profile from
-  LinkedIn, then adds the name, headline, photo, current title and company to
-  People. If they are already in AILI it says so, with a link. Nothing is
-  added to LinkedIn's page: the popup only reads the tab's address and title.
+- **The popup** shows one thing at a time. On someone's LinkedIn profile:
+  who it is and Add to AILI, with the stage and tag in one line underneath
+  (it keeps your last pick). Clicking Add reads that one profile from
+  LinkedIn and adds the name, headline, photo, current title and company to
+  People. If they are already in AILI it says so and offers Open in AILI.
+  Anywhere else it says it is syncing. It only speaks up when something needs
+  you, like LinkedIn being logged out. Sync now, Open AILI and Disconnect are
+  in the ••• menu. Nothing is added to LinkedIn's page: the popup only reads
+  the tab's address and title.
 - Group threads are skipped. Conversations idle for more than 180 days are
   not imported.
 

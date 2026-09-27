@@ -4,74 +4,127 @@
 <meta charset="utf-8">
 <title>AILI helper</title>
 <style>
-  body { margin: 0; width: 320px; font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; color: #292524; background: #fff; }
-  .wrap { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-  h1 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
-  .mark { width: 24px; height: 24px; border-radius: 6px; background: #292524; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px; }
+  body { margin: 0; width: 320px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif; color: #1c1917; background: #fff; -webkit-font-smoothing: antialiased; }
+  .hidden { display: none !important; }
+  button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  :focus-visible { outline: 2px solid #a8a29e; outline-offset: 1px; }
+
+  .top { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px 0 14px; }
+  .mark { width: 20px; height: 20px; border-radius: 5px; background: #1c1917; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .brand { font-weight: 600; }
+  .more { margin-left: auto; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #57534e; }
+  .more:hover, .more[aria-expanded="true"] { background: #f0efee; }
+
+  .body { padding: 6px 20px 18px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
+  .av { width: 64px; height: 64px; border-radius: 50%; background: #e7e5e4; color: #57534e; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; margin: 6px 0 8px; }
+  .badge { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 10px 0 8px; }
+  .badge.ok { background: #ecfdf5; color: #059669; }
+  .badge.warn { background: #fffbeb; color: #b45309; }
+  .name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .sub { font-size: 12.5px; color: #78716c; max-width: 260px; }
+  .err { font-size: 12px; color: #b91c1c; margin-top: 6px; }
+
+  .btn { width: 100%; height: 36px; margin-top: 14px; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13.5px; font-weight: 500; }
+  .pri { background: #1c1917; color: #fff; }
+  .pri:hover:not(:disabled) { background: #292524; }
+  .sec { background: #f0efee; }
+  .sec:hover { background: #e7e5e4; }
+
+  .opt { margin-top: 6px; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: #57534e; padding: 4px 8px; border-radius: 6px; }
+  .opt:hover { background: #f0efee; }
+  .group { width: 100%; margin-top: 14px; border-radius: 10px; background: #f7f6f5; text-align: left; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; border-top: 1px solid #ecebea; }
+  .row:first-child { border-top: 0; }
+  .row select { margin-left: auto; min-width: 0; max-width: 170px; font: inherit; color: #57534e; border: 0; background: transparent; text-align: right; cursor: pointer; padding: 4px; border-radius: 6px; }
+  .row select:hover { background: #ecebea; }
+
+  .foot { border-top: 1px solid #f0efee; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 11.5px; color: #78716c; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+  .dot.amber { background: #f59e0b; }
+  .dot.grey { background: #d6d3d1; }
+
+  .menu { position: absolute; right: 10px; top: 40px; width: 190px; background: #fff; border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.06); padding: 5px; z-index: 2; }
+  .meta { padding: 6px 10px 4px; font-size: 11.5px; color: #78716c; }
+  .mi { width: 100%; height: 30px; display: flex; align-items: center; padding: 0 10px; border-radius: 6px; text-align: left; }
+  .mi:hover { background: #f0efee; }
+  .red { color: #dc2626; }
+  .sep { height: 1px; background: #f0efee; margin: 4px 6px; }
+
+  .pair { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .pair h2 { margin: 0; font-size: 15px; }
   label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; }
   input { font: inherit; padding: 7px 9px; border: 1px solid #e7e5e4; border-radius: 6px; }
-  input:focus { outline: 2px solid #a8a29e; outline-offset: 1px; }
-  .row { display: flex; gap: 8px; }
-  button { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 6px; border: 1px solid #e7e5e4; background: #fff; cursor: pointer; }
-  button.primary { background: #292524; color: #fff; border-color: #292524; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .status { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #57534e; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: #d6d3d1; }
-  .dot.ok { background: #10b981; } .dot.warn { background: #f59e0b; } .dot.bad { background: #ef4444; }
-  .muted { font-size: 11px; color: #78716c; }
-  .err { font-size: 11px; color: #b91c1c; white-space: pre-wrap; }
-  .hidden { display: none; }
-  .card { border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  .who { display: flex; flex-direction: column; gap: 1px; }
-  .who strong { font-size: 14px; }
-  select { font: inherit; padding: 6px 8px; border: 1px solid #e7e5e4; border-radius: 6px; background: #fff; width: 100%; min-width: 0; }
-  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-  #add { margin-bottom: 14px; }
-  button.wide { width: 100%; }
-  a { color: #292524; }
+  .note { font-size: 11.5px; color: #78716c; margin: 0; }
+  .pair .btn { margin-top: 2px; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1><span class="mark">A</span> AILI helper</h1>
-
-  <div id="pair">
-    <label>AILI address
-      <input id="server" type="url" placeholder="http://localhost:3000">
-    </label>
-    <label style="margin-top:8px">Helper token
-      <input id="token" type="text" placeholder="aili_..." autocomplete="off">
-    </label>
-    <p class="muted">Both are in AILI under Settings.</p>
-    <div class="row">
-      <button id="connect" class="primary">Connect</button>
-    </div>
-  </div>
-
-  <div id="paired" class="hidden">
-    <div id="add" class="card hidden">
-      <div class="who"><span class="muted">On LinkedIn</span><strong id="add-name"></strong></div>
-      <div id="add-form">
-        <div class="grid">
-          <label>Stage <select id="add-stage"></select></label>
-          <label>Tag <select id="add-tag"><option value="">No tag</option></select></label>
-        </div>
-        <button id="add-btn" class="primary wide" style="margin-top:10px">Add to AILI</button>
-      </div>
-      <p id="add-done" class="muted hidden"></p>
-      <p id="add-error" class="err hidden"></p>
-    </div>
-    <div class="status"><span id="dot" class="dot"></span><span id="line">Checking</span></div>
-    <p id="detail" class="muted"></p>
-    <p id="error" class="err hidden"></p>
-    <div class="row">
-      <button id="sync">Sync now</button>
-      <button id="disconnect">Disconnect</button>
-    </div>
-  </div>
-
-  <p class="muted">Every send is your click in AILI. The helper only carries it. Keep LinkedIn logged in in this browser.</p>
+<div class="top">
+  <span class="mark">A</span><span class="brand">AILI</span>
+  <button id="more" class="more hidden" aria-label="More" aria-haspopup="menu" aria-expanded="false">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>
+  </button>
 </div>
+
+<div id="menu" class="menu hidden" role="menu">
+  <div id="menu-meta" class="meta"></div>
+  <div class="sep"></div>
+  <button id="sync" class="mi" role="menuitem">Sync now</button>
+  <button id="open-aili" class="mi" role="menuitem">Open AILI</button>
+  <div class="sep"></div>
+  <button id="disconnect" class="mi red" role="menuitem">Disconnect</button>
+</div>
+
+<!-- Not paired yet -->
+<div id="pair" class="pair hidden">
+  <h2>Connect to AILI</h2>
+  <label>AILI address <input id="server" type="url" placeholder="http://localhost:3000"></label>
+  <label>Helper token <input id="token" type="text" placeholder="aili_..." autocomplete="off"></label>
+  <p class="note">Both are in AILI under Settings.</p>
+  <button id="connect" class="btn pri">Connect</button>
+  <p class="note">Every message is sent only when you click Send in AILI. The helper just carries it. Keep LinkedIn logged in in this browser.</p>
+</div>
+
+<!-- On someone's LinkedIn profile -->
+<div id="profile" class="hidden">
+  <div class="body">
+    <div id="p-badge" class="badge ok hidden">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+    </div>
+    <div id="p-av" class="av"></div>
+    <div id="p-name" class="name"></div>
+    <div id="p-sub" class="sub"></div>
+    <div id="p-options" class="group hidden">
+      <div class="row"><span>Stage</span><select id="p-stage" aria-label="Stage"></select></div>
+      <div class="row"><span>Tag</span><select id="p-tag" aria-label="Tag"><option value="">No tag</option></select></div>
+    </div>
+    <button id="p-add" class="btn pri hidden">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span id="p-add-label">Add to AILI</span>
+    </button>
+    <button id="p-choice" class="opt hidden" aria-expanded="false"></button>
+    <button id="p-open" class="btn hidden">Open in AILI <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/></svg></button>
+    <div id="p-error" class="err hidden"></div>
+  </div>
+  <div class="foot"><span id="f-dot" class="dot"></span><span id="f-text"></span></div>
+</div>
+
+<!-- Anywhere else, or when something needs fixing -->
+<div id="state" class="hidden">
+  <div class="body">
+    <div id="s-ok" class="badge ok">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+    </div>
+    <div id="s-warn" class="badge warn hidden">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
+    </div>
+    <div id="s-title" class="name"></div>
+    <div id="s-sub" class="sub"></div>
+    <button id="s-action" class="btn"></button>
+  </div>
+</div>
+
 <script src="popup.js" type="module"></script>
 </body>
 </html>
