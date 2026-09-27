@@ -93,7 +93,8 @@ export function Welcome({
   accountName: string;
 }) {
   const router = useRouter();
-  const presence = useHelperPresence();
+  // One check when the page loads; the extension screen does no checking of its own.
+  const presence = useHelperPresence({ poll: false });
   const [, start] = useTransition();
   const paired = useRef(false);
   // Came back through Next: if the extension is still not there, say so.
@@ -168,6 +169,15 @@ export function Welcome({
     );
   }
 
+  // The first check takes about a second: show that rather than flash the install screen.
+  if (presence.state === "checking" && !helper.lastSeenAt) {
+    return (
+      <AuthCard centered>
+        <Waiting>Checking</Waiting>
+      </AuthCard>
+    );
+  }
+
   const installed = presence.state === "found" || Boolean(helper.lastSeenAt);
   const step = !installed ? 1 : !helper.lastSeenAt || helper.state === "logged_out" ? 2 : 3;
 
@@ -186,19 +196,12 @@ export function Welcome({
               <ExternalLink />
             </a>
           </Button>
-          {/* Next reloads the page, so a newly installed extension can answer, then checks. */}
-          <Button
-            variant="outline"
-            className="w-full"
-            disabled={presence.state === "checking"}
-            onClick={() => window.location.assign("/welcome?checked=1")}
-          >
-            {presence.state === "checking" ? "Checking" : "Next"}
+          {/* Next reloads the page, so a newly installed extension can answer, then checks once. */}
+          <Button variant="outline" className="w-full" onClick={() => window.location.assign("/welcome?checked=1")}>
+            Next
           </Button>
-          {checked && presence.state === "missing" && (
-            <p className="text-xs text-destructive">
-              We can&apos;t find the extension yet. Check it is turned on in chrome://extensions, then press Next.
-            </p>
+          {checked && (
+            <p className="text-xs text-destructive">The extension is not installed yet. Install it, then press Next.</p>
           )}
         </AuthCard>
       )}

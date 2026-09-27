@@ -32,8 +32,10 @@ password? `npm run reset:password -- you@example.com` prints a one-time link
 (30 minutes) to set a new one; AILI sends no email.
 
 After sign up comes a full-screen setup of three steps, each moving on by
-itself: install the extension (AILI spots it and connects it, nothing to
-paste), log in to LinkedIn (skipped if you already are), sync. As soon as the
+itself: install the extension (checked once when the page loads; if it is
+missing, Install extension then Next, which reloads and checks again; once
+found AILI connects it, nothing to paste), log in to LinkedIn (skipped if you
+already are), sync. As soon as the
 first conversations are in, "You are all set" opens the inbox; the rest keep
 importing, shown in the line at the top of the list. Skip for now goes
 straight to the app. The Install button opens the Chrome Web Store; set
