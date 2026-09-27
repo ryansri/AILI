@@ -49,7 +49,10 @@ const CATEGORY_ORDER: InboxCategory[] = ["PRIMARY_INBOX", "SECONDARY_INBOX"];
 let running = false;
 let tick = 0;
 
-chrome.runtime.onInstalled.addListener(() => schedule());
+chrome.runtime.onInstalled.addListener(() => {
+  schedule();
+  void reachOpenAiliTabs();
+});
 chrome.runtime.onStartup.addListener(() => schedule());
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM) void cycle({ force: false });
@@ -72,6 +75,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   }
   return false;
 });
+
+/**
+ * Chrome only adds the AILI page script to tabs opened after the extension is
+ * installed or updated. An AILI tab already open (say, on onboarding's
+ * "Install the extension" step) gets it here, so it moves on without a reload.
+ */
+async function reachOpenAiliTabs() {
+  const tabs = await chrome.tabs.query({ url: ["http://localhost/*", "http://127.0.0.1/*"] }).catch(() => []);
+  for (const tab of tabs) {
+    if (tab.id === undefined) continue;
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["aili-page.js"] }).catch(() => {});
+  }
+}
 
 async function schedule() {
   const existing = await chrome.alarms.get(ALARM);

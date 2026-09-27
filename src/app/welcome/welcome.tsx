@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ExternalLink, Loader2, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -96,6 +96,12 @@ export function Welcome({
   const presence = useHelperPresence();
   const [, start] = useTransition();
   const paired = useRef(false);
+  // Still no extension after a while: offer a reload, in case it went in before this tab was opened.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Keep reading the server so each step moves on by itself.
   useEffect(() => {
@@ -178,7 +184,6 @@ export function Welcome({
             <Puzzle className="size-6" strokeWidth={1.6} />
           </Icon>
           <h1 className="text-xl font-bold tracking-tight">Install the AILI extension</h1>
-          <p className="text-md text-muted-foreground">It syncs your LinkedIn messages.</p>
           <Button className="w-full" asChild>
             <a href={EXTENSION_URL} target="_blank" rel="noreferrer">
               Install extension
@@ -186,6 +191,18 @@ export function Welcome({
             </a>
           </Button>
           <Waiting>{presence.state === "checking" ? "Checking" : "Waiting for the extension"}</Waiting>
+          {slow && (
+            <p className="text-xs text-muted-foreground">
+              Installed it?{" "}
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="font-medium text-foreground underline-offset-2 hover:underline"
+              >
+                Reload this page
+              </button>
+            </p>
+          )}
         </AuthCard>
       )}
       {step === 2 && (
