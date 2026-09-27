@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ExternalLink, Loader2, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { finishOnboarding } from "@/lib/actions";
@@ -96,12 +96,8 @@ export function Welcome({
   const presence = useHelperPresence();
   const [, start] = useTransition();
   const paired = useRef(false);
-  // Still no extension after a while: offer a reload, in case it went in before this tab was opened.
-  const [slow, setSlow] = useState(false);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSlow(true), 8000);
-    return () => window.clearTimeout(timer);
-  }, []);
+  // Came back through Next: if the extension is still not there, say so.
+  const checked = useSearchParams().get("checked") === "1";
 
   // Keep reading the server so each step moves on by itself.
   useEffect(() => {
@@ -190,17 +186,18 @@ export function Welcome({
               <ExternalLink />
             </a>
           </Button>
-          <Waiting>{presence.state === "checking" ? "Checking" : "Waiting for the extension"}</Waiting>
-          {slow && (
-            <p className="text-xs text-muted-foreground">
-              Installed it?{" "}
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="font-medium text-foreground underline-offset-2 hover:underline"
-              >
-                Reload this page
-              </button>
+          {/* Next reloads the page, so a newly installed extension can answer, then checks. */}
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={presence.state === "checking"}
+            onClick={() => window.location.assign("/welcome?checked=1")}
+          >
+            {presence.state === "checking" ? "Checking" : "Next"}
+          </Button>
+          {checked && presence.state === "missing" && (
+            <p className="text-xs text-destructive">
+              We can&apos;t find the extension yet. Check it is turned on in chrome://extensions, then press Next.
             </p>
           )}
         </AuthCard>
