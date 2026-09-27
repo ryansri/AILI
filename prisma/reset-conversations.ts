@@ -83,7 +83,7 @@ async function main() {
   } else {
     console.log("Cleared. Your login, tags, stages, templates, daily cap and helper token are unchanged.");
   }
-  console.log("Next: open the AILI helper in Chrome, press Disconnect, then connect again to re-import.");
+  console.log("Next: reload AILI. Onboarding runs again and the extension re-imports by itself.");
 }
 
 main()
