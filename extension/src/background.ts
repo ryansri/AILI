@@ -19,7 +19,7 @@
  * clicked, and AILI caps it per day.
  */
 
-import { addPerson, postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type ReplyToNotify } from "./aili";
+import { addPerson, linkPerson, postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type ReplyToNotify } from "./aili";
 import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
 import {
   fetchConversationsPage,
@@ -60,6 +60,10 @@ chrome.notifications.onClicked.addListener((id) => {
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === "sync-now") {
     void cycle({ force: true }).then(() => reply({ ok: true }));
+    return true;
+  }
+  if (msg?.type === "match-profile") {
+    void matchProfile(msg.publicId).then(reply, () => reply({ person: null }));
     return true;
   }
   if (msg?.type === "add-person") {
@@ -151,12 +155,36 @@ async function lookupProfiles(pairing: Pairing): Promise<void> {
  * the name from the page title is enough; the background lookup fills in the
  * title and company later.
  */
+/** A profile read in the last few minutes, so checking and then adding costs one LinkedIn request. */
+const profileCache = new Map<string, { at: number; profile: Awaited<ReturnType<typeof fetchProfile>> }>();
+
+async function readProfile(publicId: string) {
+  const hit = profileCache.get(publicId);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.profile;
+  const profile = await fetchProfile(publicId);
+  profileCache.set(publicId, { at: Date.now(), profile });
+  return profile;
+}
+
+/**
+ * The popup found someone in AILI with this name but not this /in/ address
+ * (people imported from messages carry a member id). Reads the profile's
+ * member id and asks AILI whether it is the same person.
+ */
+async function matchProfile(publicId: string) {
+  const pairing = await getPairing();
+  if (!pairing) return { person: null };
+  const profile = await readProfile(publicId);
+  if (!profile?.urn) return { person: null };
+  return linkPerson(pairing, { publicId, urn: profile.urn });
+}
+
 async function addFromProfile(msg: { publicId: string; fallbackName: string; stage: string; tagId?: string; newTag?: string }) {
   const pairing = await getPairing();
   if (!pairing) throw new Error("Connect the helper to AILI first.");
   let profile: Awaited<ReturnType<typeof fetchProfile>> = null;
   try {
-    profile = await fetchProfile(msg.publicId);
+    profile = await readProfile(msg.publicId);
   } catch (err) {
     if (err instanceof LinkedInError && (err.status === 401 || err.status === 403)) {
       throw new Error("LinkedIn is logged out in this browser. Log in and try again.");

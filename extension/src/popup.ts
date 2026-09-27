@@ -250,6 +250,13 @@ pAdd.addEventListener("click", async () => {
 async function renderProfile(tab: ProfileTab, pairing: Pairing, check: PersonCheck) {
   current = { tab, pairing };
   const stageLabel = (key: string) => check.stages.find((s) => s.key === key)?.label ?? key;
+  if (!check.person && check.maybe) {
+    // Same name as someone in AILI: confirm by LinkedIn member id before offering to add.
+    renderPerson(tab.name || tab.publicId, "you", "Checking AILI");
+    show(pOpen, false);
+    const res = await chrome.runtime.sendMessage({ type: "match-profile", publicId: tab.publicId }).catch(() => null);
+    if (res?.person) check = { ...check, person: res.person };
+  }
   if (check.person) {
     renderPerson(check.person.name, "already", `In AILI · ${stageLabel(check.person.stage)}`, check.person.id);
     return;
@@ -309,7 +316,7 @@ async function render() {
   }
   if (tab) {
     try {
-      await renderProfile(tab, pairing, await checkPerson(pairing, tab.publicId));
+      await renderProfile(tab, pairing, await checkPerson(pairing, tab.publicId, tab.name));
       return;
     } catch {
       // AILI did not answer: fall through to the problem screen below.

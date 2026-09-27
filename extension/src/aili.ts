@@ -99,12 +99,19 @@ export function reportLookups(
 
 export interface PersonCheck {
   person: { id: string; name: string; stage: string } | null;
+  /** Someone in AILI has this name; the helper can confirm by member id. */
+  maybe?: boolean;
   stages: { key: string; label: string }[];
   tags: { id: string; label: string }[];
 }
 
-export function checkPerson(pairing: Pairing, publicId: string): Promise<PersonCheck> {
-  return call(pairing, `/api/helper/people?publicId=${encodeURIComponent(publicId)}`);
+export function checkPerson(pairing: Pairing, publicId: string, name = ""): Promise<PersonCheck> {
+  return call(pairing, `/api/helper/people?publicId=${encodeURIComponent(publicId)}&name=${encodeURIComponent(name)}`);
+}
+
+/** Confirms someone is already in AILI by member id, and saves their /in/ address there. */
+export function linkPerson(pairing: Pairing, body: { publicId: string; urn: string }): Promise<Pick<PersonCheck, "person">> {
+  return call(pairing, "/api/helper/people", { method: "POST", body: JSON.stringify({ ...body, link: true }) });
 }
 
 export function addPerson(
