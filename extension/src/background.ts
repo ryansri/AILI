@@ -33,6 +33,7 @@ import {
 } from "./linkedin/api";
 import type { ConversationSummary, PlainMessage } from "./linkedin/normalize";
 import { getBackfill, getPairing, getStatus, getSyncedAt, setBackfill, setStatus, setSyncedAt, type Pairing } from "./storage";
+import { AILI_TAB_PATTERNS } from "./config";
 
 const ALARM = "aili-tick";
 const TICK_MINUTES = 1;
@@ -82,7 +83,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
  * "Install the extension" step) gets it here, so it moves on without a reload.
  */
 async function reachOpenAiliTabs() {
-  const tabs = await chrome.tabs.query({ url: ["http://localhost/*", "http://127.0.0.1/*"] }).catch(() => []);
+  const tabs = await chrome.tabs.query({ url: AILI_TAB_PATTERNS }).catch(() => []);
   for (const tab of tabs) {
     if (tab.id === undefined) continue;
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["aili-page.js"] }).catch(() => {});

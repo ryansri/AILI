@@ -28,8 +28,9 @@ npm run dev          # also syncs the database layout and rebuilds the helper
 
 Open http://localhost:3000 and create your account. Anyone can sign up from
 the log in screen; each account has its own separate inbox. Forgot your
-password? `npm run reset:password -- you@example.com` prints a one-time link
-(30 minutes) to set a new one; AILI sends no email.
+password? With `RESEND_API_KEY` set, Forgot password emails a one-time link
+(30 minutes); without it, `npm run reset:password -- you@example.com` prints
+the link.
 
 After sign up comes a full-screen setup of three steps, each moving on by
 itself: install the extension (checked once when the page loads; if it is
@@ -67,6 +68,46 @@ npm run reset:conversations -- you@example.com --all --yes  # also tags, templat
 npm run reset:password -- you@example.com  # prints a one-time link to set a new password
 # After a reset the helper re-imports by itself: AILI tells it it has none of the history.
 ```
+
+## Host it (Vercel + Turso)
+
+Free to start: Vercel runs the app, Turso holds the database (SQLite in the
+cloud, same schema). Vercel's free Hobby plan is for non-commercial use; move
+to Pro once AILI earns money.
+
+1. **Turso database.** In the Turso dashboard create a database (pick the
+   region closest to your Vercel region), then copy its URL (`libsql://...`)
+   and create a token. Or with the CLI: `turso db create aili`,
+   `turso db show aili --url`, `turso db tokens create aili`.
+2. **Copy your local data (optional).** On the computer that has
+   `prisma/dev.db`:
+   ```bash
+   TURSO_DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=... npm run db:copy          # shows what it would copy
+   TURSO_DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=... npm run db:copy -- --yes # copies it
+   ```
+   It creates the tables and copies accounts, people, messages, tags, stages
+   and templates. It refuses if Turso already has accounts. Skip it to start
+   empty.
+3. **Vercel project.** Add New, Project, import this GitHub repository. Before
+   Deploy, add Environment Variables:
+   - `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`: from step 1
+   - `AUTH_SECRET`: any long random string (`openssl rand -base64 32`)
+   - `APP_URL`: the site's address, e.g. `https://aili.vercel.app` (add it
+     after the first deploy shows the address, then redeploy)
+   - optional `RESEND_API_KEY`, `RESEND_FROM` for password reset emails.
+     Resend's test sender `onboarding@resend.dev` only delivers to your own
+     Resend email; verify a domain to email anyone.
+   Deploy. Each build runs `db:deploy`, which creates or updates the Turso
+   tables, so schema changes go out with the code.
+4. **Point the extension at it.** Add `AILI_URL=https://your-address` to
+   `.env` (or put it in front of the command), run `npm run helper:build`, and
+   press the reload arrow on the AILI helper in `chrome://extensions`. Then open
+   your hosted AILI and log in; it connects the extension by itself. The
+   extension talks only to that exact address and localhost, never a wildcard.
+
+Changing the database layout later: edit `prisma/schema.prisma`, run
+`npm run db:migration -- short_name` to write the SQL into
+`prisma/migrations`, commit it, and the next deploy applies it.
 
 ## The Chrome helper
 

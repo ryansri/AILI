@@ -9,6 +9,7 @@
 
 import { checkPairing, checkPerson, type PersonCheck } from "./aili";
 import { getPairing, getStatus, setPairing, type HelperStatus, type Pairing } from "./storage";
+import { DEFAULT_SERVER } from "./config";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const show = (el: HTMLElement, on: boolean) => el.classList.toggle("hidden", !on);
@@ -86,7 +87,7 @@ const tokenInput = $<HTMLInputElement>("token");
 const connectBtn = $<HTMLButtonElement>("connect");
 
 connectBtn.addEventListener("click", async () => {
-  const serverUrl = serverInput.value.trim().replace(/\/$/, "") || "http://localhost:3000";
+  const serverUrl = serverInput.value.trim().replace(/\/$/, "") || DEFAULT_SERVER;
   const token = tokenInput.value.trim();
   if (!token.startsWith("aili_")) {
     alert("Paste the helper token from AILI Settings. It starts with aili_.");
@@ -96,7 +97,7 @@ connectBtn.addEventListener("click", async () => {
   try {
     origin = new URL(serverUrl).origin;
   } catch {
-    alert("That address does not look right. Example: http://localhost:3000");
+    alert(`That address does not look right. Example: ${DEFAULT_SERVER}`);
     return;
   }
   connectBtn.disabled = true;
@@ -284,7 +285,7 @@ async function render() {
   show($("actions"), Boolean(pairing));
   if (!pairing) {
     viewOnly("pair");
-    if (!serverInput.value) serverInput.value = "http://localhost:3000";
+    if (!serverInput.value) serverInput.value = DEFAULT_SERVER;
     return;
   }
 

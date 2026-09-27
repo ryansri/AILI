@@ -147,8 +147,8 @@ export function SettingsView({
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Paste this into the helper popup along with this app&apos;s address, for local use
-                http://localhost:3000.
+                Paste this into the helper popup along with this app&apos;s address, the one in your
+                browser&apos;s address bar.
               </p>
             </div>
             <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">

@@ -1,7 +1,9 @@
 "use server";
 
-import { createHash } from "node:crypto";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { sendEmail } from "./email";
+import { createResetLink, RESET_MINUTES, sha256 } from "./password-reset";
 import { db } from "./db";
 import {
   clearSessionCookie,
@@ -14,6 +16,8 @@ import {
 
 export interface AuthResult {
   error?: string;
+  /** A request went through, e.g. a reset email was sent. */
+  done?: boolean;
 }
 
 function safeNext(value: FormDataEntryValue | null): string {
@@ -56,7 +60,33 @@ export async function register(_prev: AuthResult, form: FormData): Promise<AuthR
   redirect("/welcome");
 }
 
-const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+/** This AILI's own address: APP_URL when set, otherwise from the request. */
+async function appUrl(): Promise<string> {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+/**
+ * Forgot password on a hosted AILI: emails a one-time link. The answer is the
+ * same whether or not the email has an account, so it cannot be used to find out.
+ */
+export async function requestPasswordReset(_prev: AuthResult, form: FormData): Promise<AuthResult> {
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "That email does not look right." };
+  const workspace = await db.workspace.findFirst({ where: { email, passwordHash: { not: null } } });
+  if (workspace) {
+    const link = await createResetLink(db, workspace.id, await appUrl());
+    await sendEmail({
+      to: email,
+      subject: "Reset your AILI password",
+      text: `Open this link to choose a new password. It works once, for ${RESET_MINUTES} minutes.\n\n${link}\n\nIf you did not ask for this, ignore this email.`,
+    });
+  }
+  return { done: true };
+}
 
 /** The one-time link from `npm run reset:password`: sets a new password and logs in. */
 export async function resetPassword(_prev: AuthResult, form: FormData): Promise<AuthResult> {

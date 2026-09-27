@@ -4,12 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node extension/build.mjs && next build",
+    "build": "node extension/build.mjs && node scripts/db-deploy.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "db:push": "prisma db push --accept-data-loss",
+    "db:deploy": "node scripts/db-deploy.mjs",
+    "db:copy": "node scripts/db-copy.mjs",
+    "db:migration": "node scripts/db-migration.mjs",
     "db:seed": "tsx prisma/seed.ts",
     "reset:conversations": "tsx prisma/reset-conversations.ts",
     "reset:password": "tsx prisma/reset-password.ts",
@@ -19,6 +22,8 @@
     "predev": "prisma db push --accept-data-loss && node extension/build.mjs"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@prisma/adapter-libsql": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

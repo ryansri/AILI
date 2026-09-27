@@ -1,5 +1,6 @@
 /*
- * Runs only on the AILI page itself (localhost), never on LinkedIn or any
+ * Runs only on the AILI page itself (localhost, or the hosted address the
+ * helper was built for), never on LinkedIn or any
  * other site. It answers AILI's "is the helper installed?" with its version
  * and whether it is connected to this AILI, so the setup card can tick its
  * steps on its own. During onboarding the page also hands it the address and

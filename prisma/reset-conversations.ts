@@ -14,11 +14,10 @@
  * forgets what it imported and starts over.
  */
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "../src/lib/prisma-client";
 
-process.env.DATABASE_URL ??= "file:./dev.db";
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 async function main() {
   const email = process.argv.slice(2).find((a) => a.includes("@"))?.toLowerCase();
