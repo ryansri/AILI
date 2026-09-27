@@ -13,8 +13,11 @@
   .top { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px 0 14px; }
   .mark { width: 20px; height: 20px; border-radius: 5px; background: #1c1917; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
   .brand { font-weight: 600; }
-  .more { margin-left: auto; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #57534e; }
-  .more:hover, .more[aria-expanded="true"] { background: #f0efee; }
+  .actions { margin-left: auto; display: flex; gap: 2px; }
+  .icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #57534e; }
+  .icon:hover { background: #f0efee; color: #1c1917; }
+  .icon.spin svg { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .body { padding: 6px 20px 18px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
   .av { width: 64px; height: 64px; border-radius: 50%; background: #e7e5e4; color: #57534e; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; margin: 6px 0 8px; }
@@ -31,25 +34,18 @@
   .sec { background: #f0efee; }
   .sec:hover { background: #e7e5e4; }
 
-  .opt { margin-top: 6px; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: #57534e; padding: 4px 8px; border-radius: 6px; }
-  .opt:hover { background: #f0efee; }
   .group { width: 100%; margin-top: 14px; border-radius: 10px; background: #f7f6f5; text-align: left; overflow: hidden; }
   .row { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; border-top: 1px solid #ecebea; }
   .row:first-child { border-top: 0; }
   .row select { margin-left: auto; min-width: 0; max-width: 170px; font: inherit; color: #57534e; border: 0; background: transparent; text-align: right; cursor: pointer; padding: 4px; border-radius: 6px; }
   .row select:hover { background: #ecebea; }
+  .row input { flex: 1; min-width: 0; font: inherit; border: 0; background: transparent; padding: 4px 0; outline: none; }
 
-  .foot { border-top: 1px solid #f0efee; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 11.5px; color: #78716c; }
+  .foot { border-top: 1px solid #f0efee; display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 11.5px; color: #78716c; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
   .dot.amber { background: #f59e0b; }
   .dot.grey { background: #d6d3d1; }
 
-  .menu { position: absolute; right: 10px; top: 40px; width: 190px; background: #fff; border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.06); padding: 5px; z-index: 2; }
-  .meta { padding: 6px 10px 4px; font-size: 11.5px; color: #78716c; }
-  .mi { width: 100%; height: 30px; display: flex; align-items: center; padding: 0 10px; border-radius: 6px; text-align: left; }
-  .mi:hover { background: #f0efee; }
-  .red { color: #dc2626; }
-  .sep { height: 1px; background: #f0efee; margin: 4px 6px; }
 
   .pair { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
   .pair h2 { margin: 0; font-size: 15px; }
@@ -62,18 +58,14 @@
 <body>
 <div class="top">
   <span class="mark">A</span><span class="brand">AILI</span>
-  <button id="more" class="more hidden" aria-label="More" aria-haspopup="menu" aria-expanded="false">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>
-  </button>
-</div>
-
-<div id="menu" class="menu hidden" role="menu">
-  <div id="menu-meta" class="meta"></div>
-  <div class="sep"></div>
-  <button id="sync" class="mi" role="menuitem">Sync now</button>
-  <button id="open-aili" class="mi" role="menuitem">Open AILI</button>
-  <div class="sep"></div>
-  <button id="disconnect" class="mi red" role="menuitem">Disconnect</button>
+  <span id="actions" class="actions hidden">
+    <button id="sync" class="icon" aria-label="Sync now" title="Sync now">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>
+    </button>
+    <button id="disconnect" class="icon" aria-label="Disconnect" title="Disconnect from AILI">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17l5-5-5-5"/><path d="M20 12H9"/><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4"/></svg>
+    </button>
+  </span>
 </div>
 
 <!-- Not paired yet -->
@@ -95,15 +87,15 @@
     <div id="p-av" class="av"></div>
     <div id="p-name" class="name"></div>
     <div id="p-sub" class="sub"></div>
-    <div id="p-options" class="group hidden">
+    <div id="p-options" class="group">
       <div class="row"><span>Stage</span><select id="p-stage" aria-label="Stage"></select></div>
       <div class="row"><span>Tag</span><select id="p-tag" aria-label="Tag"><option value="">No tag</option></select></div>
+      <div id="p-newtag-row" class="row hidden"><input id="p-newtag" type="text" maxlength="40" placeholder="New tag name" aria-label="New tag name"></div>
     </div>
     <button id="p-add" class="btn pri hidden">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       <span id="p-add-label">Add to AILI</span>
     </button>
-    <button id="p-choice" class="opt hidden" aria-expanded="false"></button>
     <button id="p-open" class="btn hidden"><span id="p-open-label">Open in AILI</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/></svg></button>
     <div id="p-error" class="err hidden"></div>
   </div>

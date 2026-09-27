@@ -4,7 +4,7 @@
  *   - something wrong (LinkedIn logged out, AILI unreachable): what and one fix,
  *   - on someone's LinkedIn profile: who it is and Add to AILI,
  *   - anywhere else: "Syncing with AILI" and Open AILI.
- * Everything else (sync now, disconnect, account) lives in the ••• menu.
+ * Sync now and Disconnect are two icons at the top right.
  */
 
 import { checkPairing, checkPerson, type PersonCheck } from "./aili";
@@ -13,8 +13,6 @@ import { getPairing, getStatus, setPairing, type HelperStatus, type Pairing } fr
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const show = (el: HTMLElement, on: boolean) => el.classList.toggle("hidden", !on);
 
-const moreBtn = $<HTMLButtonElement>("more");
-const menu = $("menu");
 const views = { pair: $("pair"), profile: $("profile"), state: $("state") };
 
 // ---------------------------------------------------------------------------
@@ -60,37 +58,21 @@ function syncLine(status: HelperStatus): { text: string; dot: "" | "amber" | "gr
 }
 
 // ---------------------------------------------------------------------------
-// The ••• menu
+// Sync and Disconnect, the two icons at the top right
 // ---------------------------------------------------------------------------
 
-function setMenu(open: boolean) {
-  show(menu, open);
-  moreBtn.setAttribute("aria-expanded", String(open));
-}
+const syncBtn = $<HTMLButtonElement>("sync");
 
-moreBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  setMenu(menu.classList.contains("hidden"));
-});
-document.addEventListener("click", (e) => {
-  if (!menu.contains(e.target as Node)) setMenu(false);
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") setMenu(false);
-});
-
-$("sync").addEventListener("click", async () => {
-  setMenu(false);
-  $("f-text").textContent = "Syncing";
+syncBtn.addEventListener("click", async () => {
+  syncBtn.classList.add("spin");
+  syncBtn.disabled = true;
   await chrome.runtime.sendMessage({ type: "sync-now" }).catch(() => {});
+  syncBtn.classList.remove("spin");
+  syncBtn.disabled = false;
   void render();
 });
-$("open-aili").addEventListener("click", async () => {
-  const pairing = await getPairing();
-  if (pairing) aili(pairing);
-});
 $("disconnect").addEventListener("click", async () => {
-  setMenu(false);
+  if (!confirm("Disconnect the helper from AILI? Syncing stops until you connect again with the token from AILI Settings.")) return;
   await setPairing(null);
   void render();
 });
@@ -183,22 +165,15 @@ async function profileTab(): Promise<ProfileTab | null> {
 
 const pStage = $<HTMLSelectElement>("p-stage");
 const pTag = $<HTMLSelectElement>("p-tag");
-const pChoice = $<HTMLButtonElement>("p-choice");
 const pAdd = $<HTMLButtonElement>("p-add");
 const pOpen = $<HTMLButtonElement>("p-open");
 const pError = $("p-error");
 let current: { tab: ProfileTab; pairing: Pairing } | null = null;
 
-const CHEVRON =
-  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
-
-function choiceLine() {
-  const stage = pStage.selectedOptions[0]?.textContent ?? "";
-  const tag = pTag.value ? (pTag.selectedOptions[0]?.textContent ?? "") : "No tag";
-  pChoice.innerHTML = "";
-  pChoice.append(`${stage} · ${tag} `);
-  pChoice.insertAdjacentHTML("beforeend", CHEVRON);
-}
+/** The last option in the Tag list: type a new tag instead of picking one. */
+const NEW_TAG = "__new";
+const pNewTagRow = $("p-newtag-row");
+const pNewTag = $<HTMLInputElement>("p-newtag");
 
 function fill(select: HTMLSelectElement, options: { value: string; label: string }[], keepFirst: boolean) {
   while (select.options.length > (keepFirst ? 1 : 0)) select.remove(select.options.length - 1);
@@ -220,8 +195,7 @@ function renderPerson(name: string, mode: "add" | "added" | "already" | "you", s
   $("p-name").textContent = mode === "added" ? `${name} added` : name;
   $("p-sub").textContent = sub;
   show(pAdd, mode === "add");
-  show(pChoice, mode === "add" && $("p-options").classList.contains("hidden"));
-  if (mode !== "add") show($("p-options"), false);
+  show($("p-options"), mode === "add");
   pOpen.className = `btn ${mode === "already" ? "pri" : "sec"}`;
   show(pOpen, mode !== "add");
   $("p-open-label").textContent = mode === "you" ? "Open AILI" : "Open in AILI";
@@ -230,29 +204,37 @@ function renderPerson(name: string, mode: "add" | "added" | "already" | "you", s
   show(pError, false);
 }
 
-pChoice.addEventListener("click", () => {
-  show($("p-options"), true);
-  show(pChoice, false);
+pTag.addEventListener("change", () => {
+  const typing = pTag.value === NEW_TAG;
+  show(pNewTagRow, typing);
+  if (typing) pNewTag.focus();
 });
-for (const select of [pStage, pTag]) select.addEventListener("change", choiceLine);
+pNewTag.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") pAdd.click();
+});
 
 pAdd.addEventListener("click", async () => {
   if (!current) return;
   pAdd.disabled = true;
   $("p-add-label").textContent = "Adding";
   show(pError, false);
-  await chrome.storage.local.set({ addStage: pStage.value, addTag: pTag.value });
+  const newTag = pTag.value === NEW_TAG ? pNewTag.value.trim() : "";
   try {
+    if (pTag.value === NEW_TAG && !newTag) throw new Error("Type a name for the new tag, or pick one from the list.");
     const res = await chrome.runtime.sendMessage({
       type: "add-person",
       publicId: current.tab.publicId,
       fallbackName: current.tab.name,
       stage: pStage.value,
-      tagId: pTag.value,
+      tagId: newTag ? undefined : pTag.value,
+      newTag: newTag || undefined,
     });
     if (!res || res.error) throw new Error(res?.error ?? "The helper did not answer. Reload it in chrome://extensions.");
+    // Next time, start from the same stage and tag (a new tag is remembered by its id).
+    await chrome.storage.local.set({ addStage: pStage.value, addTag: newTag ? (res.tagId ?? "") : pTag.value });
     const stage = pStage.selectedOptions[0]?.textContent ?? "";
-    const tag = pTag.value ? ` · ${pTag.selectedOptions[0]?.textContent ?? ""}` : "";
+    const tagName = newTag || (pTag.value ? (pTag.selectedOptions[0]?.textContent ?? "") : "");
+    const tag = tagName ? ` · ${tagName}` : "";
     const name = $("p-name").textContent ?? current.tab.name;
     if (res.existed) renderPerson(name, "already", "Already in AILI", res.id);
     else renderPerson(name, "added", `${stage}${tag}`, res.id);
@@ -274,10 +256,11 @@ async function renderProfile(tab: ProfileTab, pairing: Pairing, check: PersonChe
   }
   const remembered = (await chrome.storage.local.get(["addStage", "addTag"])) as { addStage?: string; addTag?: string };
   fill(pStage, check.stages.map((s) => ({ value: s.key, label: s.label })), false);
-  fill(pTag, check.tags.map((t) => ({ value: t.id, label: t.label })), true);
+  fill(pTag, [...check.tags.map((t) => ({ value: t.id, label: t.label })), { value: NEW_TAG, label: "New tag…" }], true);
+  pNewTag.value = "";
+  show(pNewTagRow, false);
   if (remembered.addStage && check.stages.some((s) => s.key === remembered.addStage)) pStage.value = remembered.addStage;
   if (remembered.addTag && check.tags.some((t) => t.id === remembered.addTag)) pTag.value = remembered.addTag;
-  choiceLine();
   renderPerson(tab.name || tab.publicId, "add", "Not in AILI yet");
 }
 
@@ -287,21 +270,21 @@ async function renderProfile(tab: ProfileTab, pairing: Pairing, check: PersonChe
 
 async function render() {
   const [pairing, status] = await Promise.all([getPairing(), getStatus()]);
-  show(moreBtn, Boolean(pairing));
+  show($("actions"), Boolean(pairing));
   if (!pairing) {
     viewOnly("pair");
     if (!serverInput.value) serverInput.value = "http://localhost:3000";
     return;
   }
 
-  $("menu-meta").textContent = [
+  // Hovering Sync shows who is connected.
+  syncBtn.title = [
+    "Sync now",
     status.displayName ? `${status.displayName} on LinkedIn` : "",
-    status.imported ? `${status.imported} conversations in AILI` : "",
     pairing.workspaceName ? `AILI account: ${pairing.workspaceName}` : "",
   ]
     .filter(Boolean)
     .join("\n");
-  $("menu-meta").style.whiteSpace = "pre-line";
   const line = syncLine(status);
   $("f-text").textContent = line.text;
   $("f-dot").className = `dot ${line.dot}`;
@@ -344,7 +327,7 @@ async function render() {
       sub: unreachable
         ? "Start AILI on your Mac with npm run dev, then try again."
         : rejected
-          ? "Copy a fresh helper token from AILI Settings, then Disconnect and connect again from the ••• menu."
+          ? "Copy a fresh helper token from AILI Settings, then Disconnect (top right) and connect again."
           : (status.lastError ?? "The last sync did not finish."),
       action: "Try again",
       primary: true,

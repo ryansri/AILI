@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getStages } from "@/lib/data";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
 import { isLinkedInImage } from "@/lib/helper-sync";
+import { TAG_COLORS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,18 @@ interface AddBody {
   company?: string;
   stage?: string;
   tagId?: string;
+  /** A tag typed in the popup. Reuses a tag with the same name, otherwise creates it. */
+  newTag?: string;
+}
+
+/** Finds or creates a tag by name, giving a new one the least used colour. */
+async function tagByName(workspaceId: string, label: string) {
+  const tags = await db.tag.findMany({ where: { workspaceId }, select: { id: true, label: true, color: true } });
+  const same = tags.find((t) => t.label.toLowerCase() === label.toLowerCase());
+  if (same) return { id: same.id };
+  const used = (color: string) => tags.filter((t) => t.color === color).length;
+  const color = [...TAG_COLORS].sort((a, b) => used(a) - used(b))[0];
+  return db.tag.create({ data: { workspaceId, label, color }, select: { id: true } });
 }
 
 export async function POST(request: Request) {
@@ -85,9 +98,12 @@ export async function POST(request: Request) {
 
   const stages = await getStages(workspace.id);
   const stage = stages.some((s) => s.key === body.stage) ? String(body.stage) : "warming";
-  const tag = body.tagId
-    ? await db.tag.findFirst({ where: { id: String(body.tagId), workspaceId: workspace.id }, select: { id: true } })
-    : null;
+  const newTag = clean(body.newTag, 40);
+  const tag = newTag
+    ? await tagByName(workspace.id, newTag)
+    : body.tagId
+      ? await db.tag.findFirst({ where: { id: String(body.tagId), workspaceId: workspace.id }, select: { id: true } })
+      : null;
   const jobTitle = clean(body.jobTitle, 120);
   const company = clean(body.company, 120);
   const pictureUrl = isLinkedInImage(body.pictureUrl) ? String(body.pictureUrl) : "";
@@ -118,5 +134,5 @@ export async function POST(request: Request) {
 
   revalidatePath("/people");
   revalidatePath("/inbox");
-  return NextResponse.json({ id: person.id, existed: false, stage }, { headers: corsHeaders(request) });
+  return NextResponse.json({ id: person.id, existed: false, stage, tagId: tag?.id }, { headers: corsHeaders(request) });
 }

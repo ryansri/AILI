@@ -119,7 +119,8 @@ export function addPerson(
     company?: string;
     stage: string;
     tagId?: string;
+    newTag?: string;
   },
-): Promise<{ id: string; existed: boolean; stage: string }> {
+): Promise<{ id: string; existed: boolean; stage: string; tagId?: string }> {
   return call(pairing, "/api/helper/people", { method: "POST", body: JSON.stringify(body) });
 }

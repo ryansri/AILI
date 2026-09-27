@@ -151,7 +151,7 @@ async function lookupProfiles(pairing: Pairing): Promise<void> {
  * the name from the page title is enough; the background lookup fills in the
  * title and company later.
  */
-async function addFromProfile(msg: { publicId: string; fallbackName: string; stage: string; tagId?: string }) {
+async function addFromProfile(msg: { publicId: string; fallbackName: string; stage: string; tagId?: string; newTag?: string }) {
   const pairing = await getPairing();
   if (!pairing) throw new Error("Connect the helper to AILI first.");
   let profile: Awaited<ReturnType<typeof fetchProfile>> = null;
@@ -174,6 +174,7 @@ async function addFromProfile(msg: { publicId: string; fallbackName: string; sta
     company: profile?.position?.company,
     stage: msg.stage,
     tagId: msg.tagId || undefined,
+    newTag: msg.newTag || undefined,
   });
 }
 
