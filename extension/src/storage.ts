@@ -45,6 +45,15 @@ export async function setBackfill(state: Backfill): Promise<void> {
   await chrome.storage.local.set({ backfill: state });
 }
 
+/**
+ * Forgets what was imported, keeping the pairing, so the next run imports the
+ * history again. Used when AILI says it has none of it (its data was reset).
+ */
+export async function startImportOver(): Promise<void> {
+  await chrome.storage.local.remove(["syncedAt", "backfill"]);
+  await setStatus({ imported: 0, backfillDone: false, importPhase: undefined });
+}
+
 export async function getPairing(): Promise<Pairing | null> {
   const { pairing } = await chrome.storage.local.get("pairing");
   return (pairing as Pairing | undefined) ?? null;

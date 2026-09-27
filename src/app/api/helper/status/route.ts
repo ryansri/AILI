@@ -59,7 +59,17 @@ export async function POST(request: Request) {
         : {}),
     },
   });
+  // The helper says its history import is done, yet AILI holds none of the
+  // conversations: AILI's data was reset. Ask the helper to import again.
+  let resync = false;
+  if (p && p.importing === false && (p.imported ?? 0) > 0) {
+    const synced = await db.person.count({ where: { workspaceId: workspace.id, conversationId: { not: null } } });
+    resync = synced === 0;
+    if (resync) {
+      await db.workspace.update({ where: { id: workspace.id }, data: { helperImporting: true, helperImported: 0, helperPhase: null } });
+    }
+  }
   revalidatePath("/inbox");
   revalidatePath("/settings");
-  return NextResponse.json({ ok: true }, { headers: corsHeaders(request) });
+  return NextResponse.json({ ok: true, resync }, { headers: corsHeaders(request) });
 }

@@ -169,7 +169,24 @@ export function SetupCard({ helper, token }: { helper: HelperStatus; token: stri
       </ol>
       {active === 1 && <Waiting>Looking for the helper. This page moves on by itself once it is installed.</Waiting>}
       {active === 2 && <Waiting>Waiting for the helper to connect.</Waiting>}
-      {active === 4 && <Waiting>The first import starts within a minute.</Waiting>}
+      {active === 4 && (
+        <div className="flex items-center justify-between gap-3">
+          <Waiting>The first import starts within a minute.</Waiting>
+          {presence.state === "found" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // The helper's page script passes this on, like the Sync icon in its popup.
+                window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
+                toast("Syncing now.");
+              }}
+            >
+              Sync now
+            </Button>
+          )}
+        </div>
+      )}
     </Frame>
   );
 }

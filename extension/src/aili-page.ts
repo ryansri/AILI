@@ -41,7 +41,10 @@ async function announce() {
 
 function onMessage(event: MessageEvent) {
   if (event.source !== window || event.origin !== location.origin) return;
-  if (event.data?.source === "aili-page" && event.data.type === "ping") void announce();
+  if (event.data?.source !== "aili-page") return;
+  if (event.data.type === "ping") void announce();
+  // The Sync now button on AILI's setup card: same as the popup's Sync icon.
+  if (event.data.type === "sync-now" && alive()) chrome.runtime.sendMessage({ type: "sync-now" }).catch(() => {});
 }
 
 window.addEventListener("message", onMessage);

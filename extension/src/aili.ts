@@ -1,6 +1,6 @@
 /** Calls to the AILI server. */
 
-import { getStatus, type Pairing } from "./storage";
+import { getBackfill, getStatus, startImportOver, type Pairing } from "./storage";
 
 export interface OutboxItem {
   id: string;
@@ -53,15 +53,23 @@ export async function reportStatus(
   // The version lets AILI spot an old helper still loaded in Chrome.
   const version = chrome.runtime.getManifest().version;
   // Progress, so AILI can show the import and any problem without opening the popup.
-  const status = await getStatus();
+  // The import's own record is the truth for progress; the popup status can lag a step.
+  const [status, backfill] = await Promise.all([getStatus(), getBackfill()]);
   const progress = {
-    imported: status.imported ?? 0,
-    importing: status.backfillDone === false,
+    imported: backfill.imported ?? 0,
+    importing: backfill.category !== "done",
     phase: status.importPhase,
     pausedUntil: status.pausedUntil && status.pausedUntil > Date.now() ? status.pausedUntil : undefined,
     error: body.state === "error" ? status.lastError : undefined,
   };
-  return call(pairing, "/api/helper/status", { method: "POST", body: JSON.stringify({ ...body, version, progress }) });
+  const res = await call<{ ok: boolean; resync?: boolean }>(pairing, "/api/helper/status", {
+    method: "POST",
+    body: JSON.stringify({ ...body, version, progress }),
+  });
+  // AILI has none of the conversations this helper imported (its data was
+  // reset): import the history again from the next run.
+  if (res?.resync) await startImportOver();
+  return res;
 }
 
 export interface ReplyToNotify {

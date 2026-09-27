@@ -46,6 +46,7 @@ npm run build       # helper bundle plus the Next.js production build
 npm run db:seed     # wipes and reloads the sample data
 npm run reset:conversations -- you@example.com --yes  # clears one account's people and messages to re-import
 npm run reset:conversations -- you@example.com --all --yes  # also tags, templates and stages: a fresh account, same login
+# After a reset the helper re-imports by itself: AILI tells it it has none of the history.
 ```
 
 ## The Chrome helper
