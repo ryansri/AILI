@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AILI helper",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Syncs your LinkedIn inbox with AILI and delivers the messages you click Send on. Not affiliated with LinkedIn.",
   "permissions": [
     "cookies",

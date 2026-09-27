@@ -92,6 +92,18 @@ are in `extension/README.md`.
   before "Inbox" hides the sidebar; the icon at the right of the conversation header shows the
   details. Both are remembered. Search and an Airtable-style filter narrow
   whatever is open.
+- **Leads and Other.** Only leads count: they are in All, Now, Waiting,
+  People, the funnel, the Inbox badge and every number. Everyone else synced
+  from LinkedIn sits in **Other** at the bottom of the views. Their whole
+  conversation is there and you reply as normal; they just are not tracked.
+  **Track as lead** (in the conversation, or the helper popup on their
+  profile) asks for a stage and tag and brings them in. The more menu on a
+  lead, or **Not leads** on ticked rows in People, moves them to Other.
+  Who starts as a lead: anyone you added (by hand, Import, the helper popup),
+  tagged, starred, moved to a stage or acted on in AILI, and anyone you wrote
+  to first. People who wrote to you first start in Other. People already in
+  AILI are sorted by the same rule once. Desktop notifications and profile
+  lookups are for leads only.
 - **Tags and stages.** Add a tag (name and colour) or a stage from the plus in
   the sidebar. Hover a tag for its ••• menu to rename, recolour or delete it;
   deleting takes it off everyone and keeps the people. Stages have the same
@@ -205,6 +217,7 @@ src/
     auth.ts             passwords and session cookies
     helper-sync.ts      applies what the helper saw to the database
     funnel.ts           who reached each stage, rates, the biggest drop
+    leads.ts            who starts as a lead and who starts in Other
     csv.ts              reads CSV imports, including LinkedIn's Connections export
     templates.ts        fills {first_name} and the other fields for a person
     types.ts            Person, Message, Tag, Stage, Account

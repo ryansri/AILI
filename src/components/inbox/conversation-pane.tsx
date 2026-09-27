@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { ArrowUp, Check, ChevronDown, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { archivePerson, cancelQueued, markDone, queueSend, reopen, toggleStar, updateStage } from "@/lib/actions";
+import { archivePerson, cancelQueued, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/actions";
 import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { shortDate, shortTime, type NextStep } from "@/lib/next-step";
@@ -31,6 +31,7 @@ import { PersonAvatar } from "./people-list";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
+import { NotLeadBar } from "./track-as-lead";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
 
@@ -137,6 +138,8 @@ export function ConversationPane({
   onToggleDetails: () => void;
 }) {
   const { person, step } = row;
+  // Someone in Other: readable and repliable, but not a lead, so no stage, tags or next step.
+  const isLead = person.lead !== false;
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [logging, setLogging] = useState(false);
@@ -204,37 +207,41 @@ export function ConversationPane({
           <TooltipContent side="bottom">{detailsOpen ? "Hide details" : "Show details"}</TooltipContent>
         </Tooltip>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          {isDone ? (
-            <HeaderAction icon={RotateCcw} label="Reopen" onClick={() => run(() => reopen(person.id), "Reopened.")} />
-          ) : (
-            actionable && (
-              <HeaderAction
-                icon={Check}
-                label="Mark done (E)"
-                onClick={() => run(() => markDone(person.id), `${first} marked done.`)}
-              />
-            )
+          {isLead && (
+            <>
+            {isDone ? (
+              <HeaderAction icon={RotateCcw} label="Reopen" onClick={() => run(() => reopen(person.id), "Reopened.")} />
+            ) : (
+              actionable && (
+                <HeaderAction
+                  icon={Check}
+                  label="Mark done (E)"
+                  onClick={() => run(() => markDone(person.id), `${first} marked done.`)}
+                />
+              )
+            )}
+            <SnoozeMenu
+              personId={person.id}
+              snoozed={Boolean(person.snoozedUntil)}
+              open={snoozeOpen}
+              onOpenChange={onSnoozeOpenChange}
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={person.starred ? "Unstar" : "Star"}
+                  aria-pressed={person.starred}
+                  onClick={() => run(() => toggleStar(person.id), "")}
+                >
+                  <Star className={cn(person.starred && "fill-amber-400 text-amber-400")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{person.starred ? "Unstar" : "Star"}</TooltipContent>
+            </Tooltip>
+            </>
           )}
-          <SnoozeMenu
-            personId={person.id}
-            snoozed={Boolean(person.snoozedUntil)}
-            open={snoozeOpen}
-            onOpenChange={onSnoozeOpenChange}
-          />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={person.starred ? "Unstar" : "Star"}
-                aria-pressed={person.starred}
-                onClick={() => run(() => toggleStar(person.id), "")}
-              >
-                <Star className={cn(person.starred && "fill-amber-400 text-amber-400")} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{person.starred ? "Unstar" : "Star"}</TooltipContent>
-          </Tooltip>
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -255,6 +262,11 @@ export function ConversationPane({
                   <DropdownMenuSeparator />
                 </>
               )}
+              {isLead && (
+                <DropdownMenuItem onSelect={() => run(() => moveToOther([person.id]), `${first} moved to Other.`)}>
+                  Not a lead, move to Other
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 variant="destructive"
                 onSelect={() => run(() => archivePerson(person.id), `${person.name} archived.`)}
@@ -266,14 +278,18 @@ export function ConversationPane({
         </div>
       </header>
 
-      <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b px-5 py-2">
-        <StageMenu stages={stages} value={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
-        <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
-        {personTags.map((t) => (
-          <TagChip key={t.id} tag={t} />
-        ))}
-        <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
-      </div>
+      {isLead ? (
+        <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b px-5 py-2">
+          <StageMenu stages={stages} value={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
+          <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
+          {personTags.map((t) => (
+            <TagChip key={t.id} tag={t} />
+          ))}
+          <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
+        </div>
+      ) : (
+        <NotLeadBar personId={person.id} firstName={first} currentStage={person.stage} stages={stages} tags={tags} />
+      )}
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <ol className="flex flex-col px-8 py-6">
@@ -359,7 +375,7 @@ export function ConversationPane({
       </div>
 
       <footer className="flex flex-col gap-3 px-6 pt-1 pb-4">
-        {step.kind !== "stale" && (
+        {isLead && step.kind !== "stale" && (
           <div className="flex items-center gap-3 rounded-xl bg-muted/70 px-3.5 py-2.5">
             <span
               className={cn(

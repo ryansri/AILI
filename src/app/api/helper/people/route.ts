@@ -42,7 +42,7 @@ async function findExisting(workspaceId: string, publicId: string, urn?: string)
       archivedAt: null,
       OR: [{ publicId }, ...(urn ? [{ linkedinUrn: urn }] : [])],
     },
-    select: { id: true, name: true, stage: true, publicId: true },
+    select: { id: true, name: true, stage: true, publicId: true, lead: true, requestedAt: true, connectedAt: true },
   });
 }
 
@@ -55,7 +55,12 @@ async function rememberAddress(person: { id: string; publicId: string | null }, 
   });
 }
 
-const brief = (p: { id: string; name: string; stage: string }) => ({ id: p.id, name: p.name, stage: p.stage });
+const brief = (p: { id: string; name: string; stage: string; lead: boolean }) => ({
+  id: p.id,
+  name: p.name,
+  stage: p.stage,
+  lead: p.lead,
+});
 
 export async function GET(request: Request) {
   const workspace = await workspaceFromRequest(request);
@@ -131,13 +136,14 @@ export async function POST(request: Request) {
   }
 
   const existing = await findExisting(workspace.id, publicId, urn);
-  if (existing) {
+  const stages = await getStages(workspace.id);
+  const stage = stages.some((s) => s.key === body.stage) ? String(body.stage) : "warming";
+  const now = new Date();
+
+  if (existing?.lead) {
     await rememberAddress(existing, publicId);
     return NextResponse.json({ id: existing.id, existed: true, stage: existing.stage }, { headers: corsHeaders(request) });
   }
-
-  const stages = await getStages(workspace.id);
-  const stage = stages.some((s) => s.key === body.stage) ? String(body.stage) : "warming";
   const newTag = clean(body.newTag, 40);
   const tag = newTag
     ? await tagByName(workspace.id, newTag)
@@ -147,7 +153,25 @@ export async function POST(request: Request) {
   const jobTitle = clean(body.jobTitle, 120);
   const company = clean(body.company, 120);
   const pictureUrl = isLinkedInImage(body.pictureUrl) ? String(body.pictureUrl) : "";
-  const now = new Date();
+
+  // Someone in Other: Track as lead, in the stage and tag picked in the popup.
+  if (existing) {
+    await rememberAddress(existing, publicId);
+    await db.person.update({
+      where: { id: existing.id },
+      data: {
+        lead: true,
+        ...(stage !== existing.stage ? { stage, stageChangedAt: now } : {}),
+        ...(stage === "requested" && !existing.requestedAt ? { requestedAt: now } : {}),
+        ...(TALKING.includes(stage) && !existing.connectedAt ? { connectedAt: now } : {}),
+        lastActionAt: now,
+        ...(tag ? { tags: { connectOrCreate: [{ where: { personId_tagId: { personId: existing.id, tagId: tag.id } }, create: { tagId: tag.id } }] } } : {}),
+      },
+    });
+    revalidatePath("/people");
+    revalidatePath("/inbox");
+    return NextResponse.json({ id: existing.id, existed: false, tracked: true, stage, tagId: tag?.id }, { headers: corsHeaders(request) });
+  }
 
   const person = await db.person.create({
     data: {

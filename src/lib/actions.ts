@@ -379,6 +379,51 @@ function publicIdFromUrl(url: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Leads and Other
+// ---------------------------------------------------------------------------
+
+/** Makes someone in Other a lead, in the stage and tag you picked. */
+export async function trackAsLead(personId: string, input: { stage: string; tagId?: string }) {
+  const { workspace, person } = await ownPerson(personId);
+  if (!(await stageExists(workspace.id, input.stage))) throw new Error("Unknown stage");
+  const now = new Date();
+  await db.person.update({
+    where: { id: personId },
+    data: {
+      lead: true,
+      stage: input.stage,
+      ...(input.stage !== person.stage ? { stageChangedAt: now } : {}),
+      ...(input.stage === "requested" && !person.requestedAt ? { requestedAt: now } : {}),
+      ...(TALKING.includes(input.stage) && !person.connectedAt ? { connectedAt: now } : {}),
+      ...touched(),
+    },
+  });
+  if (input.tagId) {
+    const tag = await db.tag.findFirst({ where: { id: input.tagId, workspaceId: workspace.id } });
+    if (tag) {
+      await db.personTag.upsert({
+        where: { personId_tagId: { personId, tagId: tag.id } },
+        update: {},
+        create: { personId, tagId: tag.id },
+      });
+    }
+  }
+  refresh();
+}
+
+/** Takes people out of your leads. Their conversations stay readable in Other. */
+export async function moveToOther(personIds: string[]) {
+  const workspace = await getWorkspace();
+  const ids = [...new Set(personIds)].slice(0, 500);
+  const res = await db.person.updateMany({
+    where: { id: { in: ids }, workspaceId: workspace.id },
+    data: { lead: false },
+  });
+  refresh();
+  return res.count;
+}
+
+// ---------------------------------------------------------------------------
 // Many people at once (People page)
 // ---------------------------------------------------------------------------
 

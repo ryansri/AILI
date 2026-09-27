@@ -42,6 +42,8 @@ function viewTitle(view: View, tags: Tag[], stages: StageDef[]): string {
       return tags.find((t) => t.id === view.id)?.label ?? "Tag";
     case "stage":
       return stages.find((s) => s.key === view.key)?.label ?? "Stage";
+    case "other":
+      return "Other";
     default:
       return "All";
   }
@@ -49,21 +51,31 @@ function viewTitle(view: View, tags: Tag[], stages: StageDef[]): string {
 
 export function InboxView({
   people,
+  others,
   tags,
   stages,
   templates,
   account,
   initialPersonId,
 }: {
+  /** Leads. Everything below counts only these. */
   people: Person[];
+  /** People in Other: conversations you can read and answer, but not leads. */
+  others: Person[];
   tags: Tag[];
   stages: StageDef[];
   templates: Template[];
   account: Account;
   initialPersonId: string | null;
 }) {
-  // A deep link may point at someone outside Now, so open on All then.
-  const [view, setView] = useState<View>(initialPersonId ? { kind: "all" } : { kind: "now" });
+  // A deep link may point at someone outside Now, so open on All (or Other) then.
+  const [view, setView] = useState<View>(
+    !initialPersonId
+      ? { kind: "now" }
+      : others.some((p) => p.id === initialPersonId)
+        ? { kind: "other" }
+        : { kind: "all" },
+  );
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(initialPersonId);
@@ -78,6 +90,10 @@ export function InboxView({
     const now = new Date();
     return people.map((person) => ({ person, step: nextStep(person, now) }));
   }, [people]);
+  const otherRows = useMemo<Row[]>(() => {
+    const now = new Date();
+    return others.map((person) => ({ person, step: nextStep(person, now) }));
+  }, [others]);
 
   const statusCounts = useMemo(() => {
     const c: Record<StatusKind, number> = { reply: 0, chase: 0, quiet: 0, waiting: 0, stale: 0 };
@@ -87,7 +103,7 @@ export function InboxView({
 
   // Sidebar counts are for everyone, whatever the search or filter.
   const counts = useMemo<SidebarCounts>(() => {
-    const c: SidebarCounts = { now: 0, waiting: 0, all: rows.length, starred: 0, tags: {}, stages: {} };
+    const c: SidebarCounts = { now: 0, waiting: 0, all: rows.length, starred: 0, other: otherRows.length, tags: {}, stages: {} };
     for (const r of rows) {
       if (needsYou(r.step.kind)) c.now += 1;
       if (r.step.kind === "waiting") c.waiting += 1;
@@ -96,17 +112,17 @@ export function InboxView({
       c.stages[r.person.stage] = (c.stages[r.person.stage] ?? 0) + 1;
     }
     return c;
-  }, [rows]);
+  }, [rows, otherRows]);
 
-  // Search and filter narrow whichever view is open.
+  // Search and filter narrow whichever view is open. Other has its own rows.
   const narrowed = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((r) => {
+    return (view.kind === "other" ? otherRows : rows).filter((r) => {
       if (!matchesConditions(r, conditions)) return false;
       if (q && !`${r.person.name} ${r.person.jobTitle} ${r.person.company} ${r.person.headline}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, conditions, query]);
+  }, [rows, otherRows, view.kind, conditions, query]);
 
   const groups = useMemo(() => groupRows(narrowed.filter((r) => inView(r, view)), view), [narrowed, view]);
   const inViewRows = useMemo(() => groups.flatMap((g) => g.rows), [groups]);
@@ -213,7 +229,7 @@ export function InboxView({
             groups={groups}
             collapsed={collapsed}
             onToggleGroup={toggleGroup}
-            total={rows.length}
+            total={view.kind === "other" ? otherRows.length : rows.length}
             selectedId={selected?.person.id ?? null}
             onSelect={setSelectedId}
             query={query}

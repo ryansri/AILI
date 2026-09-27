@@ -86,6 +86,8 @@ export interface Person {
   lastActionAt?: string; // ISO
   /** The user pressed Done. Any message after this wakes the person up again. */
   handledAt?: string; // ISO
+  /** False for people in Other: synced from LinkedIn but not tracked as a lead. Missing means a lead. */
+  lead?: boolean;
   /** When the person was added to AILI. */
   createdAt?: string; // ISO
   /** When the person last moved stage. */

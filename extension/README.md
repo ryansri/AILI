@@ -35,7 +35,8 @@ changes.
   who it is, a Stage and a Tag (pick one, or New tag… to type one), and Add
   to AILI. It keeps your last pick. On your own profile it just says so. Clicking Add reads that one profile from
   LinkedIn and adds the name, headline, photo, current title and company to
-  People. If they are already in AILI it says so and offers Open in AILI.
+  People. If they are already in AILI it says so and offers Open in AILI. If they
+  are in Other (in AILI but not a lead), the same form says Track as lead.
   Anywhere else it says it is syncing. It only speaks up when something needs
   you, like LinkedIn being logged out. Sync now and Disconnect are the two icons
   at the top right. Nothing is added to LinkedIn's page: the popup only reads

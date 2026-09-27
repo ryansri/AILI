@@ -101,7 +101,9 @@ export type View =
   | { kind: "all" }
   | { kind: "starred" }
   | { kind: "tag"; id: string }
-  | { kind: "stage"; key: string };
+  | { kind: "stage"; key: string }
+  /** Conversations with people who are not leads. The inbox hands this view its own rows. */
+  | { kind: "other" };
 
 export function sameView(a: View, b: View): boolean {
   if (a.kind !== b.kind) return false;

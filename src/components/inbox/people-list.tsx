@@ -175,6 +175,15 @@ export function PeopleList({
 
   return (
     <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col bg-background">
+      {view.kind === "other" && (
+        <p className="border-b bg-muted/40 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {total === 1 ? "1 conversation" : `${total} conversations`} that are not leads.
+          </span>{" "}
+          Read and reply here as normal. They stay out of People, your funnel and the Inbox count. Track anyone who
+          becomes a lead.
+        </p>
+      )}
       {onMessageAll && visible > 0 && (
         <div className="flex items-center justify-between border-b px-4 py-2">
           <span className="text-xs text-muted-foreground">{visible === 1 ? "1 person" : `${visible} people`}</span>
@@ -244,24 +253,27 @@ export function PeopleList({
                             {lastTime(row)}
                           </span>
                         </button>
-                        <div
-                          className={cn(
-                            "absolute top-2.5 right-3 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
-                            "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
-                          )}
-                        >
-                          {canDone && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon-xs" aria-label="Mark done" onClick={() => done(row)}>
-                                  <Check />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom">Done (E)</TooltipContent>
-                            </Tooltip>
-                          )}
-                          <SnoozeMenu personId={row.person.id} snoozed={Boolean(row.person.snoozedUntil)} size="icon-xs" />
-                        </div>
+                        {/* Done and snooze are for leads; Other has no next step. */}
+                        {row.person.lead !== false && (
+                          <div
+                            className={cn(
+                              "absolute top-2.5 right-3 flex gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
+                              "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
+                            )}
+                          >
+                            {canDone && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon-xs" aria-label="Mark done" onClick={() => done(row)}>
+                                    <Check />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">Done (E)</TooltipContent>
+                              </Tooltip>
+                            )}
+                            <SnoozeMenu personId={row.person.id} snoozed={Boolean(row.person.snoozedUntil)} size="icon-xs" />
+                          </div>
+                        )}
                       </li>
                     );
                   })}

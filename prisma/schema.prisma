@@ -24,6 +24,8 @@ model Workspace {
   /// What the helper last reported about itself.
   helperLastSeenAt DateTime?
   helperMemberUrn  String?
+  /// When the people from before leads existed were sorted into leads and Other, once.
+  leadsSortedAt    DateTime?
   helperName       String?
   /// Your LinkedIn profile photo, reported by the helper.
   helperPictureUrl String?
@@ -62,6 +64,9 @@ model Person {
   source      String    @default("manual")
   /// Stage key, see the Stage model
   stage       String    @default("warming")
+  /// A lead counts in People, the funnel, the inbox views and every count.
+  /// Anyone else synced from LinkedIn sits in Other: readable and repliable, but not tracked.
+  lead        Boolean   @default(true)
   /// When the person last moved stage. Drives "days in stage" on the People page.
   /// Empty for people from before it was recorded; the page estimates from other dates.
   stageChangedAt DateTime?

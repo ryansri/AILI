@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./db";
+import { startsAsLead } from "./leads";
 
 /*
  * Applies what the Chrome helper saw on LinkedIn to the database.
@@ -136,6 +137,13 @@ export function validatePayload(input: unknown): SyncPayload | null {
   return { memberUrn: p.memberUrn, displayName: typeof p.displayName === "string" ? p.displayName : undefined, conversations };
 }
 
+/** Who wrote first in a synced thread: "out" when it was you. */
+function firstDirection(messages: { senderUrn: string; sentAt: number }[], memberUrn: string): "in" | "out" | null {
+  const first = [...messages].sort((a, b) => a.sentAt - b.sentAt)[0];
+  if (!first) return null;
+  return first.senderUrn === memberUrn ? "out" : "in";
+}
+
 export async function applySync(workspaceId: string, payload: SyncPayload): Promise<SyncResult> {
   const result: SyncResult = { peopleCreated: 0, peopleUpdated: 0, messagesAdded: 0, skippedGroups: 0, newReplies: [] };
 
@@ -153,8 +161,10 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
     });
 
     let personId: string;
+    let isLead: boolean;
     if (existing) {
       personId = existing.id;
+      isLead = existing.lead;
       await db.person.update({
         where: { id: existing.id },
         data: {
@@ -187,11 +197,22 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
           conversationId: conv.id,
           source: "linkedin",
           stage: "conversation",
+          // Someone you wrote to first is outreach, so a lead; someone who wrote first waits in Other.
+          lead: startsAsLead({
+            source: "linkedin",
+            stage: "conversation",
+            starred: false,
+            tagCount: 0,
+            lastActionAt: null,
+            pendingCount: 0,
+            firstDirection: firstDirection(conv.messages, payload.memberUrn),
+          }),
           connectedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
           stageChangedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
         },
       });
       personId = created.id;
+      isLead = created.lead;
       result.peopleCreated += 1;
     }
 
@@ -228,7 +249,8 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
         },
       });
       result.messagesAdded += 1;
-      if (direction === "in") result.newReplies.push({ personId, name: other.name, body: m.body, sentAt: m.sentAt });
+      // Desktop notifications are for leads; Other just shows the new message in AILI.
+      if (direction === "in" && isLead) result.newReplies.push({ personId, name: other.name, body: m.body, sentAt: m.sentAt });
     }
 
     // Anything new means the snooze is over and early stages move on.

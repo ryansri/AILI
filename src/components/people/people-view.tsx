@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArrowDown, ChevronDown, ChevronRight, MoveRight, Plus, Send, Tag as TagIcon, Upload, X } from "lucide-react";
+import { Archive, ArrowDown, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { bulkAddTag, bulkArchive, bulkSetStage } from "@/lib/actions";
+import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther } from "@/lib/actions";
 import { buildFunnel, notMessaged } from "@/lib/funnel";
 import { daysBetween, relativeTime } from "@/lib/next-step";
 import type { Template } from "@/lib/templates";
@@ -427,6 +427,16 @@ export function PeopleView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="hover:bg-primary-foreground/10 hover:text-primary-foreground"
+            disabled={pending}
+            onClick={() => bulk(() => moveToOther(chosen), (n) => `${people1(n)} moved to Other. Their conversations stay in the Inbox.`)}
+          >
+            <MessageSquare />
+            Not leads
+          </Button>
           {confirmArchive ? (
             <Button
               size="sm"

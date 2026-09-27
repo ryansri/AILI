@@ -22,6 +22,8 @@ export async function GET(request: Request) {
     where: {
       workspaceId: workspace.id,
       archivedAt: null,
+      // Only leads: Other is people you have not chosen to track, so no lookups for them.
+      lead: true,
       profileCheckedAt: null,
       OR: [{ publicId: { not: null } }, { linkedinUrn: { not: null } }],
     },

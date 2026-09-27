@@ -98,7 +98,8 @@ export function reportLookups(
 }
 
 export interface PersonCheck {
-  person: { id: string; name: string; stage: string } | null;
+  /** lead is false for someone in Other: in AILI, but not tracked as a lead. */
+  person: { id: string; name: string; stage: string; lead?: boolean } | null;
   /** Someone in AILI has this name; the helper can confirm by member id. */
   maybe?: boolean;
   stages: { key: string; label: string }[];
@@ -128,6 +129,6 @@ export function addPerson(
     tagId?: string;
     newTag?: string;
   },
-): Promise<{ id: string; existed: boolean; stage: string; tagId?: string }> {
+): Promise<{ id: string; existed: boolean; tracked?: boolean; stage: string; tagId?: string }> {
   return call(pairing, "/api/helper/people", { method: "POST", body: JSON.stringify(body) });
 }

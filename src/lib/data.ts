@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId } from "./auth";
 import { helperOutdated } from "./helper-version";
+import { startsAsLead } from "./leads";
 import type { Template } from "./templates";
 import { DEFAULT_STAGES, isTagColor, type Account, type Person, type StageDef, type Tag } from "./types";
 
@@ -37,6 +38,7 @@ function toPerson(row: PersonRow): Person {
     pictureUrl: row.pictureUrl || undefined,
     source: row.source === "linkedin" ? "linkedin" : "manual",
     stage: row.stage || "warming",
+    lead: row.lead,
     tagIds: row.tags.map((t) => t.tagId),
     notes: row.notes,
     starred: row.starred,
@@ -137,15 +139,61 @@ export async function getAccount(workspaceId: string): Promise<Account> {
   };
 }
 
-/** Everything the inbox, people table and today page need, in one round trip each. */
+/**
+ * Once per workspace: people from before leads existed are sorted by the same
+ * rule new people get (see leads.ts). Everyone starts as a lead in the
+ * database, so only those who fail the rule move to Other.
+ */
+async function sortLeadsOnce(workspace: { id: string; leadsSortedAt: Date | null }) {
+  if (workspace.leadsSortedAt) return;
+  const synced = await db.person.findMany({
+    where: { workspaceId: workspace.id, source: "linkedin" },
+    select: {
+      id: true,
+      source: true,
+      stage: true,
+      starred: true,
+      lastActionAt: true,
+      _count: { select: { tags: true, outbox: true } },
+      messages: { orderBy: { sentAt: "asc" }, take: 1, select: { direction: true } },
+    },
+  });
+  const other = synced
+    .filter(
+      (p) =>
+        !startsAsLead({
+          source: p.source,
+          stage: p.stage,
+          starred: p.starred,
+          tagCount: p._count.tags,
+          lastActionAt: p.lastActionAt,
+          pendingCount: p._count.outbox,
+          firstDirection: p.messages[0] ? (p.messages[0].direction === "out" ? "out" : "in") : null,
+        }),
+    )
+    .map((p) => p.id);
+  await db.$transaction([
+    db.person.updateMany({ where: { id: { in: other } }, data: { lead: false } }),
+    db.workspace.update({ where: { id: workspace.id }, data: { leadsSortedAt: new Date() } }),
+  ]);
+}
+
+/**
+ * Everything the inbox, people table and today page need, in one round trip
+ * each. `people` is leads only, so counts, People and the funnel never see
+ * Other; the inbox gets `others` separately.
+ */
 export async function loadWorkspaceData() {
   const workspace = await getWorkspace();
-  const [people, tags, stages, templates, account] = await Promise.all([
+  await sortLeadsOnce(workspace);
+  const [everyone, tags, stages, templates, account] = await Promise.all([
     getPeople(workspace.id),
     getTags(workspace.id),
     getStages(workspace.id),
     getTemplates(workspace.id),
     getAccount(workspace.id),
   ]);
-  return { workspace, people, tags, stages, templates, account };
+  const people = everyone.filter((p) => p.lead !== false);
+  const others = everyone.filter((p) => p.lead === false);
+  return { workspace, people, others, tags, stages, templates, account };
 }

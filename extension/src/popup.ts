@@ -216,6 +216,7 @@ pNewTag.addEventListener("keydown", (e) => {
 pAdd.addEventListener("click", async () => {
   if (!current) return;
   pAdd.disabled = true;
+  const label = $("p-add-label").textContent ?? "Add to AILI";
   $("p-add-label").textContent = "Adding";
   show(pError, false);
   const newTag = pTag.value === NEW_TAG ? pNewTag.value.trim() : "";
@@ -237,13 +238,13 @@ pAdd.addEventListener("click", async () => {
     const tag = tagName ? ` · ${tagName}` : "";
     const name = $("p-name").textContent ?? current.tab.name;
     if (res.existed) renderPerson(name, "already", "Already in AILI", res.id);
-    else renderPerson(name, "added", `${stage}${tag}`, res.id);
+    else renderPerson(name, "added", `${res.tracked ? "Now a lead · " : ""}${stage}${tag}`, res.id);
   } catch (err) {
     show(pError, true);
     pError.textContent = err instanceof Error ? err.message : String(err);
   } finally {
     pAdd.disabled = false;
-    $("p-add-label").textContent = "Add to AILI";
+    $("p-add-label").textContent = label;
   }
 });
 
@@ -257,7 +258,7 @@ async function renderProfile(tab: ProfileTab, pairing: Pairing, check: PersonChe
     const res = await chrome.runtime.sendMessage({ type: "match-profile", publicId: tab.publicId }).catch(() => null);
     if (res?.person) check = { ...check, person: res.person };
   }
-  if (check.person) {
+  if (check.person && check.person.lead !== false) {
     renderPerson(check.person.name, "already", `In AILI · ${stageLabel(check.person.stage)}`, check.person.id);
     return;
   }
@@ -268,7 +269,10 @@ async function renderProfile(tab: ProfileTab, pairing: Pairing, check: PersonChe
   show(pNewTagRow, false);
   if (remembered.addStage && check.stages.some((s) => s.key === remembered.addStage)) pStage.value = remembered.addStage;
   if (remembered.addTag && check.tags.some((t) => t.id === remembered.addTag)) pTag.value = remembered.addTag;
-  renderPerson(tab.name || tab.publicId, "add", "Not in AILI yet");
+  // Someone in Other is in AILI already, just not a lead: same form, tracks them instead.
+  const inOther = check.person?.lead === false;
+  renderPerson(check.person?.name || tab.name || tab.publicId, "add", inOther ? "In AILI, not a lead yet" : "Not in AILI yet");
+  $("p-add-label").textContent = inOther ? "Track as lead" : "Add to AILI";
 }
 
 // ---------------------------------------------------------------------------

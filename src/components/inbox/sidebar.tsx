@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { GripVertical, Hourglass, Inbox, List, MoreHorizontal, Plus, Star } from "lucide-react";
+import { GripVertical, Hourglass, Inbox, List, MessageSquare, MoreHorizontal, Plus, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,8 @@ export interface SidebarCounts {
   waiting: number;
   all: number;
   starred: number;
+  /** Conversations in Other: not leads, so in no other count. */
+  other: number;
   tags: Record<string, number>;
   stages: Record<string, number>;
 }
@@ -638,6 +640,15 @@ export function InboxSidebar({
           count={counts.starred}
           active={sameView(view, { kind: "starred" })}
           onClick={() => onView({ kind: "starred" })}
+        />
+
+        <div aria-hidden="true" className="mx-2 my-2 h-px bg-border" />
+        <Item
+          icon={MessageSquare}
+          label="Other"
+          count={counts.other}
+          active={sameView(view, { kind: "other" })}
+          onClick={() => onView({ kind: "other" })}
         />
 
         <SectionHeader title="Tags" action={<AddTag />} />
