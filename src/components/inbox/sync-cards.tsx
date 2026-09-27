@@ -1,41 +1,18 @@
 "use client";
 
-import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { Check, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useHelperPresence } from "@/hooks/use-helper-presence";
 import type { HelperStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { CopyField } from "@/components/copy-field";
 
 /*
  * What the conversation area shows before there is anything to read: a setup
  * card whose steps tick themselves as the helper is installed, connected and
  * logged in to LinkedIn, then the import's progress.
  */
-
-function CopyField({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="mt-2 flex items-center gap-2">
-      <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-xs text-foreground/80">
-        {value}
-      </code>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-8 shrink-0"
-        onClick={() => {
-          void navigator.clipboard.writeText(value).then(
-            () => toast.success(`${label} copied.`),
-            () => toast.error("Could not copy. Select it and copy by hand."),
-          );
-        }}
-      >
-        <Copy />
-        Copy
-      </Button>
-    </div>
-  );
-}
 
 function Step({
   n,
@@ -132,7 +109,7 @@ export function SetupCard({ helper, token }: { helper: HelperStatus; token: stri
             <>
               Open chrome://extensions, turn on Developer mode, click Load unpacked and pick the extension/dist folder
               in AILI. Already added? Press its reload arrow.
-              <CopyField value="chrome://extensions" label="Address" />
+              <div className="mt-2"><CopyField value="chrome://extensions" label="Address" /></div>
             </>
           )}
         </Step>
@@ -140,8 +117,10 @@ export function SetupCard({ helper, token }: { helper: HelperStatus; token: stri
           {active === 2 ? (
             <>
               Click the AILI icon in Chrome&apos;s toolbar, then paste these two and press Connect.
-              <CopyField value={address} label="Address" />
-              <CopyField value={token} label="Token" />
+              <div className="mt-2 flex flex-col gap-2">
+                <CopyField value={address} label="Address" />
+                <CopyField value={token} label="Token" />
+              </div>
             </>
           ) : connected ? (
             helper.linkedinName ? `Connected as ${helper.linkedinName}.` : "Connected."

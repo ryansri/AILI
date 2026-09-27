@@ -1,27 +1,19 @@
+import { redirect } from "next/navigation";
 import { needsSetup } from "@/lib/auth";
+import { AuthCard, AuthShell } from "@/components/auth/auth-shell";
 import { LoginForm } from "./login-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next } = await searchParams;
-  const setup = await needsSetup();
+  // Nobody has an account yet: start with sign up.
+  if (await needsSetup()) redirect("/signup");
   return (
-    <div className="flex h-full items-center justify-center bg-sidebar p-6">
-      <div className="w-full max-w-sm rounded-lg border bg-background p-6">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-            A
-          </div>
-          <div>
-            <div className="text-sm font-semibold leading-tight">AILI</div>
-            <div className="text-xs text-muted-foreground">
-              {setup ? "Create your account" : "Log in"}
-            </div>
-          </div>
-        </div>
-        <LoginForm mode={setup ? "register" : "login"} next={typeof next === "string" ? next : "/inbox"} />
-      </div>
-    </div>
+    <AuthShell>
+      <AuthCard title="Log in to AILI">
+        <LoginForm mode="login" next={typeof next === "string" ? next : "/inbox"} />
+      </AuthCard>
+    </AuthShell>
   );
 }

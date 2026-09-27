@@ -9,7 +9,7 @@ export function proxy(request: NextRequest) {
   const workspaceId = readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
   const { pathname } = request.nextUrl;
 
-  if (pathname === "/login") {
+  if (pathname === "/login" || pathname === "/signup") {
     if (workspaceId) return NextResponse.redirect(new URL("/inbox", request.url));
     return NextResponse.next();
   }
@@ -23,5 +23,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/login", "/inbox/:path*", "/people/:path*", "/today/:path*", "/posts/:path*", "/settings/:path*"],
+  matcher: ["/", "/login", "/signup", "/welcome", "/inbox/:path*", "/people/:path*", "/today/:path*", "/posts/:path*", "/settings/:path*"],
 };

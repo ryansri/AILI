@@ -26,8 +26,24 @@ npm run helper:build # bundles the Chrome helper into extension/dist
 npm run dev          # also syncs the database layout and rebuilds the helper
 ```
 
-Open http://localhost:3000. The first visit asks you to create your account.
-After that it is a normal login.
+Open http://localhost:3000 and create your account. Anyone can sign up from
+the log in screen; each account has its own separate inbox. Forgot your
+password? `npm run reset:password -- you@example.com` prints a one-time link
+(30 minutes) to set a new one; AILI sends no email.
+
+After sign up comes a full-screen setup of three steps, each moving on by
+itself: install the extension (AILI spots it and connects it, nothing to
+paste), log in to LinkedIn (skipped if you already are), sync. As soon as the
+first conversations are in, "You are all set" opens the inbox; the rest keep
+importing, shown in the line at the top of the list. Skip for now goes
+straight to the app. The Install button opens the Chrome Web Store; set
+`NEXT_PUBLIC_EXTENSION_URL` to the extension's store page once it is published.
+
+The extension runs in Chrome, Edge, Brave, Arc, Opera and Vivaldi on a
+computer. Safari, Firefox and phones get "Open AILI in Chrome" during setup.
+Once set up, AILI works in any browser: syncing happens in Chrome, so with
+Chrome open it stays current; with Chrome closed the top line says when it
+last synced, and replies wait in the queue until Chrome is open again.
 
 On a Mac, `scripts/setup-mac.sh` does all of the above in one go.
 
@@ -46,6 +62,7 @@ npm run build       # helper bundle plus the Next.js production build
 npm run db:seed     # wipes and reloads the sample data
 npm run reset:conversations -- you@example.com --yes  # clears one account's people and messages to re-import
 npm run reset:conversations -- you@example.com --all --yes  # also tags, templates and stages: a fresh account, same login
+npm run reset:password -- you@example.com  # prints a one-time link to set a new password
 # After a reset the helper re-imports by itself: AILI tells it it has none of the history.
 ```
 

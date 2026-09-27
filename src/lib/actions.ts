@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
-import { getStages, getWorkspace, HELPER_ONLINE_MS } from "./data";
+import { getStages, getWorkspace } from "./data";
 import { PROTECTED_STAGE_KEYS } from "./stage-rules";
 import { fillTemplate } from "./templates";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
@@ -165,8 +165,8 @@ export async function queueSend(input: { personId: string; body: string; followU
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
   if (!person.linkedinUrn) throw new Error("AILI does not know this person on LinkedIn yet. Send it by hand this time.");
-  const online = Date.now() - (workspace.helperLastSeenAt?.getTime() ?? 0) < HELPER_ONLINE_MS;
-  if (!online || workspace.helperState !== "ok") throw new Error("The Chrome helper is not connected.");
+  // Queued while Chrome is closed too: the extension sends it the next time it runs.
+  if (!workspace.helperLastSeenAt) throw new Error("The Chrome extension is not connected yet.");
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -376,6 +376,17 @@ export async function updatePerson(personId: string, input: PersonInput) {
 function publicIdFromUrl(url: string): string | null {
   const m = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding
+// ---------------------------------------------------------------------------
+
+/** Onboarding is done (or skipped): from now on the app opens even with nothing synced. */
+export async function finishOnboarding() {
+  const workspace = await getWorkspace();
+  if (!workspace.onboardedAt) await db.workspace.update({ where: { id: workspace.id }, data: { onboardedAt: new Date() } });
+  refresh();
 }
 
 // ---------------------------------------------------------------------------

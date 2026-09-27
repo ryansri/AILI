@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { login, register, type AuthResult } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,14 @@ export function LoginForm({ mode, next }: { mode: "register" | "login"; next: st
         <Input id="email" name="email" type="email" autoComplete="email" required autoFocus={mode === "login"} />
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor="password">Password</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Password</Label>
+          {mode === "login" && (
+            <Link href="/forgot" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+              Forgot password?
+            </Link>
+          )}
+        </div>
         <Input
           id="password"
           name="password"
@@ -32,15 +40,30 @@ export function LoginForm({ mode, next }: { mode: "register" | "login"; next: st
           autoComplete={mode === "register" ? "new-password" : "current-password"}
           required
           minLength={mode === "register" ? 8 : undefined}
+          placeholder={mode === "register" ? "At least 8 characters" : undefined}
         />
-        {mode === "register" && (
-          <p className="text-xs text-muted-foreground">At least 8 characters. Only you will use this.</p>
-        )}
       </div>
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
       <Button type="submit" disabled={pending}>
         {mode === "register" ? "Create account" : "Log in"}
       </Button>
+      <p className="text-center text-xs text-muted-foreground">
+        {mode === "register" ? (
+          <>
+            Have an account?{" "}
+            <Link href="/login" className="font-medium text-foreground underline-offset-2 hover:underline">
+              Log in
+            </Link>
+          </>
+        ) : (
+          <>
+            New here?{" "}
+            <Link href="/signup" className="font-medium text-foreground underline-offset-2 hover:underline">
+              Create an account
+            </Link>
+          </>
+        )}
+      </p>
     </form>
   );
 }

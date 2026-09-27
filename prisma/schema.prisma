@@ -19,6 +19,11 @@ model Workspace {
   /// Login. Null until the owner registers on first run.
   email        String?   @unique
   passwordHash String?
+  /// A one-time password reset from `npm run reset:password`: sha256 of the token, and when it stops working.
+  resetTokenHash    String?
+  resetTokenExpires DateTime?
+  /// When onboarding finished (or was skipped). Until then, an account with nothing synced goes to /welcome.
+  onboardedAt       DateTime?
   /// Bearer token the Chrome helper uses. Shown once in Settings, can be rotated.
   helperToken  String?   @unique
   /// What the helper last reported about itself.

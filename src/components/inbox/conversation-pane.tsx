@@ -153,7 +153,9 @@ export function ConversationPane({
     step.step === "Follow-up 1" ? 1 : step.step === "Follow-up 2" ? 2 : undefined;
   const first = person.name.split(" ")[0];
   /** The helper delivers when it is online and knows this person on LinkedIn. */
-  const viaHelper = account.helper.connected && Boolean(person.linkedinUrn);
+  // Once the extension has ever connected, sends go through it, from any browser:
+  // while Chrome is closed they wait in the queue.
+  const viaHelper = Boolean(account.helper.lastSeenAt) && Boolean(person.linkedinUrn);
   const actionable = step.kind === "reply" || step.kind === "chase" || step.kind === "quiet";
   const isDone = step.kind === "waiting" && step.step === "Done";
   const subtitle = [person.jobTitle || person.headline, person.company].filter(Boolean).join(" · ");
@@ -452,7 +454,9 @@ export function ConversationPane({
           <span>
             {capReached
               ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`
-              : viaHelper
+              : viaHelper && !account.helper.connected
+                ? "Sends when Chrome is open. It waits in the queue."
+                : viaHelper
                 ? "Delivered on LinkedIn by the Chrome helper, from your account."
                 : account.helper.connected
                   ? "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."

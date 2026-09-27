@@ -42,7 +42,9 @@ changes.
   at the top right. Nothing is added to LinkedIn's page: the popup only reads
   the tab's address and title.
 - A tiny script runs only on the AILI page (localhost) to tell AILI the
-  helper is installed, its version and whether it is connected. It reads
+  helper is installed, its version and whether it is connected. During
+  onboarding the logged-in page hands it the address and key, so it connects
+  without anyone pasting a token (the popup's pairing form still works). It reads
   nothing from the page and never runs on LinkedIn or anywhere else.
 - Each check-in also tells AILI how the import is going (conversations so
   far, which inbox and page, a pause or error), so AILI can show it.

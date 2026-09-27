@@ -27,7 +27,8 @@ const ago = (iso: string, now: Date) => {
 export function syncLine(helper: HelperStatus, now: Date = new Date()): SyncLine {
   if (!helper.lastSeenAt) return { tone: "off", title: "Not syncing.", detail: "The Chrome helper is not connected." };
   const quiet = now.getTime() - new Date(helper.lastSeenAt).getTime() > STOPPED_AFTER_MS;
-  if (quiet) return { tone: "warn", title: `Sync stopped ${ago(helper.lastSeenAt, now)}.`, detail: "Is Chrome open?" };
+  // Syncing happens in Chrome, whatever browser AILI is open in.
+  if (quiet) return { tone: "warn", title: `Last synced ${ago(helper.lastSeenAt, now)}.`, detail: "Open Chrome to get the latest." };
   if (helper.outdated) return { tone: "warn", title: "The helper is out of date.", detail: "Reload it in chrome://extensions." };
   if (helper.state === "logged_out") return { tone: "warn", title: "LinkedIn is logged out.", detail: "Log in to LinkedIn in Chrome to resume." };
   if (helper.pausedUntil) {

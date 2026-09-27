@@ -24,7 +24,11 @@ export function useHelperPresence(active = true): HelperPresence {
 
   useEffect(() => {
     if (!active) return;
-    const chromium = typeof window !== "undefined" && "chrome" in window;
+    // Chrome, Edge, Brave, Arc, Opera and Vivaldi expose window.chrome; Safari and Firefox do not.
+    // Phones cannot run extensions in any browser.
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const chromeName = /Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent);
+    const chromium = !mobile && chromeName && Boolean((window as { chrome?: unknown }).chrome);
     let answered = false;
     let asked = 0;
 

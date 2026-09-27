@@ -58,7 +58,9 @@ async function main() {
   await db.outbox.deleteMany({ where: { workspaceId: workspace.id } });
   await db.person.deleteMany({ where: { workspaceId: workspace.id } });
   // Imported people are sorted into leads and Other again on the next import.
-  await db.workspace.update({ where: { id: workspace.id }, data: { leadsSortedAt: null } });
+  // Re-imported people are sorted into leads and Other again, and the account
+  // goes through onboarding again (it shows the import as it happens).
+  await db.workspace.update({ where: { id: workspace.id }, data: { leadsSortedAt: null, onboardedAt: null } });
   if (everything) {
     await db.tag.deleteMany({ where: { workspaceId: workspace.id } });
     await db.template.deleteMany({ where: { workspaceId: workspace.id } });

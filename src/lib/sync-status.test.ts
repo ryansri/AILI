@@ -27,7 +27,7 @@ describe("syncLine", () => {
 
   it("says sync stopped when the helper has gone quiet", () => {
     const line = syncLine({ ...base, lastSeenAt: new Date(now.getTime() - 12 * 60_000).toISOString() }, now);
-    expect(line).toMatchObject({ tone: "warn", title: "Sync stopped 12m ago." });
+    expect(line).toMatchObject({ tone: "warn", title: "Last synced 12m ago.", detail: "Open Chrome to get the latest." });
   });
 
   it("names the problem and the fix", () => {
