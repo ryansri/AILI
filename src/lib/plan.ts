@@ -1,62 +1,32 @@
-import { toWallInput, wallTimeToDate } from "./time-zone";
+import { toWallInput } from "./time-zone";
 
 /*
- * The content plan. A rhythm ("posts Tue, Wed, Thu at 9:00; an article every
- * 2 weeks on Friday at 10:00") becomes slots on days. Each slot is matched to
- * the post or article planned for it, which gives it one state:
+ * The content plan: rows the user brings in from their spreadsheet (a topic on
+ * a day), each linked to the post or article written for it. A row's status
+ * comes from that post, so nobody updates a status column by hand:
  *
- *   published  it went out (on its day, or late)
- *   scheduled  a post is set to go out
- *   draft      written, not scheduled (for an article: saved, to publish in LinkedIn)
- *   empty      nothing yet, and the day is still ahead
- *   missed     the day passed with nothing out
+ *   planned    a topic, nothing written yet
+ *   written    the text is ready but not scheduled (an article: ready to publish in LinkedIn)
+ *   scheduled  set to go out
+ *   posted     it went out (published by AILI, or marked as posted by hand)
+ *   missed     its day passed and nothing went out
+ *   skipped    the user decided not to do it; never counts as missed
  *
- * Runway, streak, on-time and "left to fill" all come from these states.
- * Days are local calendar days ("2026-09-30") in the user's time zone.
+ * "due" means it needs the user now: its day is within the warning window
+ * (Settings, Sending; 3 days by default) and it is not written, or it is a
+ * post that is written but not scheduled.
+ *
+ * Days are local calendar days ("2026-09-30") in the account's time zone.
  */
 
 export type ContentKind = "post" | "article";
-export type SlotState = "published" | "scheduled" | "draft" | "empty" | "missed";
-
-export interface RhythmRule {
-  kind: ContentKind;
-  /** 1 = Monday … 7 = Sunday. */
-  days: number[];
-  /** "09:00", 24-hour, in the user's time zone. */
-  time: string;
-  /** 1 = every week, 2 = every other week, … */
-  everyWeeks: number;
-  /** A Monday ("YYYY-MM-DD") in a week the rule is on; matters when everyWeeks > 1. */
-  anchor: string;
-  enabled: boolean;
-}
-
-export interface PlanItem {
-  id: string;
-  kind: ContentKind;
-  status: "draft" | "scheduled" | "publishing" | "published" | "failed";
-  title: string;
-  body: string;
-  /** The day it is planned for, when it was put in a slot or scheduled. */
-  slotDay?: string;
-  scheduledAt?: string;
-  publishedAt?: string;
-}
-
-export interface Slot {
-  kind: ContentKind;
-  day: string;
-  /** The slot's time, ISO. */
-  at: string;
-  state: SlotState;
-  item?: PlanItem;
-  /** Published, but after its day. */
-  late?: boolean;
-}
+export type EntryStatus = "planned" | "written" | "scheduled" | "posted" | "missed" | "skipped";
 
 // ---------------------------------------------------------------------------
 // Days
 // ---------------------------------------------------------------------------
+
+export const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function localDay(date: Date, timeZone: string): string {
   return toWallInput(date, timeZone).slice(0, 10);
@@ -85,8 +55,13 @@ export function mondayOf(day: string): string {
   return addDays(day, 1 - weekday(day));
 }
 
+/** Whether "2026-02-30" is a real day. */
+export function realDay(day: string): boolean {
+  return DAY_RE.test(day) && new Date(utcOf(day)).toISOString().slice(0, 10) === day;
+}
+
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "Tue 29 Sep" from "2026-09-29". */
 export function dayLabel(day: string): string {
@@ -94,166 +69,198 @@ export function dayLabel(day: string): string {
   return `${WEEKDAY_NAMES[new Date(utcOf(day)).getUTCDay()]} ${d} ${MONTH_NAMES[m - 1]}`;
 }
 
-// ---------------------------------------------------------------------------
-// Slots
-// ---------------------------------------------------------------------------
-
-function ruleOnDay(rule: RhythmRule, day: string): boolean {
-  if (!rule.enabled || !rule.days.includes(weekday(day))) return false;
-  const every = Math.max(1, Math.round(rule.everyWeeks));
-  if (every === 1) return true;
-  const weeks = Math.round(daysBetween(mondayOf(rule.anchor), mondayOf(day)) / 7);
-  return ((weeks % every) + every) % every === 0;
+/** "9:00 am" from "09:00". */
+export function timeLabel(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
 }
 
-/** The empty slots the rhythm asks for, from one day to another (both included), in time order. */
-export function slotsBetween(rules: RhythmRule[], from: string, to: string, timeZone: string): Omit<Slot, "state">[] {
-  const out: Omit<Slot, "state">[] = [];
-  for (let day = from; daysBetween(day, to) >= 0; day = addDays(day, 1)) {
-    for (const rule of rules) {
-      if (!ruleOnDay(rule, day)) continue;
-      const at = wallTimeToDate(`${day}T${rule.time}`, timeZone);
-      if (at) out.push({ kind: rule.kind, day, at: at.toISOString() });
-    }
+// ---------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------
+
+export interface EntryPost {
+  id: string;
+  status: "draft" | "scheduled" | "publishing" | "published" | "failed";
+  title: string;
+  body: string;
+  scheduledAt?: string;
+  publishedAt?: string;
+  url?: string;
+}
+
+export interface EntryFacts {
+  day?: string;
+  kind: ContentKind;
+  skipped: boolean;
+  /** Marked as posted by hand. */
+  postedAt?: string;
+  post?: EntryPost;
+}
+
+export interface EntryState {
+  status: EntryStatus;
+  /** Needs the user now (see the top of this file). */
+  due: boolean;
+  /** Posted after its day. */
+  late: boolean;
+}
+
+export interface PlanClock {
+  today: string;
+  /** The warning window in days; 0 turns warnings off (missed days still show). */
+  warnDays: number;
+  timeZone: string;
+}
+
+export function entryState(e: EntryFacts, clock: PlanClock): EntryState {
+  const { today, warnDays, timeZone } = clock;
+  if (e.skipped) return { status: "skipped", due: false, late: false };
+  const p = e.post;
+  const out = p?.status === "published" ? p.publishedAt : e.postedAt;
+  if (out || p?.status === "published") {
+    const outDay = out ? localDay(new Date(out), timeZone) : undefined;
+    return { status: "posted", due: false, late: Boolean(e.day && outDay && outDay > e.day) };
   }
-  return out.sort((a, b) => a.at.localeCompare(b.at));
+  if (p && (p.status === "scheduled" || p.status === "publishing")) return { status: "scheduled", due: false, late: false };
+  const written = Boolean(p && p.body.trim());
+  if (e.day && e.day < today) return { status: "missed", due: false, late: false };
+  const soon = Boolean(e.day && warnDays > 0 && daysBetween(today, e.day) <= warnDays);
+  if (written) return { status: "written", due: soon && e.kind === "post", late: false };
+  return { status: "planned", due: soon, late: false };
 }
 
-/** The day an item belongs to in the plan. */
-export function plannedDay(item: PlanItem, timeZone: string): string | undefined {
-  if (item.slotDay) return item.slotDay;
-  if (item.scheduledAt) return localDay(new Date(item.scheduledAt), timeZone);
-  if (item.publishedAt) return localDay(new Date(item.publishedAt), timeZone);
-  return undefined;
+/** What the status column says. */
+export function statusLabel(kind: ContentKind, s: EntryState): string {
+  switch (s.status) {
+    case "posted":
+      return s.late ? "Posted late" : "Posted";
+    case "scheduled":
+      return "Scheduled";
+    case "written":
+      return kind === "article" ? "Written, publish in LinkedIn" : s.due ? "Not scheduled" : "Written";
+    case "planned":
+      return s.due ? "Needs writing" : "Planned";
+    case "missed":
+      return "Missed";
+    default:
+      return "Skipped";
+  }
 }
 
-export interface PlanView {
-  slots: Slot[];
-  /** Published or planned items that no slot asked for: extra output, still counted. */
-  extra: PlanItem[];
+/** The choices for Settings, Sending, Plan warning: days before a row's day (0 is off). */
+export const PLAN_WARNING_DAYS = [0, 1, 2, 3, 5, 7, 14];
+
+// ---------------------------------------------------------------------------
+// The plan as a whole
+// ---------------------------------------------------------------------------
+
+type Stated = { day?: string; pillar: string } & EntryState;
+
+export interface PlanCounts {
+  posted: number;
+  missed: number;
+  scheduled: number;
+  written: number;
+  planned: number;
+  skipped: number;
+  /** Rows with a day, skipped ones left out. */
+  total: number;
+}
+
+export function countStatuses(rows: Stated[]): PlanCounts {
+  const c: PlanCounts = { posted: 0, missed: 0, scheduled: 0, written: 0, planned: 0, skipped: 0, total: 0 };
+  for (const r of rows) {
+    if (!r.day) continue;
+    c[r.status]++;
+    if (r.status !== "skipped") c.total++;
+  }
+  return c;
+}
+
+/** First and last day of the plan, and which day of it today is (1-based; 0 before it starts). */
+export function planSpan(rows: { day?: string; skipped?: boolean }[], today: string) {
+  const days = rows.map((r) => r.day).filter((d): d is string => Boolean(d)).sort();
+  if (days.length === 0) return null;
+  const first = days[0];
+  const last = days[days.length - 1];
+  const length = daysBetween(first, last) + 1;
+  const dayOf = today < first ? 0 : Math.min(daysBetween(first, today) + 1, length);
+  return { first, last, length, dayOf };
 }
 
 /**
- * Fills the rhythm's slots between two days with the items planned for them.
- * An item takes the first open slot of its kind on its day; items left over
- * are extras.
+ * How many went out on their day, of those that were due by now. A row for
+ * today counts once it is out; one still to come today is not held against it.
  */
-export function buildPlan(
-  rules: RhythmRule[],
-  items: PlanItem[],
-  from: string,
-  to: string,
-  timeZone: string,
-  now: Date = new Date(),
-): PlanView {
-  const today = localDay(now, timeZone);
-  const empty = slotsBetween(rules, from, to, timeZone);
-  const pool = items
-    .map((item) => ({ item, day: plannedDay(item, timeZone) }))
-    .filter((x): x is { item: PlanItem; day: string } => Boolean(x.day) && daysBetween(from, x.day!) >= 0 && daysBetween(x.day!, to) >= 0);
-  const used = new Set<string>();
-  const slots: Slot[] = empty.map((slot) => {
-    const match = pool.find((x) => !used.has(x.item.id) && x.item.kind === slot.kind && x.day === slot.day);
-    if (!match) {
-      return { ...slot, state: daysBetween(today, slot.day) >= 0 ? "empty" : "missed" };
+export function onTimeSoFar(rows: Stated[], today: string): { onTime: number; due: number } {
+  let onTime = 0;
+  let due = 0;
+  for (const r of rows) {
+    if (!r.day || r.status === "skipped") continue;
+    if (r.day < today || (r.day === today && r.status === "posted")) {
+      due++;
+      if (r.status === "posted" && !r.late) onTime++;
     }
-    used.add(match.item.id);
-    const item = match.item;
-    if (item.status === "published") {
-      const outDay = item.publishedAt ? localDay(new Date(item.publishedAt), timeZone) : slot.day;
-      return { ...slot, item, state: "published", late: daysBetween(slot.day, outDay) > 0 };
-    }
-    if (item.status === "scheduled" || item.status === "publishing") return { ...slot, item, state: "scheduled" };
-    // A draft (or a failed post) on a day that has passed still missed its slot.
-    if (daysBetween(today, slot.day) < 0) return { ...slot, item, state: "missed" };
-    return { ...slot, item, state: "draft" };
-  });
-  const extra = pool.filter((x) => !used.has(x.item.id)).map((x) => x.item);
-  return { slots, extra };
-}
-
-// ---------------------------------------------------------------------------
-// Numbers
-// ---------------------------------------------------------------------------
-
-/** A slot is covered when nothing more is needed from the user before its time. */
-export function covered(slot: Slot): boolean {
-  if (slot.state === "published" || slot.state === "scheduled") return true;
-  // Articles are published by hand in LinkedIn: written and saved in the slot is as ready as they get.
-  return slot.kind === "article" && slot.state === "draft" && Boolean(slot.item?.body.trim());
-}
-
-export interface Runway {
-  /** The last day with every slot covered, or null when today's (or the next) slot is already open. */
-  until: string | null;
-  /** Whole days from today to `until`, counting today. 0 when not covered. */
-  days: number;
-  /** The first slot that needs work. */
-  next?: Slot;
-  /** Every slot in the horizon is covered. */
-  complete: boolean;
-}
-
-/** How far ahead the plan is covered, from now. `slots` are the upcoming slots in time order. */
-export function runwayOf(slots: Slot[], today: string, horizonEnd: string, now: Date = new Date()): Runway {
-  const ahead = slots.filter((s) => new Date(s.at).getTime() >= now.getTime() || s.day === today);
-  const next = ahead.find((s) => !covered(s));
-  if (!next) return { until: horizonEnd, days: daysBetween(today, horizonEnd) + 1, complete: true };
-  const until = addDays(next.day, -1);
-  const days = daysBetween(today, until) + 1;
-  return days <= 0 ? { until: null, days: 0, next, complete: false } : { until, days, next, complete: false };
-}
-
-export interface WeekStats {
-  /** Monday of the week. */
-  week: string;
-  planned: number;
-  onTime: number;
-  late: number;
-  missed: number;
-  /** Future slots already covered. */
-  scheduled: number;
-  /** Items that went out without a slot. */
-  extra: number;
-}
-
-export function weekStats(plan: PlanView, weeks: string[], timeZone: string): WeekStats[] {
-  return weeks.map((week) => {
-    const end = addDays(week, 6);
-    const inWeek = plan.slots.filter((s) => daysBetween(week, s.day) >= 0 && daysBetween(s.day, end) >= 0);
-    const extra = plan.extra.filter((i) => {
-      if (i.status !== "published") return false;
-      const d = plannedDay(i, timeZone)!;
-      return daysBetween(week, d) >= 0 && daysBetween(d, end) >= 0;
-    }).length;
-    return {
-      week,
-      planned: inWeek.length,
-      onTime: inWeek.filter((s) => s.state === "published" && !s.late).length,
-      late: inWeek.filter((s) => s.state === "published" && s.late).length,
-      missed: inWeek.filter((s) => s.state === "missed").length,
-      scheduled: inWeek.filter((s) => s.state === "scheduled" || (s.kind === "article" && s.state === "draft")).length,
-      extra,
-    };
-  });
-}
-
-/** Weeks in a row, ending with the last full week, where everything planned went out. */
-export function streakOf(stats: WeekStats[]): number {
-  let streak = 0;
-  // The last entry is the current week, still in progress.
-  for (let i = stats.length - 2; i >= 0; i--) {
-    const w = stats[i];
-    if (w.planned === 0) break;
-    if (w.onTime + w.late + w.extra < w.planned) break;
-    streak++;
   }
-  return streak;
+  return { onTime, due };
 }
 
-/** Share of past slots that went out on their day. Null when nothing was due yet. */
-export function onTimeShare(stats: WeekStats[]): number | null {
-  const due = stats.reduce((n, w) => n + w.onTime + w.late + w.missed, 0);
-  if (due === 0) return null;
-  return stats.reduce((n, w) => n + w.onTime, 0) / due;
+/** How the rows spread over the pillars, biggest first. Rows without a pillar are left out. */
+export function pillarBalance(rows: Stated[]): { pillar: string; count: number; share: number }[] {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const r of rows) {
+    if (!r.day || r.status === "skipped" || !r.pillar.trim()) continue;
+    const key = r.pillar.trim();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    total++;
+  }
+  return [...counts.entries()]
+    .map(([pillar, count]) => ({ pillar, count, share: count / total }))
+    .sort((a, b) => b.count - a.count || a.pillar.localeCompare(b.pillar));
+}
+
+/** A pillar's colour: the same pillar always gets the same one. */
+export const PILLAR_COLOURS = ["blue", "violet", "emerald", "orange", "pink", "cyan", "lime", "amber"] as const;
+export type PillarColour = (typeof PILLAR_COLOURS)[number];
+
+export function pillarColours(pillars: string[]): Record<string, PillarColour> {
+  const out: Record<string, PillarColour> = {};
+  [...new Set(pillars.map((p) => p.trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((p, i) => (out[p] = PILLAR_COLOURS[i % PILLAR_COLOURS.length]));
+  return out;
+}
+
+export interface NeedsYou<T> {
+  /** Missed in the last two weeks, most recent first. */
+  missed: T[];
+  /** Due soon and not written. */
+  toWrite: T[];
+  /** Posts due soon, written but not scheduled. */
+  toSchedule: T[];
+}
+
+export function needsYou<T extends Stated & { kind: ContentKind }>(rows: T[], today: string): NeedsYou<T> {
+  const byDay = (a: T, b: T) => (a.day ?? "").localeCompare(b.day ?? "");
+  const since = addDays(today, -14);
+  return {
+    missed: rows.filter((r) => r.status === "missed" && r.day && r.day >= since).sort((a, b) => byDay(b, a)),
+    toWrite: rows.filter((r) => r.status === "planned" && r.due).sort(byDay),
+    toSchedule: rows.filter((r) => r.status === "written" && r.due).sort(byDay),
+  };
+}
+
+/** The days a weekly rhythm falls on: these weekdays (1 = Mon), from a day, for some weeks. */
+export function rhythmDays(from: string, weeks: number, weekdays: number[], everyWeeks = 1): string[] {
+  const out: string[] = [];
+  const start = mondayOf(from);
+  for (let w = 0; w < weeks; w += Math.max(1, everyWeeks)) {
+    for (const d of [...weekdays].sort()) {
+      const day = addDays(start, w * 7 + d - 1);
+      if (day >= from) out.push(day);
+    }
+  }
+  return out;
 }

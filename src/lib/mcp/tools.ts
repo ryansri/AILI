@@ -6,8 +6,9 @@ import { linkedInPostUrl } from "../linkedin-posting";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "../linkedin-text";
 import { checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
 import { formatWhen, offsetLabel, parseWhen } from "../time-zone";
-import { addDays, dayLabel, localDay, mondayOf } from "../plan";
-import { loadContentPlan } from "../content-plan";
+import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel } from "../plan";
+import { clockFor, loadPlan, type EntryView } from "../content-plan";
+import { addEntries, followSchedule, linkPost, moveEntry, ownEntry, postedAtFor, updateEntry, type EntryInput } from "../plan-store";
 import { stageLabel } from "../types";
 
 /*
@@ -341,10 +342,8 @@ async function applyTiming(ctx: ToolContext, postId: string, publishNow: boolean
     }
   }
   if (at) {
-    await db.post.update({
-      where: { id: postId },
-      data: { status: "scheduled", scheduledAt: at, error: null, slotDay: localDay(at, tz) },
-    });
+    await db.post.update({ where: { id: postId }, data: { status: "scheduled", scheduledAt: at, error: null } });
+    await followSchedule(postId, localDay(at, tz));
     const warn =
       !linkedin.connected || linkedin.expired
         ? " LinkedIn posting is not connected yet: ask the user to connect it in AILI Settings before then, or it will fail."
@@ -386,7 +385,7 @@ const createPost: Tool = {
     type: "object",
     properties: {
       text: { type: "string", description: "The post, exactly as it should appear." },
-      idea_id: { type: "string", description: "The idea from get_plan it was written from; it leaves the ideas list." },
+      plan_row_id: { type: "string", description: "The plan row from get_plan this post is written for; the row then shows it as written or scheduled." },
       ...firstCommentProperty,
       ...timingProperties,
     },
@@ -408,10 +407,12 @@ const createPost: Tool = {
       throw new ToolError(err instanceof Error ? err.message : "The first comment does not work.");
     }
     const at = await scheduleFrom(ctx, args);
-    await removeUsedIdea(ctx, text(args.idea_id));
+    const rowId = text(args.plan_row_id);
+    if (rowId) await planRow(ctx, rowId);
     const post = await db.post.create({
       data: { workspaceId: ctx.workspaceId, kind: "post", body, firstComment, source: ctx.appName },
     });
+    if (rowId) await linkPost(ctx.workspaceId, rowId, post.id).catch(toolError);
     revalidatePath("/posts");
     const outcome = await applyTiming(ctx, post.id, args.publish_now === true, at);
     revalidatePath("/posts");
@@ -491,9 +492,8 @@ const saveArticle: Tool = {
     properties: {
       title: { type: "string" },
       body: { type: "string" },
-      article_id: { type: "string", description: "Update this saved article instead of making a new one (e.g. a title-only draft in a plan slot)." },
-      planned_for: { type: "string", description: "The plan day it fills, YYYY-MM-DD, e.g. an empty article slot from get_plan." },
-      idea_id: { type: "string", description: "The idea from get_plan it was written from; it leaves the ideas list." },
+      article_id: { type: "string", description: "Update this saved article instead of making a new one." },
+      plan_row_id: { type: "string", description: "The plan row from get_plan this article is written for." },
     },
     required: ["title", "body"],
     additionalProperties: false,
@@ -504,126 +504,230 @@ const saveArticle: Tool = {
     const body = text(args.body).trim();
     if (!title || !body) throw new ToolError("An article needs a title and a body.");
     if (body.length > 110_000) throw new ToolError("That is longer than LinkedIn allows for an article.");
-    const planned = text(args.planned_for);
-    if (planned && !/^\d{4}-\d{2}-\d{2}$/.test(planned)) throw new ToolError("planned_for is a day: YYYY-MM-DD.");
-    await removeUsedIdea(ctx, text(args.idea_id));
+    const rowId = text(args.plan_row_id);
+    if (rowId) await planRow(ctx, rowId);
     const id = text(args.article_id);
     if (id) {
       const existing = await db.post.findFirst({ where: { id, workspaceId: ctx.workspaceId, kind: "article" } });
       if (!existing) throw new ToolError("No such article in AILI.");
-      await db.post.update({ where: { id }, data: { title, body, ...(planned ? { slotDay: planned } : {}) } });
+      await db.post.update({ where: { id }, data: { title, body } });
+      if (rowId) await linkPost(ctx.workspaceId, rowId, id).catch(toolError);
       revalidatePath("/posts");
-      return `Article updated in AILI: ${ctx.origin}/posts?post=${id}`;
+      return `Article updated in AILI: ${ctx.origin}/posts?tab=posts&post=${id}`;
     }
     const post = await db.post.create({
-      data: { workspaceId: ctx.workspaceId, kind: "article", title, body, source: ctx.appName, slotDay: planned || null },
+      data: { workspaceId: ctx.workspaceId, kind: "article", title, body, source: ctx.appName },
     });
+    if (rowId) await linkPost(ctx.workspaceId, rowId, post.id).catch(toolError);
     revalidatePath("/posts");
-    return `Saved "${title}" in AILI (article id: ${post.id}). To publish it, open ${ctx.origin}/posts?post=${post.id} and click Open in LinkedIn; the user publishes or schedules it in LinkedIn.`;
+    return `Saved "${title}" in AILI (article id: ${post.id}). To publish it, open ${ctx.origin}/posts?tab=posts&post=${post.id} and click Open in LinkedIn; the user publishes or schedules it in LinkedIn.`;
   },
 };
 
-/** An idea Claude wrote something from leaves the list. */
-async function removeUsedIdea(ctx: ToolContext, ideaId: string) {
-  if (ideaId) await db.idea.deleteMany({ where: { id: ideaId, workspaceId: ctx.workspaceId } });
+/** Checks a plan row belongs to the user before anything is saved. */
+async function planRow(ctx: ToolContext, id: string) {
+  try {
+    return await ownEntry(ctx.workspaceId, id);
+  } catch {
+    throw new ToolError("No such plan row in AILI. Use get_plan to find it.");
+  }
+}
+
+/** Mistakes in what the model asked for come back as something to read and fix. */
+function toolError(err: unknown): never {
+  throw new ToolError(err instanceof Error ? err.message : "That did not work.");
 }
 
 // ---------------------------------------------------------------------------
 // The content plan
 // ---------------------------------------------------------------------------
 
-const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+function describeRow(r: EntryView, tz: string): string {
+  const when = r.day ? `${dayLabel(r.day)} (${r.day})${r.time ? ` ${r.time}` : ""}` : "no day yet";
+  const status = statusLabel(r.kind, r);
+  const post = r.post
+    ? ` · ${r.kind === "article" ? "article" : "post"} id: ${r.post.id}${r.post.status === "scheduled" && r.post.scheduledAt ? `, goes out ${formatWhen(new Date(r.post.scheduledAt), tz)}` : ""}`
+    : "";
+  const extra = [
+    r.pillar && `pillar: ${r.pillar}`,
+    r.goal && `goal: ${r.goal}`,
+    r.hook && `hook: ${clip(oneLine(r.hook), 140)}`,
+    r.notes && `notes: ${clip(oneLine(r.notes), 160)}`,
+  ].filter(Boolean);
+  return `- ${when} · ${r.kind} · "${r.topic || "(no topic yet)"}" · ${status}${post} (row id: ${r.id})${extra.length ? `\n  ${extra.join(" · ")}` : ""}`;
+}
 
 const getPlan: Tool = {
   name: "get_plan",
   title: "Read the content plan",
   description:
-    "Read the user's content plan in AILI: their rhythm (how often they post and publish articles), how far ahead they are covered " +
-    "(runway), this week's progress, every slot for the coming days with its state (published, scheduled, draft, empty, missed), " +
-    "and their ideas list. To fill an empty post slot: create_post with schedule_at set to the slot's time (after the user agrees). " +
-    "A draft in a slot: update_post with its id, the full text and schedule_at. An article slot: save_article with planned_for set to the day " +
-    "(or article_id for a title-only draft). Pass idea_id when writing from an idea.",
+    "Read the user's content plan in AILI: one row per planned post or article (day, topic, pillar, goal, hook, notes), " +
+    "each with its status (planned, needs writing, written, not scheduled, scheduled, posted, missed, skipped), plus what needs the user now. " +
+    "To write a row: create_post (or save_article) with plan_row_id, and schedule_at on the row's day and time once the user agrees. " +
+    "To add rows: add_plan_rows. To move, skip or change a row: update_plan_row.",
   inputSchema: {
     type: "object",
     properties: {
-      days: { type: "integer", minimum: 1, maximum: 30, default: 14, description: "How many days ahead, from today." },
-      week: { type: "string", enum: ["this", "next"], description: "Instead of days: this week or next week (Monday to Sunday)." },
+      from: { type: "string", description: "First day to list, YYYY-MM-DD. Default: 7 days ago." },
+      days: { type: "integer", minimum: 1, maximum: 120, default: 21, description: "How many days to list from `from`." },
     },
     additionalProperties: false,
   },
   annotations: { readOnlyHint: true, openWorldHint: false },
   async run(args, ctx) {
     const w = await workspace(ctx);
-    const plan = await loadContentPlan(w, { horizon: 30 });
+    const plan = await loadPlan(w);
     const tz = plan.timeZone;
-    let from = plan.today;
-    let to = addDays(plan.today, Math.min(Math.max(Number(args.days) || 14, 1), 30) - 1);
-    if (args.week === "this" || args.week === "next") {
-      from = addDays(mondayOf(plan.today), args.week === "next" ? 7 : 0);
-      to = addDays(from, 6);
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(text(args.from)) ? text(args.from) : addDays(plan.today, -7);
+    const to = addDays(from, Math.min(Math.max(Number(args.days) || 21, 1), 120) - 1);
+    const header = [
+      `Now: ${formatWhen(new Date(), tz)} (${tz}). Plan warning: ${plan.warnDays ? `${plan.warnDays} days before a row's day` : "off"}.`,
+    ];
+    if (plan.entries.length === 0) {
+      return [
+        ...header,
+        "The plan is empty. The user can bring in their spreadsheet in AILI (Content, Plan), or you can add rows with add_plan_rows.",
+        `Plan in AILI: ${ctx.origin}/posts`,
+      ].join("\n");
     }
-    const rhythm = plan.rhythms
-      .filter((r) => r.saved && r.enabled)
-      .map(
-        (r) =>
-          `${r.kind === "article" ? "Articles" : "Posts"}: ${r.days.map((d) => DAY_NAMES[d - 1]).join(", ")} at ${r.time}` +
-          (r.everyWeeks > 1 ? `, every ${r.everyWeeks} weeks` : ", every week"),
-      );
-    const runway = plan.runway.complete
-      ? `Covered for the next ${plan.runway.days} days.`
-      : plan.runway.until === plan.today
-        ? "Covered for today only."
-        : plan.runway.until
-          ? `Covered until ${dayLabel(plan.runway.until)} (${plan.runway.days} days).`
-        : "Not covered: the next slot needs work now.";
-    const t = plan.thisWeek;
-    const slots = plan.allSlots.filter((s) => s.day >= from && s.day <= to);
-    const lines = slots.map((s) => {
-      const when = `${dayLabel(s.day)}, ${formatWhen(new Date(s.at), tz).split(", ")[1]}`;
-      const what = s.item
-        ? ` · ${s.item.kind === "article" ? `"${s.item.title}"${s.item.body.trim() ? "" : " (title only)"}` : `"${clip(oneLine(s.item.body), 90)}"`} (id: ${s.item.id})`
-        : "";
-      return `- ${when} (${s.day}) · ${s.kind} · ${s.state === "published" && s.late ? "published late" : s.state}${what}`;
-    });
-    const ideas = plan.ideas.map((i) => `- ${i.kind}: ${i.text} (idea id: ${i.id})`);
+    const span = planSpan(plan.entries, plan.today);
+    const c = countStatuses(plan.entries);
+    const n = needsYou(plan.entries, plan.today);
+    const needs = [
+      ...n.missed.map((r) => `missed ${dayLabel(r.day!)}: "${r.topic}" (row id: ${r.id})`),
+      ...n.toWrite.map((r) => `write for ${dayLabel(r.day!)}: "${r.topic || "(no topic yet)"}" (row id: ${r.id})`),
+      ...n.toSchedule.map((r) => `schedule ${dayLabel(r.day!)}: "${r.topic}" (row id: ${r.id}, post id: ${r.post?.id})`),
+    ];
+    const rows = plan.entries.filter((r) => r.day && r.day >= from && r.day <= to);
+    const unplanned = plan.entries.filter((r) => !r.day);
     return [
-      `Now: ${formatWhen(new Date(), tz)} (${tz}).`,
-      rhythm.length ? `Rhythm: ${rhythm.join("; ")}.` : "No rhythm set yet: the user sets it in AILI, Content, Rhythm.",
-      `Runway: ${runway}`,
-      `This week: ${t.onTime + t.late + t.extra} of ${t.planned} out, ${t.scheduled} more ready. Streak: ${plan.streak} weeks.`,
+      ...header,
+      span
+        ? `Plan: ${dayLabel(span.first)} to ${dayLabel(span.last)}${span.dayOf ? ` (day ${span.dayOf} of ${span.length})` : ""}. ` +
+          `${c.total} rows: ${c.posted} posted, ${c.missed} missed, ${c.scheduled} scheduled, ${c.written} written, ${c.planned} planned${c.skipped ? `, ${c.skipped} skipped` : ""}.`
+        : "No row has a day yet.",
+      needs.length ? `Needs the user now:\n${needs.map((x) => `- ${x}`).join("\n")}` : "Nothing needs the user right now.",
       "",
-      `Slots ${dayLabel(from)} to ${dayLabel(to)}:`,
-      lines.length ? lines.join("\n") : "None in this range.",
-      "",
-      `Ideas (${ideas.length}):`,
-      ideas.length ? ideas.join("\n") : "None yet.",
+      `Rows ${dayLabel(from)} to ${dayLabel(to)}:`,
+      rows.length ? rows.map((r) => describeRow(r, tz)).join("\n") : "None.",
+      ...(unplanned.length
+        ? ["", `Not planned yet (${unplanned.length}):`, unplanned.slice(0, 40).map((r) => describeRow(r, tz)).join("\n")]
+        : []),
       `Plan in AILI: ${ctx.origin}/posts`,
     ].join("\n");
   },
 };
 
-const saveIdea: Tool = {
-  name: "save_idea",
-  title: "Save an idea",
-  description: "Save a topic to the user's ideas list in AILI, to write about later. kind: post or article.",
+const rowProperties = {
+  date: { type: "string", description: "The day, YYYY-MM-DD, in the user's time zone. Leave out for a topic with no day yet." },
+  time: { type: "string", description: "HH:MM, 24-hour, if the plan has a time." },
+  type: { type: "string", enum: ["post", "article"], default: "post" },
+  topic: { type: "string", description: "What it is about, in a line." },
+  pillar: { type: "string", description: "The content pillar or theme, e.g. Sales tips." },
+  goal: { type: "string", description: "e.g. Reach, Trust, Leads." },
+  hook: { type: "string", description: "The opening line or angle." },
+  notes: { type: "string" },
+};
+
+const addPlanRows: Tool = {
+  name: "add_plan_rows",
+  title: "Add rows to the content plan",
+  description:
+    "Add rows to the user's content plan in AILI, e.g. from a content calendar the user pasted, or a plan you made with them. " +
+    "Each row is one post or article: a topic, and usually a day. Rows without a day go to Not planned. " +
+    "Show the user the rows first for a big plan. Adds only; nothing is replaced.",
   inputSchema: {
     type: "object",
     properties: {
-      text: { type: "string", description: "The idea in a line." },
-      kind: { type: "string", enum: ["post", "article"], default: "post" },
+      rows: {
+        type: "array",
+        minItems: 1,
+        maxItems: 400,
+        items: { type: "object", properties: rowProperties, required: ["topic"], additionalProperties: false },
+      },
     },
-    required: ["text"],
+    required: ["rows"],
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   async run(args, ctx) {
-    const idea = oneLine(text(args.text)).slice(0, 500);
-    if (!idea) throw new ToolError("The idea is empty.");
-    const saved = await db.idea.create({
-      data: { workspaceId: ctx.workspaceId, kind: args.kind === "article" ? "article" : "post", text: idea, source: ctx.appName },
-    });
+    const list = Array.isArray(args.rows) ? (args.rows as Record<string, unknown>[]) : [];
+    if (list.length === 0) throw new ToolError("No rows given.");
+    const inputs: EntryInput[] = list.map((r) => ({
+      day: text(r.date) || null,
+      time: text(r.time) || null,
+      kind: text(r.type),
+      topic: text(r.topic),
+      pillar: text(r.pillar),
+      goal: text(r.goal),
+      hook: text(r.hook),
+      notes: text(r.notes),
+    }));
+    const w = await workspace(ctx);
+    const result = await addEntries(ctx.workspaceId, inputs, { source: ctx.appName, today: clockFor(w).today }).catch(toolError);
     revalidatePath("/posts");
-    return `Saved to the ideas list in AILI (idea id: ${saved.id}).`;
+    revalidatePath("/", "layout");
+    return `Added ${result.added} ${result.added === 1 ? "row" : "rows"} to the plan. See it at ${ctx.origin}/posts`;
+  },
+};
+
+const updatePlanRow: Tool = {
+  name: "update_plan_row",
+  title: "Change a plan row",
+  description:
+    "Change one row of the user's content plan: its topic, pillar, goal, hook, notes, time or type; move it to another date " +
+    "(its post moves too if scheduled; swap: true trades places with the row on that date); skip it (planned, not happening; not counted as missed); " +
+    "mark it as posted (for a post the user put up straight on LinkedIn); or delete it (its post, if any, stays). plan_row_id comes from get_plan.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      plan_row_id: { type: "string" },
+      ...rowProperties,
+      date: { type: "string", description: "Move to this day, YYYY-MM-DD. An empty string takes it out of the plan's days." },
+      swap: { type: "boolean", description: "With date: trade places with the row already on that day." },
+      skip: { type: "boolean" },
+      posted: { type: "boolean", description: "Mark as posted by hand (true) or not (false)." },
+      delete: { type: "boolean" },
+    },
+    required: ["plan_row_id"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  async run(args, ctx) {
+    const row = await planRow(ctx, text(args.plan_row_id));
+    const done: string[] = [];
+    if (args.delete === true) {
+      await db.planEntry.delete({ where: { id: row.id } });
+      done.push("Deleted from the plan.");
+    } else {
+      const patch: EntryInput = {};
+      for (const k of ["topic", "pillar", "goal", "hook", "notes", "time"] as const) if (typeof args[k] === "string") patch[k] = args[k] as string;
+      if (typeof args.type === "string") patch.kind = args.type;
+      if (Object.keys(patch).length) {
+        await updateEntry(ctx.workspaceId, row.id, patch).catch(toolError);
+        done.push("Updated.");
+      }
+      if (typeof args.date === "string") {
+        const w = await workspace(ctx);
+        const r = await moveEntry(ctx.workspaceId, row.id, args.date || null, { swap: args.swap === true, timeZone: timeZoneOf(w) }).catch(toolError);
+        done.push(args.date ? `${r.swapped ? "Swapped to" : "Moved to"} ${dayLabel(args.date)}.` : "Taken out of the plan's days.");
+      }
+      if (typeof args.skip === "boolean") {
+        await db.planEntry.update({ where: { id: row.id }, data: { skipped: args.skip } });
+        done.push(args.skip ? "Skipped." : "No longer skipped.");
+      }
+      if (typeof args.posted === "boolean") {
+        const clock = clockFor(await workspace(ctx));
+        await db.planEntry.update({
+          where: { id: row.id },
+          data: { postedAt: args.posted ? postedAtFor(row, clock.today, clock.timeZone) : null, ...(args.posted ? { skipped: false } : {}) },
+        });
+        done.push(args.posted ? "Marked as posted." : "No longer marked as posted.");
+      }
+    }
+    revalidatePath("/posts");
+    revalidatePath("/", "layout");
+    return done.join(" ") || "Nothing to change.";
   },
 };
 
@@ -632,11 +736,12 @@ export const TOOLS: Tool[] = [
   getConversation,
   saveDraft,
   getPlan,
+  addPlanRows,
+  updatePlanRow,
   listPosts,
   createPost,
   updatePost,
   saveArticle,
-  saveIdea,
 ];
 
 export function toolList() {

@@ -5,8 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { publishDuePosts } from "@/lib/posts";
-import { runwayReminder } from "@/lib/content-plan";
-import { RunwayBar } from "@/components/shell/runway-bar";
+import { planReminder } from "@/lib/content-plan";
+import { PlanBar } from "@/components/shell/plan-bar";
 import { dayLabel } from "@/lib/plan";
 import { getWorkspace, loadWorkspaceData } from "@/lib/data";
 import { nextStep } from "@/lib/next-step";
@@ -34,11 +34,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           sentLine={`${account.sentToday} of ${account.dailyCap} sent today.`}
         />
         <main className="flex min-w-0 flex-1 flex-col">
-          {reminder && <RunwayBar
-              days={reminder.days}
-              nextDay={reminder.next ? dayLabel(reminder.next.day) : undefined}
-              nextIsDraft={reminder.next?.state === "draft"}
-            />}
+          {reminder && <PlanBar toWrite={reminder.toWrite} toSchedule={reminder.toSchedule} firstDay={dayLabel(reminder.firstDay)} />}
           <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
         </main>
         <AutoRefresh />
@@ -48,8 +44,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   );
 }
 
-/** The runway reminder, read alongside the page's data. */
+/** The plan warning, read alongside the page's data. */
 async function getWorkspaceForReminder() {
   const workspace = await getWorkspace();
-  return runwayReminder(workspace).catch(() => null);
+  return planReminder(workspace).catch(() => null);
 }

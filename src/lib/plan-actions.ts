@@ -5,101 +5,122 @@ import { run } from "./action-result";
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
-import { localDay, mondayOf } from "./plan";
-import { timeZoneOf } from "./posts";
+import { clockFor } from "./content-plan";
+import {
+  addEntries,
+  cleanKind,
+  cleanTime,
+  moveEntry as move,
+  ownEntry,
+  postedAtFor,
+  updateEntry as update,
+  type EntryInput,
+} from "./plan-store";
+import { PLAN_WARNING_DAYS, rhythmDays } from "./plan";
 import { validTimeZone } from "./time-zone";
 
 /*
- * Server actions for the content plan: the rhythm, ideas, putting things in
- * slots, and the time zone and reminder settings. Each resolves the logged-in
- * workspace first and only touches its own rows.
+ * Server actions for the content plan: bringing rows in, changing, moving,
+ * skipping and marking them, and the time zone and warning settings. Each
+ * resolves the logged-in workspace first and only touches its own rows.
  */
-
-const KINDS = ["post", "article"] as const;
-type Kind = (typeof KINDS)[number];
-
-function kindOf(value: string): Kind {
-  if (!KINDS.includes(value as Kind)) throw new Error("Pick post or article.");
-  return value as Kind;
-}
 
 function done() {
   revalidatePath("/posts");
+  // The warning bar across the app counts plan rows.
+  revalidatePath("/", "layout");
 }
 
-/** Saves how often one kind of content should go out. */
-async function saveRhythmImpl(input: { kind: string; days: number[]; time: string; everyWeeks: number; enabled: boolean }) {
+/** Rows from a spreadsheet, pasted rows or the template. */
+async function importPlanImpl(input: { entries: EntryInput[]; replace?: boolean }) {
   const workspace = await getWorkspace();
-  const kind = kindOf(input.kind);
-  const days = [...new Set(input.days.map(Math.round))].filter((d) => d >= 1 && d <= 7).sort();
-  if (input.enabled && days.length === 0) throw new Error("Pick at least one day.");
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) throw new Error("Pick a time.");
-  const everyWeeks = Math.max(1, Math.min(4, Math.round(input.everyWeeks) || 1));
-  const existing = await db.rhythm.findUnique({ where: { workspaceId_kind: { workspaceId: workspace.id, kind } } });
-  // Every-other-week rhythms count from the week they were set up, unless that stays the same.
-  const anchor =
-    existing && existing.everyWeeks === everyWeeks ? existing.anchor : mondayOf(localDay(new Date(), timeZoneOf(workspace)));
-  const data = { days: days.join(","), time: input.time, everyWeeks, anchor, enabled: input.enabled };
-  await db.rhythm.upsert({
-    where: { workspaceId_kind: { workspaceId: workspace.id, kind } },
-    create: { workspaceId: workspace.id, kind, ...data },
-    update: data,
+  const result = await addEntries(workspace.id, input.entries, { source: "Import", replace: input.replace, today: clockFor(workspace).today });
+  done();
+  return result;
+}
+
+/** One row, from New → Plan row. Returns its id. */
+async function addEntryImpl(input: EntryInput): Promise<string> {
+  const workspace = await getWorkspace();
+  if (!(input.topic ?? "").trim()) throw new Error("Write the topic first.");
+  const { ids } = await addEntries(workspace.id, [input], { source: "AILI", today: clockFor(workspace).today });
+  done();
+  return ids[0];
+}
+
+async function updateEntryImpl(id: string, patch: EntryInput) {
+  const workspace = await getWorkspace();
+  await update(workspace.id, id, patch);
+  done();
+}
+
+/** To another day, or with swap, trading places with the row on that day. */
+async function moveEntryImpl(id: string, day: string | null, swap = false) {
+  const workspace = await getWorkspace();
+  const result = await move(workspace.id, id, day, { swap, timeZone: clockFor(workspace).timeZone });
+  done();
+  return result;
+}
+
+async function skipEntryImpl(id: string, skipped: boolean) {
+  const workspace = await getWorkspace();
+  const entry = await ownEntry(workspace.id, id);
+  await db.planEntry.update({ where: { id: entry.id }, data: { skipped } });
+  done();
+}
+
+/** For posts put up straight on LinkedIn, which AILI cannot see. */
+async function markEntryPostedImpl(id: string, posted: boolean) {
+  const workspace = await getWorkspace();
+  const entry = await ownEntry(workspace.id, id);
+  const { today, timeZone } = clockFor(workspace);
+  await db.planEntry.update({
+    where: { id: entry.id },
+    data: { postedAt: posted ? postedAtFor(entry, today, timeZone) : null, ...(posted ? { skipped: false } : {}) },
   });
   done();
 }
 
-async function addIdeaImpl(input: { kind: string; text: string }): Promise<string> {
+/** The row goes; its post or article, if any, stays in Posts. */
+async function deleteEntryImpl(id: string) {
   const workspace = await getWorkspace();
-  const text = input.text.replace(/\s+/g, " ").trim().slice(0, 500);
-  if (!text) throw new Error("Write the idea first.");
-  const idea = await db.idea.create({ data: { workspaceId: workspace.id, kind: kindOf(input.kind), text } });
+  await db.planEntry.deleteMany({ where: { id, workspaceId: workspace.id } });
   done();
-  return idea.id;
 }
 
-async function deleteIdeaImpl(ideaId: string) {
+/** The whole plan goes; posts and articles stay. */
+async function deletePlanImpl() {
   const workspace = await getWorkspace();
-  await db.idea.deleteMany({ where: { id: ideaId, workspaceId: workspace.id } });
+  const { count } = await db.planEntry.deleteMany({ where: { workspaceId: workspace.id } });
   done();
+  return count;
 }
 
 /**
- * Puts an idea in a slot: it becomes a draft for that day, ready to write up.
- * The idea leaves the list. Returns the new draft's id.
+ * Rows on a weekly rhythm, e.g. posts on Tue, Wed and Thu for 12 weeks, each
+ * waiting for a topic. Days that already have a row of that type are left alone.
  */
-async function ideaToSlotImpl(ideaId: string, slotDay: string, kind?: string): Promise<string> {
+async function fillFromRhythmImpl(input: { kind: string; weekdays: number[]; time?: string; weeks: number; everyWeeks?: number }) {
   const workspace = await getWorkspace();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(slotDay)) throw new Error("Pick a day.");
-  const idea = await db.idea.findFirst({ where: { id: ideaId, workspaceId: workspace.id } });
-  if (!idea) throw new Error("That idea is not there any more.");
-  const k = kind ? kindOf(kind) : kindOf(idea.kind);
-  const [post] = await db.$transaction([
-    db.post.create({
-      data: {
-        workspaceId: workspace.id,
-        kind: k,
-        // A post starts from the idea as its first line; an article takes it as the title.
-        title: k === "article" ? idea.text.slice(0, 200) : "",
-        body: k === "article" ? "" : idea.text,
-        source: idea.source,
-        slotDay,
-      },
-    }),
-    db.idea.delete({ where: { id: idea.id } }),
-  ]);
-  done();
-  return post.id;
-}
-
-/** Moves a draft to another plan day, or out of the plan (null). */
-async function setSlotDayImpl(postId: string, slotDay: string | null) {
-  const workspace = await getWorkspace();
-  if (slotDay !== null && !/^\d{4}-\d{2}-\d{2}$/.test(slotDay)) throw new Error("Pick a day.");
-  await db.post.updateMany({
-    where: { id: postId, workspaceId: workspace.id, status: { in: ["draft", "failed"] } },
-    data: { slotDay },
+  const kind = cleanKind(input.kind);
+  const weekdays = [...new Set(input.weekdays.map(Math.round))].filter((d) => d >= 1 && d <= 7);
+  if (weekdays.length === 0) throw new Error("Pick at least one day.");
+  const weeks = Math.max(1, Math.min(52, Math.round(input.weeks)));
+  const time = cleanTime(input.time);
+  const { today } = clockFor(workspace);
+  const days = rhythmDays(today, weeks, weekdays, Math.max(1, Math.min(4, Math.round(input.everyWeeks ?? 1))));
+  const taken = await db.planEntry.findMany({
+    where: { workspaceId: workspace.id, kind, day: { in: days } },
+    select: { day: true },
   });
+  const free = days.filter((d) => !taken.some((t) => t.day === d));
+  const result = await addEntries(
+    workspace.id,
+    free.map((day) => ({ day, time, kind, topic: "" })),
+    { source: "AILI", today },
+  );
   done();
+  return { added: result.added, alreadyThere: days.length - free.length };
 }
 
 /** "auto" follows the browser (browserZone); anything else is a fixed zone such as "Australia/Sydney". */
@@ -115,11 +136,11 @@ async function setTimeZoneImpl(choice: string, browserZone?: string) {
   revalidatePath("/", "layout");
 }
 
-/** Remind when the plan is covered for fewer days than this; 0 is off. */
-async function setRunwayAlertImpl(days: number) {
+/** Settings: warn this many days before a planned row's day; 0 is off. */
+async function setPlanWarningImpl(days: number) {
   const workspace = await getWorkspace();
-  const value = Math.max(0, Math.min(14, Math.round(days)));
-  await db.workspace.update({ where: { id: workspace.id }, data: { runwayAlertDays: value } });
+  if (!PLAN_WARNING_DAYS.includes(days)) throw new Error("Pick one of the listed options.");
+  await db.workspace.update({ where: { id: workspace.id }, data: { runwayAlertDays: days } });
   revalidatePath("/", "layout");
 }
 
@@ -127,30 +148,46 @@ async function setRunwayAlertImpl(days: number) {
 // What the client calls. Each returns { ok, value } or { ok, error } (see action-result.ts).
 // ---------------------------------------------------------------------------
 
-export async function saveRhythm(...args: Parameters<typeof saveRhythmImpl>) {
-  return run(() => saveRhythmImpl(...args));
+export async function importPlan(...args: Parameters<typeof importPlanImpl>) {
+  return run(() => importPlanImpl(...args));
 }
 
-export async function addIdea(...args: Parameters<typeof addIdeaImpl>) {
-  return run(() => addIdeaImpl(...args));
+export async function addEntry(...args: Parameters<typeof addEntryImpl>) {
+  return run(() => addEntryImpl(...args));
 }
 
-export async function deleteIdea(...args: Parameters<typeof deleteIdeaImpl>) {
-  return run(() => deleteIdeaImpl(...args));
+export async function updateEntry(...args: Parameters<typeof updateEntryImpl>) {
+  return run(() => updateEntryImpl(...args));
 }
 
-export async function ideaToSlot(...args: Parameters<typeof ideaToSlotImpl>) {
-  return run(() => ideaToSlotImpl(...args));
+export async function moveEntry(...args: Parameters<typeof moveEntryImpl>) {
+  return run(() => moveEntryImpl(...args));
 }
 
-export async function setSlotDay(...args: Parameters<typeof setSlotDayImpl>) {
-  return run(() => setSlotDayImpl(...args));
+export async function skipEntry(...args: Parameters<typeof skipEntryImpl>) {
+  return run(() => skipEntryImpl(...args));
+}
+
+export async function markEntryPosted(...args: Parameters<typeof markEntryPostedImpl>) {
+  return run(() => markEntryPostedImpl(...args));
+}
+
+export async function deleteEntry(...args: Parameters<typeof deleteEntryImpl>) {
+  return run(() => deleteEntryImpl(...args));
+}
+
+export async function deletePlan(...args: Parameters<typeof deletePlanImpl>) {
+  return run(() => deletePlanImpl(...args));
+}
+
+export async function fillFromRhythm(...args: Parameters<typeof fillFromRhythmImpl>) {
+  return run(() => fillFromRhythmImpl(...args));
 }
 
 export async function setTimeZone(...args: Parameters<typeof setTimeZoneImpl>) {
   return run(() => setTimeZoneImpl(...args));
 }
 
-export async function setRunwayAlert(...args: Parameters<typeof setRunwayAlertImpl>) {
-  return run(() => setRunwayAlertImpl(...args));
+export async function setPlanWarning(...args: Parameters<typeof setPlanWarningImpl>) {
+  return run(() => setPlanWarningImpl(...args));
 }

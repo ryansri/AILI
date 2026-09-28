@@ -153,17 +153,21 @@ LinkedIn refuses the comment, the post stays up and the comment shows "Not
 posted" with Try again. Without it they still go out, but only while Chrome is open
 with the extension (it checks in every minute).
 
-**Content plan:** Content, Rhythm sets how often posts and articles go out
-(days, time, every 1 to 4 weeks). AILI turns it into slots and shows, on the
-Plan view: runway (how far ahead you are covered, the number to keep up),
-this week, streak and on time, and what brought conversations (people whose
-first message came within 3 days of a post, from the inbox). Calendar shows
-four weeks by slot state; Plan next week fills next week's slots in one
-sitting (ideas, then Claude drafts them all); the Weekly review sums up a
-week. A bar across the app says when the runway drops under the reminder
-set in Settings, Sending. Claude reads it all with get_plan and fills slots.
-Times use the account's time zone: automatic from the browser, or picked in
-Settings, Account.
+**Content plan:** Content, Plan holds your 30, 60 or 90-day plan, one row
+per post or article: a day and a topic, plus pillar, goal, hook and notes if
+you have them. Bring it in from Excel (.xlsx) or CSV, paste rows straight from
+a sheet, or ask Claude to add them (add_plan_rows); AILI guesses what each
+column is and you check. A blank template is under •••. Each row's status
+comes from its post, so nobody updates a status column: planned, written,
+scheduled, posted, or missed when its day passes with nothing out. Skip a row
+to take it out of the count; Mark as posted covers posts put up straight on
+LinkedIn. Move or swap days from the row or by dragging in the calendar (a
+scheduled post moves with its row). The Needs you box, and a bar across the
+app, warn when a row due within the Plan warning (Settings, Sending, 3 days
+to start with) is not written or not scheduled. Claude reads the plan with
+get_plan, writes a row with create_post or save_article and its plan_row_id,
+and changes rows with update_plan_row. Times use the account's time zone:
+automatic from the browser, or picked in Settings, Account.
 
 **Articles:** LinkedIn does not let apps publish articles. Claude or ChatGPT
 saves them in AILI; Open in LinkedIn opens LinkedIn's article editor and the

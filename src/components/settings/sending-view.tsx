@@ -3,7 +3,8 @@
 import { useRef, useState, useTransition } from "react";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { setRunwayAlert, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies } from "@/lib/client-actions";
+import { PLAN_WARNING_DAYS } from "@/lib/plan";
+import { setPlanWarning, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies } from "@/lib/client-actions";
 import { delayLabel, FIRST_COMMENT_DELAYS } from "@/lib/linkedin-text";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -122,7 +123,7 @@ export function SendingView({
             </SelectContent>
           </Select>
         </Row>
-        <Row title="Runway reminder" status="A note in AILI when your content plan is covered for fewer days than this.">
+        <Row title="Plan warning" status="Warn me when a planned post is not written, or not scheduled, this many days before its day. 3 days to start with.">
           <Select
             value={runway}
             onValueChange={(value) => {
@@ -130,8 +131,8 @@ export function SendingView({
               setRunway(value);
               start(async () => {
                 try {
-                  await setRunwayAlert(Number(value));
-                  toast.success(value === "0" ? "Runway reminder off." : `Reminder when fewer than ${value} days are covered.`);
+                  await setPlanWarning(Number(value));
+                  toast.success(value === "0" ? "Plan warning off." : `Plan warning: ${value} ${value === "1" ? "day" : "days"} before.`);
                 } catch {
                   setRunway(previous);
                   toast.error("That did not save.");
@@ -139,14 +140,13 @@ export function SendingView({
               });
             }}
           >
-            <SelectTrigger aria-label="Runway reminder" className="w-44">
+            <SelectTrigger aria-label="Plan warning" className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
-              <SelectItem value="0">Off</SelectItem>
-              {[1, 2, 3, 5, 7].map((d) => (
+              {PLAN_WARNING_DAYS.map((d) => (
                 <SelectItem key={d} value={String(d)}>
-                  Under {d} {d === 1 ? "day" : "days"}
+                  {d === 0 ? "Off" : `${d} ${d === 1 ? "day" : "days"} before`}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -91,8 +91,8 @@ interface Editing {
   title: string;
   body: string;
   firstComment: string;
-  /** A new post or article written for a plan slot: the day it fills. */
-  slotDay?: string;
+  /** A new post or article written for a plan row: the row. */
+  entryId?: string;
 }
 
 export function PostsView({
@@ -117,7 +117,7 @@ export function PostsView({
   timeZone: string;
   initialId?: string;
   /** Open the editor on a new post or article straight away, e.g. from an empty plan slot. */
-  newDraft?: { kind: "post" | "article"; slotDay?: string };
+  newDraft?: { kind: "post" | "article"; entryId?: string; title?: string; body?: string };
 }) {
   const initial = posts.find((p) => p.id === initialId);
   const counts = useMemo(() => {
@@ -142,7 +142,9 @@ export function PostsView({
   );
   const [selectedId, setSelectedId] = useState<string | undefined>(initial?.id);
   const [editing, setEditing] = useState<Editing | null>(
-    newDraft ? { kind: newDraft.kind, title: "", body: "", firstComment: "", slotDay: newDraft.slotDay } : null,
+    newDraft
+      ? { kind: newDraft.kind, title: newDraft.title ?? "", body: newDraft.body ?? "", firstComment: "", entryId: newDraft.entryId }
+      : null,
   );
 
   const list = useMemo(() => {
@@ -393,7 +395,7 @@ function Editor({ editing, commentDelay, onDone }: { editing: Editing; commentDe
   function save() {
     start(async () => {
       try {
-        const id = await savePost({ id: editing.id, kind: editing.kind, title, body, firstComment, slotDay: editing.slotDay });
+        const id = await savePost({ id: editing.id, kind: editing.kind, title, body, firstComment, entryId: editing.entryId });
         toast.success(editing.id ? "Saved." : isPost ? "Saved in Drafts." : "Article saved.");
         onDone(id);
       } catch (err) {
@@ -471,6 +473,10 @@ function Editor({ editing, commentDelay, onDone }: { editing: Editing; commentDe
 
 function defaultScheduleValue(post: PostView, zone: string): string {
   if (post.scheduledAt) return toWallInput(new Date(post.scheduledAt), zone);
+  // Its plan row's day and time, while that is still ahead.
+  if (post.planned && `${post.planned.day}T${post.planned.time}` > toWallInput(new Date(Date.now() + 5 * 60_000), zone)) {
+    return `${post.planned.day}T${post.planned.time}`;
+  }
   // Tomorrow at 9:00 in the account's time zone.
   const tomorrow = toWallInput(new Date(Date.now() + 86400000), zone).slice(0, 10);
   return `${tomorrow}T09:00`;

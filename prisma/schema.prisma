@@ -70,8 +70,7 @@ model Workspace {
   outbox Outbox[]
   posts  Post[]
   aiGrants AiGrant[]
-  rhythms Rhythm[]
-  ideas  Idea[]
+  planEntries PlanEntry[]
 }
 
 model Person {
@@ -241,8 +240,9 @@ model Post {
   error       String?
   /// Where it was written: "AILI", "Claude", "ChatGPT" or another app's name.
   source      String    @default("AILI")
-  /// The plan day ("YYYY-MM-DD", the user's time zone) this post or article fills, if it was put in a slot.
+  /// No longer used: plan rows (PlanEntry) link to posts now. Kept so old rows stay readable.
   slotDay     String?
+  planEntry   PlanEntry?
   /// Posted as a comment under the post once it is live, e.g. the link. Empty for none.
   firstComment      String    @default("")
   /// pending | posting | posted | failed; null when there is no first comment yet.
@@ -305,39 +305,35 @@ model AppState {
   updatedAt DateTime @updatedAt
 }
 
-/// How often the user means to publish one kind of content: the rhythm the plan's slots come from.
-model Rhythm {
+/// One row of the content plan: a topic on a day, as brought in from the user's
+/// spreadsheet or added by hand or by Claude. Its status (planned, written,
+/// scheduled, posted, missed) comes from the post it is linked to.
+model PlanEntry {
   id          String    @id @default(cuid())
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// "YYYY-MM-DD" in the account's time zone; null when it has no day yet ("Not planned").
+  day         String?
+  /// "09:00" in the account's time zone, when the plan says a time.
+  time        String?
   /// post | article
-  kind        String
-  /// Weekdays, 1 = Monday … 7 = Sunday, comma separated: "2,3,4".
-  days        String
-  /// "09:00" in the account's time zone.
-  time        String
-  /// 1 = every week, 2 = every other week, …
-  everyWeeks  Int       @default(1)
-  /// A Monday ("YYYY-MM-DD") in a week the rhythm is on, for every-other-week rhythms.
-  anchor      String
-  enabled     Boolean   @default(true)
+  kind        String    @default("post")
+  topic       String
+  pillar      String    @default("")
+  goal        String    @default("")
+  hook        String    @default("")
+  notes       String    @default("")
+  /// The post or article written for it.
+  postId      String?   @unique
+  post        Post?     @relation(fields: [postId], references: [id], onDelete: SetNull)
+  /// Planned, but not happening: not counted as missed.
+  skipped     Boolean   @default(false)
+  /// Marked as posted by hand, for posts put up straight on LinkedIn.
+  postedAt    DateTime?
+  /// "AILI", "Import", "Claude", "ChatGPT", …
+  source      String    @default("AILI")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@unique([workspaceId, kind])
-}
-
-/// A topic to write about some day, saved by the user or by Claude or ChatGPT.
-model Idea {
-  id          String    @id @default(cuid())
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  /// post | article
-  kind        String    @default("post")
-  text        String
-  /// "AILI", "Claude", "ChatGPT", …
-  source      String    @default("AILI")
-  createdAt   DateTime  @default(now())
-
-  @@index([workspaceId, createdAt])
+  @@index([workspaceId, day])
 }

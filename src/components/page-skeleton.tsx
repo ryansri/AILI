@@ -72,18 +72,23 @@ export function SettingsSkeleton() {
   );
 }
 
-/** Content: the plan's cards and the days ahead. */
+/** Content: the plan's header, its progress bar and rows, and the side column. */
 export function PlanSkeleton() {
   return (
     <div className="flex min-w-0 flex-1 flex-col" aria-busy="true" aria-label="Loading">
       <Header width="w-72" />
-      <div className="grid gap-4 p-5 lg:grid-cols-[1.35fr_1fr]">
-        <Skeleton className="h-44 rounded-2xl" />
-        <Skeleton className="h-44 rounded-2xl" />
-      </div>
-      <div className="px-5">
-        <div className="overflow-hidden rounded-2xl border">
-          <Rows count={5} avatar={false} />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex flex-1 flex-col gap-4 px-8 py-6">
+          <Skeleton className="h-7 w-64" />
+          <Skeleton className="h-2.5 w-full rounded-full" />
+          <Skeleton className="h-24 rounded-2xl" />
+          <div className="overflow-hidden rounded-2xl border">
+            <Rows count={6} avatar={false} />
+          </div>
+        </div>
+        <div className="hidden w-[280px] flex-col gap-4 border-l px-5 py-6 xl:flex">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-28" />
         </div>
       </div>
     </div>

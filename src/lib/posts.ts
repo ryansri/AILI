@@ -34,11 +34,13 @@ export interface PostView {
   commentError?: string;
   /** Scheduled, and its time passed more than 2 minutes ago: the timer has not run. */
   overdue: boolean;
+  /** The plan row it was written for: its day and time ("09:00" when the plan has none). */
+  planned?: { day: string; time: string };
   createdAt: string;
   updatedAt: string;
 }
 
-export function toPostView(p: PostRow): PostView {
+export function toPostView(p: PostRow & { planEntry?: { day: string | null; time: string | null } | null }): PostView {
   return {
     id: p.id,
     kind: p.kind === "article" ? "article" : "post",
@@ -57,6 +59,7 @@ export function toPostView(p: PostRow): PostView {
     commentAt: p.commentAt?.toISOString(),
     commentError: p.commentError ?? undefined,
     overdue: p.status === "scheduled" && (p.scheduledAt?.getTime() ?? Infinity) < Date.now() - 2 * 60_000,
+    planned: p.planEntry?.day ? { day: p.planEntry.day, time: p.planEntry.time ?? "09:00" } : undefined,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };

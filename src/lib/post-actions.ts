@@ -8,7 +8,9 @@ import { getWorkspace } from "./data";
 import { checkCommentText, checkPostText, checkScheduleTime, postFirstComment, publishPost } from "./posts";
 import { FIRST_COMMENT_DELAYS } from "./linkedin-text";
 import { validTimeZone } from "./time-zone";
-import { slotDayFor } from "./content-plan";
+import { clockFor } from "./content-plan";
+import { followSchedule, linkPost } from "./plan-store";
+import { localDay } from "./plan";
 
 /*
  * Server actions for the Posts page and the AI and LinkedIn parts of Settings.
@@ -24,6 +26,8 @@ async function ownPost(postId: string) {
 
 function done() {
   revalidatePath("/posts");
+  // The plan warning bar across the app follows the posts.
+  revalidatePath("/", "layout");
 }
 
 /** New post or article, or an edit of one not yet published. Returns its id. */
@@ -33,8 +37,8 @@ async function savePostImpl(input: {
   title?: string;
   body: string;
   firstComment?: string;
-  /** New posts and articles: the plan day ("YYYY-MM-DD") they fill. */
-  slotDay?: string;
+  /** New posts and articles: the plan row they are written for. */
+  entryId?: string;
 }): Promise<string> {
   const body = input.body.trim();
   const title = (input.title ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
@@ -59,9 +63,9 @@ async function savePostImpl(input: {
       body,
       firstComment,
       source: "AILI",
-      slotDay: input.slotDay && /^\d{4}-\d{2}-\d{2}$/.test(input.slotDay) ? input.slotDay : null,
     },
   });
+  if (input.entryId) await linkPost(workspace.id, input.entryId, post.id);
   done();
   return post.id;
 }
@@ -74,11 +78,9 @@ async function schedulePostImpl(postId: string, at: string) {
   const when = new Date(at);
   checkScheduleTime(when);
   checkPostText(post.body);
-  // The post now fills the plan on the day it goes out.
-  await db.post.update({
-    where: { id: post.id },
-    data: { status: "scheduled", scheduledAt: when, error: null, slotDay: slotDayFor(when, workspace) },
-  });
+  await db.post.update({ where: { id: post.id }, data: { status: "scheduled", scheduledAt: when, error: null } });
+  // Its plan row, if it has one, moves to the day it now goes out.
+  await followSchedule(post.id, localDay(when, clockFor(workspace).timeZone));
   done();
 }
 
