@@ -48,6 +48,8 @@ export interface Message {
   sentAt: string; // ISO
   /** Set on outbound messages that were a planned follow-up. */
   followUp?: 1 | 2;
+  /** LinkedIn has it: sent through the helper (LinkedIn gave back its id) or synced from LinkedIn. */
+  onLinkedIn?: boolean;
 }
 
 /** A message the user clicked Send on that the Chrome helper has not delivered yet. */
@@ -55,6 +57,14 @@ export interface PendingMessage {
   id: string;
   body: string;
   status: "queued" | "sending";
+  createdAt: string; // ISO
+}
+
+/** A message the helper could not deliver: LinkedIn refused it or it failed on the way. */
+export interface FailedMessage {
+  id: string;
+  body: string;
+  error: string;
   createdAt: string; // ISO
 }
 
@@ -96,6 +106,8 @@ export interface Person {
   stageChangedAt?: string; // ISO
   messages: Message[];
   pending: PendingMessage[];
+  /** Sends that did not go through, until you try again or remove them. */
+  failed?: FailedMessage[];
   /** A reply written in Claude or ChatGPT, waiting in the message box until the user sends or discards it. */
   draft?: { text: string; source: string; at: string };
 }

@@ -30,7 +30,7 @@ export const getWorkspace = cache(async () => {
 const personInclude = {
   tags: { select: { tagId: true } },
   messages: { orderBy: { sentAt: "asc" as const } },
-  outbox: { where: { status: { in: ["queued", "sending"] } }, orderBy: { createdAt: "asc" as const } },
+  outbox: { where: { status: { in: ["queued", "sending", "failed"] } }, orderBy: { createdAt: "asc" as const } },
 } satisfies Prisma.PersonInclude;
 
 type PersonRow = Prisma.PersonGetPayload<{ include: typeof personInclude }>;
@@ -67,16 +67,22 @@ function toPerson(row: PersonRow): Person {
       body: m.body,
       sentAt: m.sentAt.toISOString(),
       followUp: m.followUp === 1 || m.followUp === 2 ? m.followUp : undefined,
+      onLinkedIn: Boolean(m.externalId) || undefined,
     })),
     draft: row.draft
       ? { text: row.draft, source: row.draftSource ?? "AI", at: (row.draftAt ?? row.updatedAt).toISOString() }
       : undefined,
-    pending: row.outbox.map((o) => ({
-      id: o.id,
-      body: o.body,
-      status: o.status === "sending" ? "sending" : "queued",
-      createdAt: o.createdAt.toISOString(),
-    })),
+    pending: row.outbox
+      .filter((o) => o.status !== "failed")
+      .map((o) => ({
+        id: o.id,
+        body: o.body,
+        status: o.status === "sending" ? "sending" : "queued",
+        createdAt: o.createdAt.toISOString(),
+      })),
+    failed: row.outbox
+      .filter((o) => o.status === "failed")
+      .map((o) => ({ id: o.id, body: o.body, error: o.error ?? "It did not go through.", createdAt: o.createdAt.toISOString() })),
   };
 }
 

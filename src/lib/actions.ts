@@ -199,7 +199,19 @@ async function discardDraftImpl(personId: string) {
 
 async function cancelQueuedImpl(outboxId: string) {
   const workspace = await getWorkspace();
-  await db.outbox.deleteMany({ where: { id: outboxId, workspaceId: workspace.id, status: "queued" } });
+  // Waiting ones can be taken back; failed ones can be cleared away.
+  await db.outbox.deleteMany({ where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "failed"] } } });
+  refresh();
+}
+
+/** Try again on a message that did not go through: back in the queue for the helper. */
+async function retryQueuedImpl(outboxId: string) {
+  const workspace = await getWorkspace();
+  const { count } = await db.outbox.updateMany({
+    where: { id: outboxId, workspaceId: workspace.id, status: "failed" },
+    data: { status: "queued", error: null, claimedAt: null },
+  });
+  if (count === 0) throw new Error("That message is not waiting to be retried.");
   refresh();
 }
 
@@ -761,6 +773,10 @@ export async function queueSend(...args: Parameters<typeof queueSendImpl>) {
 
 export async function discardDraft(...args: Parameters<typeof discardDraftImpl>) {
   return run(() => discardDraftImpl(...args));
+}
+
+export async function retryQueued(...args: Parameters<typeof retryQueuedImpl>) {
+  return run(() => retryQueuedImpl(...args));
 }
 
 export async function cancelQueued(...args: Parameters<typeof cancelQueuedImpl>) {

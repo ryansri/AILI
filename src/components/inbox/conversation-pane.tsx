@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { ArrowUp, Check, ChevronDown, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, ArrowUp, Check, CheckCheck, ChevronDown, Clock3, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { archivePerson, cancelQueued, discardDraft, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/client-actions";
+import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/client-actions";
 import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { relativeTime, shortDate, shortTime, type NextStep } from "@/lib/next-step";
@@ -156,6 +157,20 @@ export function ConversationPane({
   const [sending, setSending] = useState(false);
   const [logging, setLogging] = useState(false);
   const [pending, start] = useTransition();
+  const router = useRouter();
+  const waiting = person.pending.length;
+
+  // While a message is on its way, look again every few seconds so its tick
+  // shows as soon as LinkedIn has it (for two minutes at most).
+  useEffect(() => {
+    if (!waiting) return;
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      if (Date.now() - started > 2 * 60_000) window.clearInterval(timer);
+      else router.refresh();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [waiting, router]);
 
   const messages = [...person.messages].sort(
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
@@ -191,7 +206,9 @@ export function ConversationPane({
       run(async () => {
         await queueSend({ personId: person.id, body, followUp });
         setDraft("");
-      }, "Handed to the helper. It sends within a minute.");
+        // Wake the Chrome helper so it sends now, not at its next minute.
+        window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
+      }, "");
     } else {
       setSending(true);
     }
@@ -314,6 +331,8 @@ export function ConversationPane({
           )}
           {messages.map((m, i) => {
             const mine = m.direction === "out";
+            // Like Messages: the latest message you sent says it arrived.
+            const lastMine = mine && !messages.slice(i + 1).some((x) => x.direction === "out") && person.pending.length === 0;
             const prev = messages[i - 1];
             const next = messages[i + 1];
             const HOUR = 60 * 60 * 1000;
@@ -353,7 +372,18 @@ export function ConversationPane({
                     {m.body}
                   </div>
                 </div>
-                {m.followUp ? <div className="px-10 text-2xs text-muted-foreground">Follow-up {m.followUp}</div> : null}
+                {(m.followUp || (lastMine && m.onLinkedIn)) && (
+                  <div className="flex items-center gap-1.5 px-10 text-2xs text-muted-foreground">
+                    {m.followUp ? `Follow-up ${m.followUp}` : null}
+                    {m.followUp && lastMine && m.onLinkedIn ? " · " : null}
+                    {lastMine && m.onLinkedIn && (
+                      <span className="inline-flex items-center gap-1 text-emerald-700" title="LinkedIn has it: it is in the conversation on LinkedIn.">
+                        <CheckCheck className="size-3.5" />
+                        Delivered on LinkedIn
+                      </span>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}
@@ -368,7 +398,17 @@ export function ConversationPane({
                 </div>
               </div>
               <div className="flex items-center gap-2 px-10 text-2xs text-muted-foreground">
-                {p.status === "sending" ? "Sending now" : "Waiting for the helper"}
+                {p.status === "sending" ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Check className="size-3.5" />
+                    Sending to LinkedIn…
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Clock3 className="size-3" />
+                    {account.helper.connected ? "Sending in a few seconds" : "Waiting for Chrome: it goes out when Chrome is open"}
+                  </span>
+                )}
                 {p.status === "queued" && (
                   <button
                     type="button"
@@ -379,6 +419,41 @@ export function ConversationPane({
                     cancel
                   </button>
                 )}
+              </div>
+            </li>
+          ))}
+          {(person.failed ?? []).map((f) => (
+            <li key={f.id} className="mt-5 flex flex-col items-end gap-1">
+              <div className="flex w-full flex-row-reverse items-end gap-2">
+                <span className={AVATAR_SLOT}>
+                  <MyAvatar account={account} />
+                </span>
+                <div className="max-w-[56%] rounded-2xl border border-dashed border-red-300 bg-red-50/60 px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-foreground/80">
+                  {f.body}
+                </div>
+              </div>
+              <div className="flex max-w-[70%] flex-col items-end gap-0.5 px-10 text-right text-2xs">
+                <span className="inline-flex items-start gap-1 text-red-700">
+                  <AlertCircle className="mt-px size-3.5 shrink-0" />
+                  Not sent. {f.error}
+                </span>
+                <span className="flex gap-3">
+                  <button
+                    type="button"
+                    className="font-semibold text-red-700 underline underline-offset-2 hover:text-red-900"
+                    onClick={() =>
+                      run(async () => {
+                        await retryQueued(f.id);
+                        window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
+                      }, "")
+                    }
+                  >
+                    Try again
+                  </button>
+                  <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => run(() => cancelQueued(f.id), "Removed.")}>
+                    Remove
+                  </button>
+                </span>
               </div>
             </li>
           ))}
