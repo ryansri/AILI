@@ -65,7 +65,7 @@ function HelperDot({ helper, sentLine }: { helper: HelperStatus; sentLine: strin
     <Tooltip>
       <TooltipTrigger asChild>
         <Link
-          href="/settings"
+          href="/settings/connections"
           aria-label="Helper status"
           className="flex size-8 items-center justify-center rounded-md hover:bg-foreground/[0.05]"
         >
@@ -120,7 +120,7 @@ export function Rail({
       ))}
       <div className="mt-auto flex flex-col items-center gap-2">
         <RailLink
-          href="/settings"
+          href="/settings/connections"
           label="Settings"
           icon={Settings}
           active={pathname.startsWith("/settings")}

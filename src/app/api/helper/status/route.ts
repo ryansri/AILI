@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     }
   }
   revalidatePath("/inbox");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   // While Chrome is open the helper checks in every minute: a free chance to
   // publish scheduled posts on time, on top of the timer.
   after(() => publishDuePosts().catch((err) => console.error("Publishing scheduled posts failed", err)));

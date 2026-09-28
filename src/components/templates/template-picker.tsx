@@ -66,7 +66,7 @@ export function TemplatePicker({
           </ul>
         )}
         <div className="mt-1 border-t px-2.5 pt-2 pb-1">
-          <Link href="/settings#templates" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+          <Link href="/settings/templates" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
             Manage templates
           </Link>
         </div>

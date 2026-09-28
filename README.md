@@ -117,7 +117,7 @@ It runs on their own Claude or ChatGPT plan; AILI holds no AI key.
   message box, write, schedule and publish posts, save articles. It has no
   way to send a LinkedIn message: a draft waits, labelled "Draft from
   Claude", until you click Send in AILI.
-- **Connect (each user, once):** Settings, Claude and ChatGPT shows the
+- **Connect (each user, once):** Settings, Connections, Connect on the Claude or ChatGPT row shows the
   connector address, `https://your-address/mcp`.
   - Claude: Settings, Connectors, Add custom connector, paste the address,
     Connect, then Allow on AILI's screen.
@@ -136,7 +136,7 @@ official API, which needs a free LinkedIn developer app.
    LinkedIn**.
 3. Auth: add the redirect URL `https://your-address/api/linkedin/callback`.
 4. In Vercel add `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` (Secret)
-   and redeploy. Then each user clicks Connect LinkedIn in Settings. LinkedIn
+   and redeploy. Then each user clicks Connect on the LinkedIn posting row in Settings, Connections. LinkedIn
    asks them to reconnect every 60 days; AILI shows when.
 
 **Scheduled posts timer:** set `CRON_SECRET` in Vercel to a long random

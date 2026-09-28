@@ -16,8 +16,8 @@ export async function GET(request: Request) {
   const expected = store.get(LINKEDIN_STATE_COOKIE)?.value;
   store.delete(LINKEDIN_STATE_COOKIE);
   const workspaceId = await currentWorkspaceId();
-  if (!workspaceId) return NextResponse.redirect(`${origin}/login?next=/settings`);
-  const back = (result: string) => NextResponse.redirect(`${origin}/settings?linkedin=${result}#linkedin-posting`);
+  if (!workspaceId) return NextResponse.redirect(`${origin}/login?next=/settings/connections`);
+  const back = (result: string) => NextResponse.redirect(`${origin}/settings/connections?linkedin=${result}`);
 
   if (url.searchParams.get("error")) return back("cancelled");
   const code = url.searchParams.get("code");

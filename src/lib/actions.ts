@@ -17,7 +17,7 @@ function refresh() {
   revalidatePath("/inbox");
   revalidatePath("/people");
   revalidatePath("/today");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }
 
 const DAY = 24 * 60 * 60 * 1000;

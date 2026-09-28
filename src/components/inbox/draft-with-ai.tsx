@@ -50,7 +50,7 @@ export function DraftWithAi({ personName }: { personName: string }) {
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
           The draft appears here, in the message box. Nothing is sent until you click Send. Not connected yet?{" "}
-          <Link href="/settings#ai" className="font-medium text-foreground underline underline-offset-2">
+          <Link href="/settings/connections" className="font-medium text-foreground underline underline-offset-2">
             Set it up in Settings
           </Link>
           .

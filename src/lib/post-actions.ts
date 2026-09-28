@@ -102,7 +102,7 @@ export async function disconnectLinkedInPosting() {
     where: { id: workspace.id },
     data: { linkedinPostToken: null, linkedinPostRefresh: null, linkedinPostExpires: null, linkedinPostUrn: null, linkedinPostName: null },
   });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   done();
 }
 
@@ -113,5 +113,5 @@ export async function disconnectAiApp(clientName: string) {
     where: { workspaceId: workspace.id, clientName, revokedAt: null },
     data: { revokedAt: new Date() },
   });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }

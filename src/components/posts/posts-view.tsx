@@ -257,7 +257,7 @@ export function PostsView({
               <p className="text-md font-semibold">Write posts in Claude or ChatGPT</p>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 Ask for a post and a time, and it lands here, scheduled. Or click New to write one yourself.{" "}
-                <Link href="/settings#ai" className="font-medium text-foreground underline underline-offset-2">
+                <Link href="/settings/connections" className="font-medium text-foreground underline underline-offset-2">
                   Connect Claude or ChatGPT
                 </Link>
               </p>
@@ -341,7 +341,7 @@ function PostingStatus({
         {dot(false)}
         <span className="min-w-0 flex-1">
           {linkedin.expired ? "LinkedIn posting has expired. " : "To publish, connect LinkedIn posting. "}
-          <Link href="/settings#linkedin-posting" className="font-medium text-foreground underline underline-offset-2">
+          <Link href="/settings/connections" className="font-medium text-foreground underline underline-offset-2">
             {linkedin.expired ? "Reconnect" : "Connect"}
           </Link>
         </span>
@@ -669,7 +669,7 @@ function Detail({
         {!isArticle && editable && !canPublish && (
           <div className="w-full max-w-[560px] rounded-xl bg-amber-50 px-4 py-3 text-md text-amber-900">
             {linkedin.expired ? "LinkedIn posting has expired." : "LinkedIn posting is not connected yet."}{" "}
-            <Link href="/settings#linkedin-posting" className="font-medium underline underline-offset-2">
+            <Link href="/settings/connections" className="font-medium underline underline-offset-2">
               {linkedin.expired ? "Reconnect it in Settings" : "Connect it in Settings"}
             </Link>{" "}
             to publish.
