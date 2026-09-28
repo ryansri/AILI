@@ -22,6 +22,8 @@ export interface EntryInput {
   notes?: string;
   /** The post's full text, when there is one: saved as a draft linked to the row. */
   text?: string;
+  /** The sheet says it went out already: the row comes in as posted, on its day. */
+  posted?: boolean;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -66,18 +68,28 @@ const newId = () => `c${randomUUID().replace(/-/g, "").slice(0, 24)}`;
 export async function addEntries(
   workspaceId: string,
   inputs: EntryInput[],
-  { source, replace = false, today }: { source: string; replace?: boolean; today: string },
+  { source, replace = false, today, timeZone }: { source: string; replace?: boolean; today: string; timeZone: string },
 ): Promise<{ added: number; replaced: number; drafts: number; ids: string[] }> {
-  const rows = inputs.map((i) => ({ ...fields(i), text: (i.text ?? "").trim() })).filter((r) => r.topic || r.text || r.day);
+  const rows = inputs
+    .map((i) => ({ ...fields(i), text: (i.text ?? "").trim(), posted: i.posted === true }))
+    .filter((r) => r.topic || r.text || r.day);
   if (rows.length > 1000) throw new Error("That is more than 1,000 rows. Bring them in a part at a time.");
   const posts: { id: string; workspaceId: string; kind: string; title: string; body: string; source: string }[] = [];
-  const entries = rows.map(({ text, ...r }) => {
+  const entries = rows.map(({ text, posted, ...r }) => {
     let postId: string | null = null;
     if (text) {
       postId = newId();
       posts.push({ id: postId, workspaceId, kind: r.kind, title: r.kind === "article" ? r.topic.slice(0, 200) : "", body: text, source });
     }
-    return { id: newId(), workspaceId, ...r, topic: r.topic || text.split("\n")[0].slice(0, 300), postId, source };
+    return {
+      id: newId(),
+      workspaceId,
+      ...r,
+      topic: r.topic || text.split("\n")[0].slice(0, 300),
+      postId,
+      source,
+      postedAt: posted ? postedAtFor(r, today, timeZone) : null,
+    };
   });
   const stale = replace
     ? { workspaceId, postId: null, skipped: false, postedAt: null, OR: [{ day: null }, { day: { gte: today } }] }

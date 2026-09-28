@@ -664,7 +664,8 @@ const addPlanRows: Tool = {
       notes: text(r.notes),
     }));
     const w = await workspace(ctx);
-    const result = await addEntries(ctx.workspaceId, inputs, { source: ctx.appName, today: clockFor(w).today }).catch(toolError);
+    const clock = clockFor(w);
+    const result = await addEntries(ctx.workspaceId, inputs, { source: ctx.appName, today: clock.today, timeZone: clock.timeZone }).catch(toolError);
     revalidatePath("/posts");
     revalidatePath("/", "layout");
     return `Added ${result.added} ${result.added === 1 ? "row" : "rows"} to the plan. See it at ${ctx.origin}/posts`;

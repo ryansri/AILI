@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
-import { buildEntries, detectOrder, guessFields, parseDay, parseKind, parseTable, parseTime, templateCsv } from "./plan-import";
-import { readXlsx } from "./xlsx";
+import { buildEntries, channelValues, detectOrder, guessFields, guessTableFields, parseDay, parseKind, parseTable, parseTime, planScore, templateCsv, tidy } from "./plan-import";
+import { readXlsx, readXlsxSheets } from "./xlsx";
 
 const TODAY = "2026-09-28";
 
@@ -33,7 +33,7 @@ describe("reading a sheet", () => {
   it("guesses what each column is", () => {
     expect(
       guessFields(["Publish date", "Format", "Content pillar", "Topic", "Hook", "CTA", "Owner", "Status", "Post copy", "Time", "Notes", ""]),
-    ).toEqual(["day", "kind", "pillar", "topic", "hook", "goal", "note", "skip", "text", "time", "notes", "skip"]);
+    ).toEqual(["day", "kind", "pillar", "topic", "hook", "goal", "note", "status", "text", "time", "notes", "skip"]);
     // A second topic-like column is kept as a note.
     expect(guessFields(["Title", "Idea"])).toEqual(["topic", "note"]);
   });
@@ -101,11 +101,11 @@ describe("turning rows into plan rows", () => {
       ["", "", "", "", "", ""],
       ["", "Post", "", "Someday idea", "", ""],
     ];
-    const r = buildEntries(table, ["day", "kind", "pillar", "topic", "note", "skip"], "dmy", TODAY);
+    const r = buildEntries(table, ["day", "kind", "pillar", "topic", "note", "status"], "dmy", TODAY);
     expect(r.entries).toEqual([
-      { day: "2026-10-06", time: undefined, kind: "post", topic: "Follow-ups", pillar: "Sales", goal: "", hook: "", notes: "Format: Carousel\nOwner: Ryan", text: "" },
-      { day: undefined, time: undefined, kind: "article", topic: "Case study", pillar: "Wins", goal: "", hook: "", notes: "Date in the sheet: TBC", text: "" },
-      { day: undefined, time: undefined, kind: "post", topic: "Someday idea", pillar: "", goal: "", hook: "", notes: "", text: "" },
+      { day: "2026-10-06", time: undefined, kind: "post", topic: "Follow-ups", pillar: "Sales", goal: "", hook: "", notes: "Format: Carousel\nOwner: Ryan", text: "", posted: true },
+      { day: undefined, time: undefined, kind: "article", topic: "Case study", pillar: "Wins", goal: "", hook: "", notes: "Date in the sheet: TBC", text: "", posted: false },
+      { day: undefined, time: undefined, kind: "post", topic: "Someday idea", pillar: "", goal: "", hook: "", notes: "", text: "", posted: false },
     ]);
     expect(r.badDates).toEqual([2]);
     expect(r.undated).toBe(2);
@@ -150,5 +150,88 @@ describe("Excel files", () => {
 
   it("explains a file that is not a spreadsheet", () => {
     expect(() => readXlsx(strToU8("not a zip"))).toThrow(/could not be opened/);
+  });
+});
+
+describe("workbooks laid out like real content calendars", () => {
+  const summary = [
+    ["Window", "Mon 28 Sep 2026 to Sat 26 Dec 2026"],
+    ["Cadence", "Personal profile: 6 a week (Mon-Sat) plus a newsletter"],
+    ["Pillars", "Sales, Story, Proof"],
+  ];
+  const calendar = [
+    ["AIworx 90-day LinkedIn calendar"],
+    ["Built for Ryan", ""],
+    ["Week", "Day", "Date", "Format", "Pillar", "Post idea", "Hook", "CTA"],
+    ["1", "Mon", "28/09/2026", "Text", "Story", "Why we started", "It began with a spreadsheet", "Follow"],
+    ["1", "Tue", "29/09/2026", "Carousel", "Proof", "3 wins", "", "DM me"],
+  ];
+
+  it("skips title lines and starts at the headings", () => {
+    expect(tidy(calendar)[0]).toEqual(["Week", "Day", "Date", "Format", "Pillar", "Post idea", "Hook", "CTA"]);
+  });
+
+  it("scores the calendar above the summary tab", () => {
+    expect(planScore(tidy(calendar))).toBeGreaterThan(planScore(tidy(summary)));
+  });
+
+  it("takes the column of real dates, not the weekday column", () => {
+    const t = tidy(calendar);
+    const fields = guessTableFields(t, TODAY, "Australia/Sydney");
+    expect(fields).toEqual(["skip", "skip", "day", "kind", "pillar", "topic", "hook", "goal"]);
+    const r = buildEntries(t, fields, "dmy", TODAY);
+    expect(r.entries.map((e) => [e.day, e.topic, e.kind])).toEqual([
+      ["2026-09-28", "Why we started", "post"],
+      ["2026-09-29", "3 wins", "post"],
+    ]);
+  });
+
+  it("finds a date column whatever its heading", () => {
+    const t = [["When it goes", "Topic"], ["6 Oct 2026", "A"], ["7 Oct 2026", "B"]];
+    expect(guessTableFields(t, TODAY, "Australia/Sydney")).toEqual(["day", "topic"]);
+  });
+
+  it("reads every sheet of a workbook, by name", () => {
+    const file = zipSync({
+      "xl/workbook.xml": strToU8('<workbook><sheets><sheet name="Overview" sheetId="1" r:id="rId1"/><sheet name="Calendar &amp; posts" sheetId="2" r:id="rId2"/></sheets></workbook>'),
+      "xl/_rels/workbook.xml.rels": strToU8(
+        '<Relationships><Relationship Id="rId1" Type="x" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="x" Target="worksheets/sheet2.xml"/></Relationships>',
+      ),
+      "xl/worksheets/sheet1.xml": strToU8('<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Window</t></is></c></row></sheetData></worksheet>'),
+      "xl/worksheets/sheet2.xml": strToU8('<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Date</t></is></c></row></sheetData></worksheet>'),
+    });
+    expect(readXlsxSheets(file).map((s) => [s.name, s.rows[0][0]])).toEqual([
+      ["Overview", "Window"],
+      ["Calendar & posts", "Date"],
+    ]);
+  });
+});
+
+describe("status and channel columns", () => {
+  const table = [
+    ["#", "Week", "Date", "Day", "Channel", "Time (Sydney)", "Topic", "Notes / seasonal", "Status", "Impressions", "DMs / leads"],
+    ["1", "1", "46293", "Mon", "Personal", "7:45am", "Posted one", "Log numbers", "Published", "", ""],
+    ["2", "1", "46294", "Tue", "Personal", "7:45am", "Planned one", "", "Planned", "", ""],
+    ["3", "1", "46294", "Tue", "Company page", "12:15pm", "Page one", "", "Planned", "", ""],
+  ];
+
+  it("guesses the columns of a full content calendar", () => {
+    expect(guessTableFields(table, TODAY, "Australia/Sydney")).toEqual([
+      "skip", "skip", "day", "skip", "channel", "time", "topic", "notes", "status", "skip", "skip",
+    ]);
+  });
+
+  it("marks rows the sheet says went out, and leaves out a channel", () => {
+    const fields = guessTableFields(table, TODAY, "Australia/Sydney");
+    expect(channelValues(table, fields)).toEqual([
+      { value: "Personal", count: 2 },
+      { value: "Company page", count: 1 },
+    ]);
+    const r = buildEntries(table, fields, "dmy", TODAY, { leaveOut: ["Company page"] });
+    expect(r.entries.map((e) => [e.day, e.time, e.topic, e.posted, e.notes])).toEqual([
+      ["2026-09-28", "07:45", "Posted one", true, "Log numbers\nChannel: Personal"],
+      ["2026-09-29", "07:45", "Planned one", false, "Channel: Personal"],
+    ]);
+    expect([r.posted, r.leftOut]).toEqual([1, 1]);
   });
 });

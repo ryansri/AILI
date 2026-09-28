@@ -32,7 +32,13 @@ function columnOf(ref: string): number {
   return n - 1;
 }
 
-export function readXlsx(data: Uint8Array): string[][] {
+export interface Sheet {
+  name: string;
+  rows: string[][];
+}
+
+/** Every sheet of an Excel (.xlsx) file, in the workbook's order, as rows of cell text. */
+export function readXlsxSheets(data: Uint8Array): Sheet[] {
   let files: Record<string, Uint8Array>;
   try {
     files = unzipSync(data, { filter: (f) => f.name.startsWith("xl/") });
@@ -41,18 +47,38 @@ export function readXlsx(data: Uint8Array): string[][] {
   }
   const read = (name: string) => (files[name] ? strFromU8(files[name]) : "");
 
-  // The first sheet in the workbook, and the file it lives in.
   const workbook = read("xl/workbook.xml");
-  const rid = workbook.match(/<sheet\b[^>]*\br:id="([^"]+)"/)?.[1];
   const rels = read("xl/_rels/workbook.xml.rels");
-  let target = rid ? rels.match(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*Target="([^"]+)"`))?.[1] : undefined;
-  target ??= rid ? rels.match(new RegExp(`<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="${rid}"`))?.[1] : undefined;
-  const path = target ? (target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`) : "xl/worksheets/sheet1.xml";
-  const sheet = read(path) || read("xl/worksheets/sheet1.xml");
-  if (!sheet) throw new Error("No sheet found in that file.");
-
+  const targetOf = (rid: string) =>
+    rels.match(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*Target="([^"]+)"`))?.[1] ??
+    rels.match(new RegExp(`<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="${rid}"`))?.[1];
+  const pathOf = (target: string) => (target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`);
+  const listed = [...workbook.matchAll(/<sheet\b([^>]*)\/?>/g)].map((m) => ({
+    name: decode(m[1].match(/\bname="([^"]*)"/)?.[1] ?? "Sheet"),
+    rid: m[1].match(/\br:id="([^"]+)"/)?.[1],
+  }));
   const shared = [...read("xl/sharedStrings.xml").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => texts(m[1]));
 
+  const sheets: Sheet[] = [];
+  for (const [i, s] of listed.entries()) {
+    const target = s.rid ? targetOf(s.rid) : undefined;
+    const xml = (target && read(pathOf(target))) || read(`xl/worksheets/sheet${i + 1}.xml`);
+    if (xml) sheets.push({ name: s.name, rows: rowsOf(xml, shared) });
+  }
+  if (sheets.length === 0) {
+    const only = read("xl/worksheets/sheet1.xml");
+    if (!only) throw new Error("No sheet found in that file.");
+    sheets.push({ name: "Sheet1", rows: rowsOf(only, shared) });
+  }
+  return sheets;
+}
+
+/** The first sheet only. */
+export function readXlsx(data: Uint8Array): string[][] {
+  return readXlsxSheets(data)[0].rows;
+}
+
+function rowsOf(sheet: string, shared: string[]): string[][] {
   const rows: string[][] = [];
   for (const rm of sheet.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
     const row: string[] = [];

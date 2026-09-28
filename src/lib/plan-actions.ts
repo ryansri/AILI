@@ -34,7 +34,8 @@ function done() {
 /** Rows from a spreadsheet, pasted rows or the template. */
 async function importPlanImpl(input: { entries: EntryInput[]; replace?: boolean }) {
   const workspace = await getWorkspace();
-  const result = await addEntries(workspace.id, input.entries, { source: "Import", replace: input.replace, today: clockFor(workspace).today });
+  const { today, timeZone } = clockFor(workspace);
+  const result = await addEntries(workspace.id, input.entries, { source: "Import", replace: input.replace, today, timeZone });
   done();
   return result;
 }
@@ -43,7 +44,8 @@ async function importPlanImpl(input: { entries: EntryInput[]; replace?: boolean 
 async function addEntryImpl(input: EntryInput): Promise<string> {
   const workspace = await getWorkspace();
   if (!(input.topic ?? "").trim()) throw new Error("Write the topic first.");
-  const { ids } = await addEntries(workspace.id, [input], { source: "AILI", today: clockFor(workspace).today });
+  const { today, timeZone } = clockFor(workspace);
+  const { ids } = await addEntries(workspace.id, [input], { source: "AILI", today, timeZone });
   done();
   return ids[0];
 }
@@ -107,7 +109,7 @@ async function fillFromRhythmImpl(input: { kind: string; weekdays: number[]; tim
   if (weekdays.length === 0) throw new Error("Pick at least one day.");
   const weeks = Math.max(1, Math.min(52, Math.round(input.weeks)));
   const time = cleanTime(input.time);
-  const { today } = clockFor(workspace);
+  const { today, timeZone } = clockFor(workspace);
   const days = rhythmDays(today, weeks, weekdays, Math.max(1, Math.min(4, Math.round(input.everyWeeks ?? 1))));
   const taken = await db.planEntry.findMany({
     where: { workspaceId: workspace.id, kind, day: { in: days } },
@@ -117,7 +119,7 @@ async function fillFromRhythmImpl(input: { kind: string; weekdays: number[]; tim
   const result = await addEntries(
     workspace.id,
     free.map((day) => ({ day, time, kind, topic: "" })),
-    { source: "AILI", today },
+    { source: "AILI", today, timeZone },
   );
   done();
   return { added: result.added, alreadyThere: days.length - free.length };

@@ -18,6 +18,10 @@ export type Field =
   | "notes"
   /** The post's full text, when the sheet has it: saved as a draft for the row. */
   | "text"
+  /** Published, Posted, Done…: those rows come in as already posted. */
+  | "status"
+  /** Personal profile, company page…: the user picks which to bring in. */
+  | "channel"
   /** Kept on the row as a note, "Heading: value". */
   | "note"
   | "skip";
@@ -32,24 +36,31 @@ export const FIELD_LABEL: Record<Field, string> = {
   hook: "Hook",
   notes: "Notes",
   text: "Post text",
+  status: "Status (posted ones)",
+  channel: "Channel",
   note: "Keep as a note",
   skip: "Don't import",
 };
 
 /** Fields a sheet can have one column of. */
-export const SINGLE_FIELDS: Field[] = ["day", "time", "kind", "topic", "pillar", "goal", "hook", "notes", "text"];
+export const SINGLE_FIELDS: Field[] = ["day", "time", "kind", "topic", "pillar", "goal", "hook", "notes", "text", "status", "channel"];
 
 // Checked in order: the first match wins, so "Content pillar" is a pillar, not post text.
 const GUESSES: [Field, RegExp][] = [
-  ["skip", /^(status|stage|state|done|progress|published\??|posted\??|link|url|post link|likes|comments|impressions|views|reactions)$/i],
+  ["status", /^(status|stage|state|done|progress|published\??|posted\??|live\??)$/i],
+  // Row numbers, links and results after posting: nothing to plan with.
+  ["skip", /^(#|no\.?|id|row|link|url|post ?(link|url)|likes|comments|impressions|views|reactions|reposts|shares|saves|clicks|followers?|engagement.*|ctr|dms?|leads?|dms? ?\/ ?leads?)$/i],
+  // The week number and weekday are already in the date.
+  ["skip", /^(week|wk|week ?(#|no\.?|number)|weekday|day of( the)? week)$/i],
   ["pillar", /pillar|theme|category|bucket|series|topic ?area|content ?type ?pillar/i],
   ["kind", /^(type|kind|format|content ?type|post ?type|medium|channel ?type)$/i],
+  ["channel", /^(channel|account|profile|page|platform|network|where)$/i],
   ["time", /^(time|post ?time|publish ?time|hour|time ?\(.*\))$/i],
   ["day", /date|^day$|publish|go ?live|when|schedule|post ?day/i],
   ["goal", /goal|cta|call to action|objective|purpose|intent|aim/i],
   ["hook", /hook|angle|opening|first ?line|headline hook/i],
   ["text", /copy|body|caption|draft|full ?(post|text)|post ?text|^text$|^content$|^post$|script/i],
-  ["notes", /^notes?$|comments? ?\/ ?notes|description|brief|details?|remarks?/i],
+  ["notes", /^notes?\b|comments? ?\/ ?notes|description|brief|details?|remarks?/i],
   ["topic", /topic|title|idea|subject|headline|working ?title|concept/i],
 ];
 
@@ -117,13 +128,80 @@ export function parseTable(text: string): string[][] {
   return tidy(rows);
 }
 
-/** Trims cells, drops empty rows, and starts at the heading row (the first row with 2+ filled cells). */
+const WEEKDAY_RE = /^(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?$/i;
+
+/** Status values that mean the post already went out. */
+const POSTED_RE = /^(published|posted|done|live|completed?|out|sent|yes|✓|✔|✅)$/i;
+
+/** How much a row reads like a plan's headings: one point per field AILI recognises. */
+function headingScore(row: string[]): number {
+  const fields = guessFields(row);
+  let score = 0;
+  for (const f of new Set(fields)) if (SINGLE_FIELDS.includes(f)) score += f === "day" || f === "topic" ? 3 : 1;
+  return score;
+}
+
+/**
+ * Trims cells, drops empty rows, and starts at the heading row: of the first
+ * rows with 2+ filled cells, the one that reads most like plan headings
+ * (Date, Topic, Pillar…), so title lines above the table are skipped.
+ */
 export function tidy(rows: string[][]): string[][] {
   const trimmed = rows.map((r) => r.map((c) => c.trim())).filter((r) => r.some(Boolean));
-  const start = trimmed.findIndex((r) => r.filter(Boolean).length >= 2);
+  let start = -1;
+  let best = 0;
+  for (let i = 0; i < Math.min(trimmed.length, 25); i++) {
+    if (trimmed[i].filter(Boolean).length < 2) continue;
+    if (start === -1) start = i;
+    const score = headingScore(trimmed[i]);
+    if (score > best) {
+      best = score;
+      start = i;
+    }
+  }
   const body = start > 0 ? trimmed.slice(start) : trimmed;
   const width = Math.max(0, ...body.map((r) => r.length));
   return body.map((r) => [...r, ...Array(width - r.length).fill("")]);
+}
+
+/** How much a sheet looks like a content plan: known headings, then rows. Used to pick the sheet. */
+export function planScore(table: string[][]): number {
+  if (table.length < 2) return 0;
+  return headingScore(table[0]) * 100 + Math.min(table.length - 1, 99);
+}
+
+/**
+ * The columns, guessed from the headings and checked against the values: the
+ * Date is the column whose cells read as dates (a "Day" column of Mon, Tue…
+ * does not), even when its heading says nothing about dates.
+ */
+export function guessTableFields(table: string[][], today: string, timeZone: string): Field[] {
+  const [headings = [], ...rows] = table;
+  const fields = guessFields(headings);
+  const sample = rows.slice(0, 60);
+  const dateShare = (col: number) => {
+    const values = sample.map((r) => r[col] ?? "").filter(Boolean);
+    if (values.length === 0) return 0;
+    const { order } = detectOrder(values, timeZone);
+    return values.filter((v) => parseDay(v, order, today)).length / values.length;
+  };
+  const current = fields.indexOf("day");
+  const shares = headings.map((_, i) => (fields[i] === "day" || fields[i] === "note" || fields[i] === "skip" ? dateShare(i) : 0));
+  const bestCol = shares.reduce((best, share, i) => (share > (shares[best] ?? 0) ? i : best), current >= 0 ? current : 0);
+  const bestShare = shares[bestCol] ?? 0;
+  const currentShare = current >= 0 ? shares[current] : 0;
+  // A column of Mon, Tue… says what the date already does.
+  headings.forEach((_, i) => {
+    if (fields[i] !== "note") return;
+    const values = sample.map((r) => r[i] ?? "").filter(Boolean);
+    if (values.length && values.filter((v) => WEEKDAY_RE.test(v)).length / values.length >= 0.8) fields[i] = "skip";
+  });
+  if (bestCol !== current && bestShare >= 0.6 && bestShare > currentShare) {
+    // A "Day" column of Mon, Tue… says what the date already does.
+    if (current >= 0) fields[current] = /^(day|days)$/i.test((headings[current] ?? "").trim()) ? "skip" : "note";
+    fields[bestCol] = "day";
+  }
+  return fields;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +345,8 @@ export interface ImportEntry {
   notes: string;
   /** The post's full text, when the sheet has it. */
   text: string;
+  /** The sheet says it went out already (Status: Published, Posted, Done…). */
+  posted: boolean;
 }
 
 export interface ImportResult {
@@ -275,11 +355,33 @@ export interface ImportResult {
   badDates: number[];
   /** Rows without a date; they come in as Not planned. */
   undated: number;
+  /** Rows the sheet marks as already posted. */
+  posted: number;
+  /** Rows left out because of their channel. */
+  leftOut: number;
+}
+
+/** Each value of the Channel column with how many rows have it, most first. */
+export function channelValues(table: string[][], fields: Field[]): { value: string; count: number }[] {
+  const col = fields.indexOf("channel");
+  if (col < 0) return [];
+  const counts = new Map<string, number>();
+  for (const r of table.slice(1)) {
+    const v = (r[col] ?? "").trim();
+    if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
 }
 
 export const MAX_IMPORT_ROWS = 1000;
 
-export function buildEntries(table: string[][], fields: Field[], order: DateOrder, today: string): ImportResult {
+export function buildEntries(
+  table: string[][],
+  fields: Field[],
+  order: DateOrder,
+  today: string,
+  { leaveOut = [] }: { leaveOut?: string[] } = {},
+): ImportResult {
   const [headings = [], ...rows] = table;
   const at = (f: Field) => fields.indexOf(f);
   const col = {
@@ -292,13 +394,22 @@ export function buildEntries(table: string[][], fields: Field[], order: DateOrde
     hook: at("hook"),
     notes: at("notes"),
     text: at("text"),
+    status: at("status"),
+    channel: at("channel"),
   };
   const noteCols = fields.map((f, i) => (f === "note" ? i : -1)).filter((i) => i >= 0);
   const get = (r: string[], i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
   const entries: ImportEntry[] = [];
   const badDates: number[] = [];
   let undated = 0;
+  let posted = 0;
+  let leftOut = 0;
   rows.slice(0, MAX_IMPORT_ROWS).forEach((r, n) => {
+    const channel = get(r, col.channel);
+    if (channel && leaveOut.includes(channel)) {
+      leftOut++;
+      return;
+    }
     const text = get(r, col.text);
     const hook = get(r, col.hook);
     // A row needs something to write about: its topic, else its hook, else the text's first line.
@@ -309,8 +420,11 @@ export function buildEntries(table: string[][], fields: Field[], order: DateOrde
     if (rawDay && !day) badDates.push(n + 1);
     if (!day) undated++;
     const { kind, format } = parseKind(get(r, col.kind));
+    const isPosted = POSTED_RE.test(get(r, col.status));
+    if (isPosted) posted++;
     const notes = [
       get(r, col.notes),
+      channel ? `Channel: ${channel}` : "",
       format ? `Format: ${format}` : "",
       rawDay && !day ? `Date in the sheet: ${rawDay}` : "",
       ...noteCols.map((i) => (get(r, i) ? `${headings[i] || "Note"}: ${get(r, i)}` : "")),
@@ -327,9 +441,10 @@ export function buildEntries(table: string[][], fields: Field[], order: DateOrde
       hook: hook.slice(0, 500),
       notes: notes.slice(0, 2000),
       text,
+      posted: isPosted,
     });
   });
-  return { entries, badDates, undated };
+  return { entries, badDates, undated, posted, leftOut };
 }
 
 /** The blank template people can download and fill in. */

@@ -8,21 +8,24 @@ import { importPlan } from "@/lib/client-actions";
 import { dayLabel } from "@/lib/plan";
 import {
   buildEntries,
+  channelValues,
   detectOrder,
   FIELD_LABEL,
-  guessFields,
+  guessTableFields,
+  parseDay,
   parseTable,
+  planScore,
   tidy,
   type DateOrder,
   type Field,
 } from "@/lib/plan-import";
-import { readXlsx } from "@/lib/xlsx";
+import { readXlsxSheets, type Sheet } from "@/lib/xlsx";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const FIELD_ORDER: Field[] = ["day", "time", "kind", "topic", "pillar", "goal", "hook", "notes", "text", "note", "skip"];
+const FIELD_ORDER: Field[] = ["day", "time", "kind", "topic", "pillar", "goal", "hook", "notes", "text", "status", "channel", "note", "skip"];
 
 /**
  * Bring a content plan in: upload an Excel or CSV file, or paste rows copied
@@ -47,11 +50,16 @@ export function ImportPlanDialog({
   const [source, setSource] = useState<"file" | "paste">(mode);
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
+  /** Every sheet of an Excel file, when it has more than one; the one in use is `sheet`. */
+  const [sheets, setSheets] = useState<Sheet[]>([]);
+  const [sheet, setSheet] = useState(0);
   const [table, setTable] = useState<string[][] | null>(null);
   const [fields, setFields] = useState<Field[]>([]);
   const [order, setOrder] = useState<DateOrder>("dmy");
   const [orderSure, setOrderSure] = useState(true);
   const [replace, setReplace] = useState(false);
+  /** Channel values (e.g. Company page) whose rows stay out. */
+  const [leaveOut, setLeaveOut] = useState<string[]>([]);
   const [reading, setReading] = useState(false);
   const [pending, start] = useTransition();
   const input = useRef<HTMLInputElement>(null);
@@ -59,6 +67,8 @@ export function ImportPlanDialog({
   function reset() {
     setText("");
     setFileName("");
+    setSheets([]);
+    setSheet(0);
     setTable(null);
     setFields([]);
     setReplace(false);
@@ -69,17 +79,20 @@ export function ImportPlanDialog({
     onOpenChange(next);
   }
 
-  function takeTable(rows: string[][], name: string) {
+  function takeTable(rows: string[][], name: string, quiet = false) {
     const t = tidy(rows);
     if (t.length < 2) {
-      toast.error("No rows found. The first row should be the headings, like Date, Type, Topic.");
+      if (!quiet) toast.error("No rows found. The first row should be the headings, like Date, Type, Topic.");
+      setTable(t.length ? t : null);
+      setFields(t.length ? t[0].map(() => "skip") : []);
       return;
     }
-    const guessed = guessFields(t[0]);
+    const guessed = guessTableFields(t, today, timeZone);
     const dayCol = guessed.indexOf("day");
     const detected = detectOrder(dayCol >= 0 ? t.slice(1).map((r) => r[dayCol] ?? "") : [], timeZone);
     setTable(t);
     setFields(guessed);
+    setLeaveOut([]);
     setOrder(detected.order);
     setOrderSure(detected.sure);
     setFileName(name);
@@ -89,7 +102,15 @@ export function ImportPlanDialog({
     if (!file) return;
     setReading(true);
     try {
-      if (/\.xlsx$/i.test(file.name)) takeTable(readXlsx(new Uint8Array(await file.arrayBuffer())), file.name);
+      if (/\.xlsx$/i.test(file.name)) {
+        // A workbook often has a summary or notes tab first: start on the sheet that looks most like a plan.
+        const all = readXlsxSheets(new Uint8Array(await file.arrayBuffer()));
+        const scores = all.map((s) => planScore(tidy(s.rows)));
+        const best = scores.indexOf(Math.max(...scores));
+        setSheets(all.length > 1 ? all : []);
+        setSheet(best);
+        takeTable(all[best].rows, file.name);
+      }
       else if (/\.xls$/i.test(file.name)) toast.error("That is an old Excel file. Save it as .xlsx or .csv and try again.");
       else takeTable(parseTable(await file.text()), file.name);
     } catch (err) {
@@ -99,7 +120,11 @@ export function ImportPlanDialog({
     }
   }
 
-  const result = useMemo(() => (table ? buildEntries(table, fields, order, today) : null), [table, fields, order, today]);
+  const result = useMemo(
+    () => (table ? buildEntries(table, fields, order, today, { leaveOut }) : null),
+    [table, fields, order, today, leaveOut],
+  );
+  const channels = useMemo(() => (table ? channelValues(table, fields) : []), [table, fields]);
   const dated = result?.entries.filter((e) => e.day).map((e) => e.day!).sort() ?? [];
   const articles = result?.entries.filter((e) => e.kind === "article").length ?? 0;
   const posts = (result?.entries.length ?? 0) - articles;
@@ -211,6 +236,30 @@ export function ImportPlanDialog({
                 {fileName} · {table.length - 1} {table.length === 2 ? "row" : "rows"} · AILI guessed these; change any that are wrong.
               </DialogDescription>
             </DialogHeader>
+            {sheets.length > 1 && (
+              <div className="flex items-center gap-3 text-md">
+                <span>Sheet</span>
+                <Select
+                  value={String(sheet)}
+                  onValueChange={(v) => {
+                    setSheet(Number(v));
+                    takeTable(sheets[Number(v)].rows, fileName, true);
+                  }}
+                >
+                  <SelectTrigger size="sm" className="w-64" aria-label="Sheet">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sheets.map((s, i) => (
+                      <SelectItem key={i} value={String(i)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">Pick the tab with your posts, one per row.</span>
+              </div>
+            )}
             <div className="max-h-[46vh] overflow-y-auto rounded-xl border">
               <div className="grid grid-cols-[1fr_20px_190px_1.3fr] items-center gap-x-3 bg-muted/50 px-3 py-2 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
                 <span>Your column</span>
@@ -236,7 +285,10 @@ export function ImportPlanDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <span className="truncate text-xs text-muted-foreground">{fields[i] === "skip" && !example ? "" : example}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {/* Excel keeps dates as numbers (46293): show the day AILI reads. */}
+                      {fields[i] === "day" && parseDay(example, order, today) ? dayLabel(parseDay(example, order, today)!) : example}
+                    </span>
                   </div>
                 );
               })}
@@ -281,6 +333,26 @@ export function ImportPlanDialog({
               </div>
             )}
 
+            {channels.length > 1 && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-md">
+                <span>Bring in rows for</span>
+                {channels.map((c) => (
+                  <label key={c.value} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="accent-foreground"
+                      checked={!leaveOut.includes(c.value)}
+                      onChange={(e) =>
+                        setLeaveOut((prev) => (e.target.checked ? prev.filter((v) => v !== c.value) : [...prev, c.value]))
+                      }
+                    />
+                    {c.value} <span className="text-muted-foreground">{c.count}</span>
+                  </label>
+                ))}
+                <span className="basis-full text-xs text-muted-foreground">AILI publishes to your own LinkedIn profile; posts for a company page are yours to put up there.</span>
+              </div>
+            )}
+
             {hasPlan && (
               <div className="flex flex-col gap-1.5 text-md">
                 {[
@@ -299,7 +371,8 @@ export function ImportPlanDialog({
               <span className="text-md text-muted-foreground">
                 {result && result.entries.length > 0
                   ? `${posts} ${posts === 1 ? "post" : "posts"}${articles ? ` and ${articles} ${articles === 1 ? "article" : "articles"}` : ""}` +
-                    (dated.length ? ` from ${dayLabel(dated[0])} to ${dayLabel(dated[dated.length - 1])}` : "")
+                    (dated.length ? ` from ${dayLabel(dated[0])} to ${dayLabel(dated[dated.length - 1])}` : "") +
+                    (result.posted ? `, ${result.posted} already posted` : "")
                   : "No rows to bring in yet."}
               </span>
               <div className="flex gap-2">
