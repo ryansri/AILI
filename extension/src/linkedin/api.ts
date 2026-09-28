@@ -12,6 +12,7 @@ import {
   extractCurrentPosition,
   extractProfile,
   extractSentMessage,
+  findSeenAt,
   normalizeConversations,
   pictureFrom,
   normalizeMessages,
@@ -73,28 +74,58 @@ export async function fetchConversationsPage(
   return { conversations: normalizeConversations(data), nextCursor };
 }
 
-export async function fetchMessages(memberUrn: string, conversationId: string, start = 0, count = 20): Promise<PlainMessage[]> {
+async function fetchMessagesRaw(memberUrn: string, conversationId: string, start: number, count: number): Promise<VoyagerResponse> {
   const conversationUrn = `urn:li:msg_conversation:(${memberUrn},${conversationId})`;
   const variables = linkedInVariables({ conversationUrn, count, start });
   const res = await voyagerFetch(
     `/voyagerMessagingGraphQL/graphql?queryId=messengerMessages.5846eeb71c981f11e0134cb6626cc314&variables=${variables}`,
   );
   if (!res.ok) throw new LinkedInError(`Thread returned ${res.status}`, res.status);
-  return normalizeMessages((await res.json()) as VoyagerResponse);
+  return (await res.json()) as VoyagerResponse;
 }
 
-/** Up to `pages` pages of a thread, oldest first. Stops at the first empty page. */
-export async function fetchThread(memberUrn: string, conversationId: string, pages: number): Promise<PlainMessage[]> {
+export async function fetchMessages(memberUrn: string, conversationId: string, start = 0, count = 20): Promise<PlainMessage[]> {
+  return normalizeMessages(await fetchMessagesRaw(memberUrn, conversationId, start, count));
+}
+
+/**
+ * Up to `pages` pages of a thread, oldest first, and the other person's read
+ * receipt if LinkedIn included one. Stops at the first empty page.
+ */
+export async function fetchThread(memberUrn: string, conversationId: string, pages: number): Promise<{ messages: PlainMessage[]; seenAt: number | null }> {
   const all: PlainMessage[] = [];
+  let seenAt: number | null = null;
   for (let page = 0; page < pages; page++) {
     if (page > 0) await jitter();
-    const batch = await fetchMessages(memberUrn, conversationId, page * 20, 20);
+    const raw = await fetchMessagesRaw(memberUrn, conversationId, page * 20, 20);
+    const at = findSeenAt(raw, memberUrn);
+    if (at && (!seenAt || at > seenAt)) seenAt = at;
+    const batch = normalizeMessages(raw);
     if (batch.length === 0) break;
     all.push(...batch);
     if (batch.length < 20) break;
   }
   const seen = new Set<string>();
-  return all.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true))).sort((a, b) => a.sentAt - b.sentAt);
+  const messages = all.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true))).sort((a, b) => a.sentAt - b.sentAt);
+  return { messages, seenAt };
+}
+
+/**
+ * The other person's read receipt for one conversation. With a query id from
+ * AILI it asks LinkedIn's read-receipts query; otherwise it reads the latest
+ * page of the thread and looks for a receipt there. Null when there is none.
+ */
+export async function fetchSeenAt(memberUrn: string, conversationId: string, queryId?: string): Promise<number | null> {
+  if (queryId && /^[\w.]+$/.test(queryId)) {
+    const conversationUrn = `urn:li:msg_conversation:(${memberUrn},${conversationId})`;
+    const res = await voyagerFetch(`/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${linkedInVariables({ conversationUrn })}`);
+    if (res.status === 401 || res.status === 429 || res.status >= 500) throw new LinkedInError(`Read receipts returned ${res.status}`, res.status);
+    if (res.ok) {
+      const at = findSeenAt(await res.json().catch(() => null), memberUrn);
+      if (at) return at;
+    }
+  }
+  return findSeenAt(await fetchMessagesRaw(memberUrn, conversationId, 0, 20), memberUrn);
 }
 
 function trackingId(): string {

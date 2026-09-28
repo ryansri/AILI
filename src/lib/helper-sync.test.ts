@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { myPictureFromSync, repliesToNotify, sameBody, splitHeadline, validatePayload, firstMessage, shouldAskLead } from "./helper-sync";
+import { myPictureFromSync, repliesToNotify, sameBody, splitHeadline, validatePayload, firstMessage, shouldAskLead, validSeenAt } from "./helper-sync";
 
 describe("splitHeadline", () => {
   it("splits role and company on ' at '", () => {
@@ -106,5 +106,15 @@ describe("asking whether a new conversation is a lead", () => {
     expect(shouldAskLead({ direction: "out", sentAt: now - 4 * 86400_000 }, now)).toBe(false);
     expect(shouldAskLead({ direction: "in", sentAt: now - 60_000 }, now)).toBe(false);
     expect(shouldAskLead(null, now)).toBe(false);
+  });
+});
+
+describe("read receipt times", () => {
+  it("takes a sensible time and refuses nonsense", () => {
+    const now = Date.UTC(2026, 8, 28);
+    expect(validSeenAt(now - 1000, now)).toBe(now - 1000);
+    expect(validSeenAt(now + 60 * 60_000, now)).toBeUndefined();
+    expect(validSeenAt(1_000, now)).toBeUndefined();
+    expect(validSeenAt("soon", now)).toBeUndefined();
   });
 });

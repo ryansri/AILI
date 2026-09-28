@@ -38,6 +38,16 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
 
+/** "3:42 pm" today, "Mon 3:42 pm" this week, else "28 Sep". */
+function seenLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  if (d.toDateString() === now.toDateString()) return time;
+  if (now.getTime() - d.getTime() < 6 * 86400_000) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  return d.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** "Today 08:41", "Yesterday 17:02", "Wednesday 09:12", "2 Sep 09:12". */
@@ -333,6 +343,11 @@ export function ConversationPane({
             const mine = m.direction === "out";
             // Like Messages: the latest message you sent says it arrived.
             const lastMine = mine && !messages.slice(i + 1).some((x) => x.direction === "out") && person.pending.length === 0;
+            // Seen: their read receipt is from after it, or they have written since.
+            const seen =
+              lastMine &&
+              ((person.seenAt !== undefined && new Date(person.seenAt).getTime() >= new Date(m.sentAt).getTime()) ||
+                messages.slice(i + 1).some((x) => x.direction === "in"));
             const prev = messages[i - 1];
             const next = messages[i + 1];
             const HOUR = 60 * 60 * 1000;
@@ -372,16 +387,21 @@ export function ConversationPane({
                     {m.body}
                   </div>
                 </div>
-                {(m.followUp || (lastMine && m.onLinkedIn)) && (
+                {(m.followUp || (lastMine && (m.onLinkedIn || seen))) && (
                   <div className="flex items-center gap-1.5 px-10 text-2xs text-muted-foreground">
                     {m.followUp ? `Follow-up ${m.followUp}` : null}
-                    {m.followUp && lastMine && m.onLinkedIn ? " · " : null}
-                    {lastMine && m.onLinkedIn && (
+                    {m.followUp && lastMine && (m.onLinkedIn || seen) ? " · " : null}
+                    {lastMine && seen ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-blue-600" title="They have read it on LinkedIn.">
+                        <CheckCheck className="size-3.5" />
+                        Seen{person.seenAt && hydrated ? ` ${seenLabel(person.seenAt)}` : ""}
+                      </span>
+                    ) : lastMine && m.onLinkedIn ? (
                       <span className="inline-flex items-center gap-1 text-emerald-700" title="LinkedIn has it: it is in the conversation on LinkedIn.">
                         <CheckCheck className="size-3.5" />
                         Delivered on LinkedIn
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </li>

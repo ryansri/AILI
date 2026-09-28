@@ -51,6 +51,7 @@ function toPerson(row: PersonRow): Person {
     stage: row.stage || "warming",
     lead: row.lead,
     askLead: row.askLead || undefined,
+    seenAt: row.seenAt?.toISOString(),
     tagIds: row.tags.map((t) => t.tagId),
     notes: row.notes,
     starred: row.starred,

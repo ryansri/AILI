@@ -146,6 +146,64 @@ export function normalizeMessages(raw: VoyagerResponse): PlainMessage[] {
   return out.sort((a, b) => a.sentAt - b.sentAt);
 }
 
+// ---------------------------------------------------------------------------
+// Read receipts
+// ---------------------------------------------------------------------------
+
+/** Keys LinkedIn uses (in its newer and older shapes) for who a receipt is from. */
+const RECEIPT_WHO = ["*seenByParticipant", "seenByParticipant", "*participant", "participant", "*fromEntity", "fromEntity", "*seenBy", "seenBy", "participantUrn", "hostIdentityUrn"];
+
+function ms(v: unknown): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return null;
+  return v < 1e11 ? v * 1000 : v;
+}
+
+/**
+ * When the other person last read the conversation, from LinkedIn's read
+ * receipts wherever they appear in a response: newer SeenReceipt records
+ * ({ seenAt, *seenByParticipant }) or the older participant receipts
+ * ({ fromEntity, seenReceipt: { seenAt } }). A receipt counts only when it
+ * names who it is from and that is not you, so your own "last read" time
+ * is never mistaken for theirs. Null when the response has none.
+ */
+export function findSeenAt(raw: unknown, memberUrn: string): number | null {
+  const me = extractProfileId(memberUrn);
+  const included = ((raw as VoyagerResponse)?.included ?? []) as Loose[];
+  // Participant records point at a person: "…_0" → their profile id.
+  const participants = new Map<string, string>();
+  for (const e of included) {
+    if (typeof e?.entityUrn === "string" && typeof e.hostIdentityUrn === "string") participants.set(e.entityUrn, extractProfileId(e.hostIdentityUrn));
+  }
+  const whoOf = (v: unknown): string => {
+    if (typeof v === "string") return participants.get(v) ?? (/fsd_profile:|fs_miniProfile:|member:/.test(v) ? extractProfileId(v.replace("fs_miniProfile", "fsd_profile").replace(/:member:/, ":fsd_profile:")) : "");
+    if (v && typeof v === "object") {
+      const o = v as Loose;
+      return whoOf(o.hostIdentityUrn ?? o.entityUrn ?? o["*profile"] ?? "");
+    }
+    return "";
+  };
+  let best: number | null = null;
+  const seen = new Set<unknown>();
+  function walk(node: unknown, depth: number) {
+    if (!node || typeof node !== "object" || depth > 10 || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    const o = node as Loose;
+    const at = ms(o.seenAt) ?? ms(o.seenReceipt?.seenAt) ?? ms(o.readAt);
+    if (at) {
+      const key = RECEIPT_WHO.find((k) => o[k] !== undefined);
+      const who = key ? whoOf(o[key]) : "";
+      if (who && who !== me && (best === null || at > best)) best = at;
+    }
+    for (const value of Object.values(o)) walk(value, depth + 1);
+  }
+  walk(raw, 0);
+  return best;
+}
+
 /** The created message from a createMessage response, if LinkedIn returned it. */
 export function extractSentMessage(data: unknown): { id: string; sentAt: number; conversationId?: string } | null {
   if (!data || typeof data !== "object") return null;

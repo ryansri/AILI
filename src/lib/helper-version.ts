@@ -3,7 +3,7 @@
  * extension/manifest.json whenever the helper changes, so an old helper still
  * loaded in Chrome shows up as out of date in Settings.
  */
-export const HELPER_VERSION = "0.10.0";
+export const HELPER_VERSION = "0.11.0";
 
 function parts(v: string): number[] {
   return v.split(".").map((n) => Number.parseInt(n, 10) || 0);

@@ -243,6 +243,15 @@ are in `extension/README.md`.
   before "Inbox" hides the sidebar; the icon at the right of the conversation header shows the
   details. Both are remembered. Search and an Airtable-style filter narrow
   whatever is open.
+- **Sent, delivered, seen.** Send wakes the helper, so a message goes out in
+  a few seconds (or waits for Chrome, and says so). Your latest message shows
+  **Delivered on LinkedIn** once LinkedIn has it, and **Seen** with the time
+  once they have read it: the helper reads LinkedIn's read receipts from the
+  threads it syncs and checks recent unread messages every 15 minutes or so
+  (if LinkedIn never returns a receipt it stops asking for a day). If
+  LinkedIn's read-receipt query id is known, set LINKEDIN_SEEN_QUERY_ID and
+  the helper uses it. A message LinkedIn refused stays in the conversation
+  as **Not sent**, with the reason, Try again and Remove.
 - **Leads and Other.** Only leads count: they are in All, Now, Waiting,
   Leads, the funnel, the Inbox badge and every number. Everyone else synced
   from LinkedIn sits in **Other** at the bottom of the views. Their whole

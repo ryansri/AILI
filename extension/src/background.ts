@@ -19,12 +19,27 @@
  * clicked, and AILI caps it per day.
  */
 
-import { addPerson, answerLead, linkPerson, postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type LeadToAsk, type ReplyToNotify } from "./aili";
+import {
+  addPerson,
+  answerLead,
+  linkPerson,
+  postSync,
+  reportLookups,
+  reportOutbox,
+  reportSeen,
+  reportStatus,
+  takeLookups,
+  takeOutbox,
+  takeSeenChecks,
+  type LeadToAsk,
+  type ReplyToNotify,
+} from "./aili";
 import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
 import {
   fetchConversationsPage,
   fetchCurrentPosition,
   fetchProfile,
+  fetchSeenAt,
   fetchThread,
   getMe,
   sendToConversation,
@@ -129,7 +144,10 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
     }
     // Always report, so AILI has your name and photo even on ticks that synced.
     await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName, pictureUrl: me.pictureUrl });
-    if (backfill.category === "done") await lookupProfiles(pairing);
+    if (backfill.category === "done") {
+      await lookupProfiles(pairing);
+      await checkSeen(pairing, me.memberUrn);
+    }
 
     await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName, publicId: me.publicId });
   } catch (err) {
@@ -165,6 +183,45 @@ async function lookupProfiles(pairing: Pairing): Promise<void> {
     }
   } finally {
     if (results.length) await reportLookups(pairing, results).catch(() => {});
+  }
+}
+
+/**
+ * Read receipts: for a few conversations where your latest message is not
+ * seen yet, asks LinkedIn whether they have read it. If LinkedIn never gives
+ * a receipt (after many tries), it stops asking for a day rather than keep
+ * spending requests.
+ */
+const SEEN_GIVE_UP_AFTER = 30;
+
+async function checkSeen(pairing: Pairing, memberUrn: string): Promise<void> {
+  const state = (await chrome.storage.local.get(["seenMisses", "seenFound", "seenPausedUntil"])) as {
+    seenMisses?: number;
+    seenFound?: boolean;
+    seenPausedUntil?: number;
+  };
+  if ((state.seenPausedUntil ?? 0) > Date.now()) return;
+  const { items, queryId } = await takeSeenChecks(pairing);
+  if (items.length === 0) return;
+  const results: { personId: string; seenAt: number | null }[] = [];
+  let misses = state.seenMisses ?? 0;
+  let found = state.seenFound ?? false;
+  try {
+    for (const item of items) {
+      await jitter(1500, 2500);
+      const seenAt = await fetchSeenAt(memberUrn, item.conversationId, queryId);
+      results.push({ personId: item.personId, seenAt });
+      if (seenAt) found = true;
+      else misses += 1;
+    }
+  } finally {
+    if (results.length) await reportSeen(pairing, results).catch(() => {});
+    const giveUp = !found && misses >= SEEN_GIVE_UP_AFTER;
+    await chrome.storage.local.set({
+      seenMisses: giveUp ? 0 : misses,
+      seenFound: found,
+      ...(giveUp ? { seenPausedUntil: Date.now() + 24 * 60 * 60 * 1000 } : {}),
+    });
   }
 }
 
@@ -279,12 +336,12 @@ async function importConversations(
 ): Promise<number> {
   if (list.length === 0) return 0;
   const syncedAt = await getSyncedAt();
-  const payload = { memberUrn, displayName, conversations: [] as Array<ConversationSummary & { messages: PlainMessage[] }> };
+  const payload = { memberUrn, displayName, conversations: [] as Array<ConversationSummary & { messages: PlainMessage[]; seenAt?: number }> };
   for (const conv of list) {
     await jitter();
     // The latest 20 messages are enough to work out the next step.
-    const messages = await fetchThread(memberUrn, conv.id, 1);
-    payload.conversations.push({ ...conv, messages });
+    const { messages, seenAt } = await fetchThread(memberUrn, conv.id, 1);
+    payload.conversations.push({ ...conv, messages, ...(seenAt ? { seenAt } : {}) });
   }
   const response = await postSync(pairing, payload);
   if (notify && response?.notify?.length) await showReplies(pairing, response.notify);

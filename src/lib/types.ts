@@ -100,6 +100,8 @@ export interface Person {
   lead?: boolean;
   /** In Other, and you started the conversation: AILI asks "Add to Leads?". */
   askLead?: boolean;
+  /** When they last read the conversation on LinkedIn (their read receipt), ISO. */
+  seenAt?: string;
   /** When the person was added to AILI. */
   createdAt?: string; // ISO
   /** When the person last moved stage. */

@@ -100,6 +100,10 @@ model Person {
   /// You started this conversation on LinkedIn and AILI is asking whether they are a lead
   /// (a desktop notice, and a prompt in Other). Cleared once you answer either way.
   askLead     Boolean   @default(false)
+  /// When they last read the conversation on LinkedIn (their read receipt), as far as the helper has seen.
+  seenAt      DateTime?
+  /// When the helper last looked for a read receipt, so it checks each conversation now and then, not every minute.
+  seenCheckedAt DateTime?
   /// When the person last moved stage. Drives "days in stage" on the People page.
   /// Empty for people from before it was recorded; the page estimates from other dates.
   stageChangedAt DateTime?

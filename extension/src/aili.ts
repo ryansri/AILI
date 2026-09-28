@@ -161,3 +161,18 @@ export function addPerson(
 ): Promise<{ id: string; existed: boolean; tracked?: boolean; stage: string; tagId?: string }> {
   return call(pairing, "/api/helper/people", { method: "POST", body: JSON.stringify(body) });
 }
+
+export interface SeenCheck {
+  personId: string;
+  conversationId: string;
+}
+
+/** Conversations where your latest message is not seen yet, to check for a read receipt, and the read-receipts query id if AILI knows one. */
+export async function takeSeenChecks(pairing: Pairing): Promise<{ items: SeenCheck[]; queryId?: string }> {
+  const data = await call<{ items?: SeenCheck[]; queryId?: string }>(pairing, "/api/helper/seen");
+  return { items: Array.isArray(data?.items) ? data.items : [], queryId: typeof data?.queryId === "string" ? data.queryId : undefined };
+}
+
+export function reportSeen(pairing: Pairing, results: { personId: string; seenAt: number | null }[]) {
+  return call(pairing, "/api/helper/seen", { method: "POST", body: JSON.stringify({ results }) });
+}

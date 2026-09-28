@@ -31,6 +31,8 @@ export interface SyncConversation {
   lastActivityAt: number;
   participants: SyncParticipant[];
   messages: SyncMessage[];
+  /** The other person's read receipt (ms), when LinkedIn included one. */
+  seenAt?: number;
 }
 
 export interface SyncPayload {
@@ -136,6 +138,11 @@ export function sameBody(a: string, b: string): boolean {
   return a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();
 }
 
+/** A read receipt time (ms) that makes sense: after 2020 and not in the future. */
+export function validSeenAt(v: unknown, now: number = Date.now()): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v > 1_577_836_800_000 && v <= now + 5 * 60_000 ? v : undefined;
+}
+
 export function validatePayload(input: unknown): SyncPayload | null {
   if (!input || typeof input !== "object") return null;
   const p = input as Partial<SyncPayload>;
@@ -147,6 +154,7 @@ export function validatePayload(input: unknown): SyncPayload | null {
     conversations.push({
       id: c.id,
       lastActivityAt: typeof c.lastActivityAt === "number" ? c.lastActivityAt : 0,
+      seenAt: validSeenAt(c.seenAt),
       participants: c.participants
         .filter((x): x is SyncParticipant => Boolean(x) && typeof x.urn === "string" && typeof x.name === "string")
         .map((x) => ({
@@ -234,6 +242,14 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
       isLead = created.lead;
       result.peopleCreated += 1;
       if (ask && first) result.startedByYou.push({ personId, name: created.name, sentAt: first.sentAt });
+    }
+
+    if (conv.seenAt) {
+      // Their read receipt only moves forward.
+      await db.person.updateMany({
+        where: { id: personId, OR: [{ seenAt: null }, { seenAt: { lt: new Date(conv.seenAt) } }] },
+        data: { seenAt: new Date(conv.seenAt) },
+      });
     }
 
     for (const m of conv.messages) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractConversationId, extractProfileId, linkedInVariables, raw } from "./encode";
-import { extractCurrentPosition, extractProfile, extractSentMessage, normalizeConversations, normalizeMessages, pictureFrom } from "./normalize";
+import { extractCurrentPosition, extractProfile, extractSentMessage, findSeenAt, normalizeConversations, normalizeMessages, pictureFrom } from "./normalize";
 
 function participant(convId: string, i: number, profileId: string, first: string, last: string, headline = "") {
   return {
@@ -201,5 +201,52 @@ describe("extractProfile", () => {
 
   it("returns null when nothing matches", () => {
     expect(extractProfile({ included: [] }, "x")).toBeNull();
+  });
+});
+
+describe("read receipts", () => {
+  const ME = "urn:li:fsd_profile:ME";
+  const them = participant("c1", 1, "THEM", "Jane", "Doe");
+  const me = participant("c1", 0, "ME", "Ryan", "Sri");
+
+  it("reads a SeenReceipt from the other person, by their participant record", () => {
+    const raw = {
+      included: [
+        me,
+        them,
+        { $type: "com.linkedin.messenger.SeenReceipt", entityUrn: "r1", seenAt: 1790571000000, "*seenByParticipant": them.entityUrn, "*message": "urn:li:msg_message:1" },
+      ],
+    };
+    expect(findSeenAt(raw, ME)).toBe(1790571000000);
+  });
+
+  it("never takes your own read time for theirs", () => {
+    const raw = {
+      included: [me, them, { $type: "com.linkedin.messenger.SeenReceipt", entityUrn: "r2", seenAt: 1790572000000, "*seenByParticipant": me.entityUrn }],
+    };
+    expect(findSeenAt(raw, ME)).toBeNull();
+  });
+
+  it("ignores times that do not say whose they are, like a conversation's last read", () => {
+    const raw = { included: [me, them, { $type: "com.linkedin.messenger.Conversation", entityUrn: "c", lastReadAt: 1790573000000, seenAt: 1790573000000 }] };
+    expect(findSeenAt(raw, ME)).toBeNull();
+  });
+
+  it("reads the older participant receipts, in seconds or ms, and takes the latest", () => {
+    const raw = {
+      data: {
+        receipts: [
+          { fromEntity: "urn:li:fs_miniProfile:THEM", seenReceipt: { seenAt: 1790570000, eventUrn: "urn:li:fs_event:1" } },
+          { fromEntity: "urn:li:fs_miniProfile:THEM", seenReceipt: { seenAt: 1790574000000 } },
+          { fromEntity: "urn:li:fs_miniProfile:ME", seenReceipt: { seenAt: 1790579000000 } },
+        ],
+      },
+    };
+    expect(findSeenAt(raw, ME)).toBe(1790574000000);
+  });
+
+  it("finds nothing in a thread without receipts", () => {
+    expect(findSeenAt({ included: [me, them] }, ME)).toBeNull();
+    expect(findSeenAt(null, ME)).toBeNull();
   });
 });
