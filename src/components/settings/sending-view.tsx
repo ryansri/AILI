@@ -3,8 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { updateDailyCap, updateNotifyReplies } from "@/lib/client-actions";
-import { updateFirstCommentDelay } from "@/lib/client-actions";
+import { setRunwayAlert, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies } from "@/lib/client-actions";
 import { delayLabel, FIRST_COMMENT_DELAYS } from "@/lib/linkedin-text";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -20,15 +19,18 @@ export function SendingView({
   sentToday,
   notifyReplies,
   firstCommentDelay,
+  runwayAlertDays,
 }: {
   dailyCap: number;
   sentToday: number;
   notifyReplies: boolean;
   firstCommentDelay: number;
+  runwayAlertDays: number;
 }) {
   const [cap, setCap] = useState(dailyCap);
   const [notify, setNotify] = useState(notifyReplies);
   const [delay, setDelay] = useState(String(firstCommentDelay));
+  const [runway, setRunway] = useState(String(runwayAlertDays));
   const [, start] = useTransition();
   const timer = useRef<number | undefined>(undefined);
 
@@ -115,6 +117,36 @@ export function SendingView({
               {FIRST_COMMENT_DELAYS.map((m) => (
                 <SelectItem key={m} value={String(m)}>
                   {delayLabel(m)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+        <Row title="Runway reminder" status="A note in AILI when your content plan is covered for fewer days than this.">
+          <Select
+            value={runway}
+            onValueChange={(value) => {
+              const previous = runway;
+              setRunway(value);
+              start(async () => {
+                try {
+                  await setRunwayAlert(Number(value));
+                  toast.success(value === "0" ? "Runway reminder off." : `Reminder when fewer than ${value} days are covered.`);
+                } catch {
+                  setRunway(previous);
+                  toast.error("That did not save.");
+                }
+              });
+            }}
+          >
+            <SelectTrigger aria-label="Runway reminder" className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="0">Off</SelectItem>
+              {[1, 2, 3, 5, 7].map((d) => (
+                <SelectItem key={d} value={String(d)}>
+                  Under {d} {d === 1 ? "day" : "days"}
                 </SelectItem>
               ))}
             </SelectContent>

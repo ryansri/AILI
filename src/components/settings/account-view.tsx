@@ -9,9 +9,20 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Group, Row, SettingsPage } from "./settings-parts";
+import { TimeZoneRow } from "./time-zone-row";
 
 /** Settings, Account: name and email save when you leave the field; password in a small dialog; log out. */
-export function AccountView({ name: savedName, email: savedEmail }: { name: string; email: string }) {
+export function AccountView({
+  name: savedName,
+  email: savedEmail,
+  timeZone,
+  timeZoneAuto,
+}: {
+  name: string;
+  email: string;
+  timeZone: string;
+  timeZoneAuto: boolean;
+}) {
   const [name, setName] = useState(savedName);
   const [email, setEmail] = useState(savedEmail);
   const [saved, setSaved] = useState({ name: savedName, email: savedEmail });
@@ -51,6 +62,7 @@ export function AccountView({ name: savedName, email: savedEmail }: { name: stri
         </div>
       </Group>
       <Group>
+        <TimeZoneRow zone={timeZone} auto={timeZoneAuto} />
         <Row title="Password" status="Used to log in to AILI.">
           <Button size="sm" variant="outline" onClick={() => setPasswordOpen(true)}>
             Change password

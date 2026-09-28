@@ -153,6 +153,18 @@ LinkedIn refuses the comment, the post stays up and the comment shows "Not
 posted" with Try again. Without it they still go out, but only while Chrome is open
 with the extension (it checks in every minute).
 
+**Content plan:** Content, Rhythm sets how often posts and articles go out
+(days, time, every 1 to 4 weeks). AILI turns it into slots and shows, on the
+Plan view: runway (how far ahead you are covered, the number to keep up),
+this week, streak and on time, and what brought conversations (people whose
+first message came within 3 days of a post, from the inbox). Calendar shows
+four weeks by slot state; Plan next week fills next week's slots in one
+sitting (ideas, then Claude drafts them all); the Weekly review sums up a
+week. A bar across the app says when the runway drops under the reminder
+set in Settings, Sending. Claude reads it all with get_plan and fills slots.
+Times use the account's time zone: automatic from the browser, or picked in
+Settings, Account.
+
 **Articles:** LinkedIn does not let apps publish articles. Claude or ChatGPT
 saves them in AILI; Open in LinkedIn opens LinkedIn's article editor and the
 extension fills in the title and text (they are also put on the clipboard in

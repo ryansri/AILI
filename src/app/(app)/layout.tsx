@@ -5,12 +5,18 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { publishDuePosts } from "@/lib/posts";
-import { loadWorkspaceData } from "@/lib/data";
+import { runwayReminder } from "@/lib/content-plan";
+import { RunwayBar } from "@/components/shell/runway-bar";
+import { dayLabel } from "@/lib/plan";
+import { getWorkspace, loadWorkspaceData } from "@/lib/data";
 import { nextStep } from "@/lib/next-step";
 import { needsYou } from "@/lib/rows";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
-  const { workspace, people, others, account } = await loadWorkspaceData();
+  const [{ workspace, people, others, account }, reminder] = await Promise.all([
+    loadWorkspaceData(),
+    getWorkspaceForReminder(),
+  ]);
   // A backstop for the timer: whenever the app is open, anything overdue goes out.
   after(() => publishDuePosts().catch((err) => console.error("Publishing scheduled posts failed", err)));
   // A new account, or one reset to nothing, sets up first.
@@ -27,10 +33,23 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           helper={account.helper}
           sentLine={`${account.sentToday} of ${account.dailyCap} sent today.`}
         />
-        <main className="flex min-w-0 flex-1">{children}</main>
+        <main className="flex min-w-0 flex-1 flex-col">
+          {reminder && <RunwayBar
+              days={reminder.days}
+              nextDay={reminder.next ? dayLabel(reminder.next.day) : undefined}
+              nextIsDraft={reminder.next?.state === "draft"}
+            />}
+          <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
+        </main>
         <AutoRefresh />
-        <TimeZoneSync saved={workspace.timeZone} />
+        <TimeZoneSync saved={workspace.timeZone} auto={workspace.timeZoneAuto} />
       </div>
     </TooltipProvider>
   );
+}
+
+/** The runway reminder, read alongside the page's data. */
+async function getWorkspaceForReminder() {
+  const workspace = await getWorkspace();
+  return runwayReminder(workspace).catch(() => null);
 }

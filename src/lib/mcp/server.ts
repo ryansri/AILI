@@ -31,6 +31,7 @@ function instructions(ctx: ServerContext): string {
     "AILI is the user's LinkedIn outreach inbox. Use it to read their LinkedIn conversations, draft replies, and write, schedule or publish their LinkedIn posts.",
     "Messages: AILI cannot send LinkedIn messages. save_draft puts a reply in the conversation's message box; the user reviews it and clicks Send in AILI. Say so when you save one.",
     "Posts: show the user the final text and time before create_post schedules or publishes it. Articles are saved with save_article; the user publishes them in LinkedIn.",
+    "Planning: get_plan shows the user's rhythm, runway and empty slots; fill slots at their times, and save topics with save_idea.",
     `The user's time zone is ${ctx.timeZone} (${offsetLabel(now, ctx.timeZone)}). It was ${formatWhen(now, ctx.timeZone)} there when this connection started.`,
   ].join("\n");
 }

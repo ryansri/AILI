@@ -71,3 +71,21 @@ export function SettingsSkeleton() {
     </div>
   );
 }
+
+/** Content: the plan's cards and the days ahead. */
+export function PlanSkeleton() {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col" aria-busy="true" aria-label="Loading">
+      <Header width="w-72" />
+      <div className="grid gap-4 p-5 lg:grid-cols-[1.35fr_1fr]">
+        <Skeleton className="h-44 rounded-2xl" />
+        <Skeleton className="h-44 rounded-2xl" />
+      </div>
+      <div className="px-5">
+        <div className="overflow-hidden rounded-2xl border">
+          <Rows count={5} avatar={false} />
+        </div>
+      </div>
+    </div>
+  );
+}

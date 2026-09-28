@@ -12,7 +12,6 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
-  Plus,
   Send,
   Sparkles,
   Trash2,
@@ -92,6 +91,8 @@ interface Editing {
   title: string;
   body: string;
   firstComment: string;
+  /** A new post or article written for a plan slot: the day it fills. */
+  slotDay?: string;
 }
 
 export function PostsView({
@@ -103,6 +104,7 @@ export function PostsView({
   commentDelay,
   timeZone,
   initialId,
+  newDraft,
 }: {
   posts: PostView[];
   linkedin: LinkedInPosting & { configured: boolean };
@@ -114,6 +116,8 @@ export function PostsView({
   /** The account's time zone, e.g. Australia/Sydney. */
   timeZone: string;
   initialId?: string;
+  /** Open the editor on a new post or article straight away, e.g. from an empty plan slot. */
+  newDraft?: { kind: "post" | "article"; slotDay?: string };
 }) {
   const initial = posts.find((p) => p.id === initialId);
   const counts = useMemo(() => {
@@ -122,10 +126,24 @@ export function PostsView({
     return c;
   }, [posts]);
   const [tab, setTab] = useState<Tab>(
-    initial ? tabOf(initial) : counts.scheduled ? "scheduled" : counts.drafts ? "drafts" : counts.articles ? "articles" : "scheduled",
+    newDraft
+      ? newDraft.kind === "article"
+        ? "articles"
+        : "drafts"
+      : initial
+        ? tabOf(initial)
+        : counts.scheduled
+          ? "scheduled"
+          : counts.drafts
+            ? "drafts"
+            : counts.articles
+              ? "articles"
+              : "scheduled",
   );
   const [selectedId, setSelectedId] = useState<string | undefined>(initial?.id);
-  const [editing, setEditing] = useState<Editing | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(
+    newDraft ? { kind: newDraft.kind, title: "", body: "", firstComment: "", slotDay: newDraft.slotDay } : null,
+  );
 
   const list = useMemo(() => {
     const inTab = posts.filter((p) => tabOf(p) === tab);
@@ -151,37 +169,6 @@ export function PostsView({
     <ZoneContext.Provider value={timeZone}>
     <div className="flex min-w-0 flex-1">
       <section aria-label="Posts" className="flex w-[400px] shrink-0 flex-col border-r">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b pr-3 pl-4">
-          <h1 className="text-xl font-bold tracking-tight">Posts</h1>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="ml-auto">
-                <Plus />
-                New
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => {
-                  setEditing({ kind: "post", title: "", body: "", firstComment: "" });
-                  if (tab === "published" || tab === "articles") setTab("drafts");
-                }}
-              >
-                <Pencil />
-                Post
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setEditing({ kind: "article", title: "", body: "", firstComment: "" });
-                  setTab("articles");
-                }}
-              >
-                <FileText />
-                Article
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </header>
         <div role="tablist" aria-label="Show" className="flex shrink-0 gap-1 border-b px-3 py-2">
           {TABS.map((t) => (
             <button
@@ -406,7 +393,7 @@ function Editor({ editing, commentDelay, onDone }: { editing: Editing; commentDe
   function save() {
     start(async () => {
       try {
-        const id = await savePost({ id: editing.id, kind: editing.kind, title, body, firstComment });
+        const id = await savePost({ id: editing.id, kind: editing.kind, title, body, firstComment, slotDay: editing.slotDay });
         toast.success(editing.id ? "Saved." : isPost ? "Saved in Drafts." : "Article saved.");
         onDone(id);
       } catch (err) {

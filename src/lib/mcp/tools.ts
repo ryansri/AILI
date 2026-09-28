@@ -6,6 +6,8 @@ import { linkedInPostUrl } from "../linkedin-posting";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "../linkedin-text";
 import { checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
 import { formatWhen, offsetLabel, parseWhen } from "../time-zone";
+import { addDays, dayLabel, localDay, mondayOf } from "../plan";
+import { loadContentPlan } from "../content-plan";
 import { stageLabel } from "../types";
 
 /*
@@ -339,7 +341,10 @@ async function applyTiming(ctx: ToolContext, postId: string, publishNow: boolean
     }
   }
   if (at) {
-    await db.post.update({ where: { id: postId }, data: { status: "scheduled", scheduledAt: at, error: null } });
+    await db.post.update({
+      where: { id: postId },
+      data: { status: "scheduled", scheduledAt: at, error: null, slotDay: localDay(at, tz) },
+    });
     const warn =
       !linkedin.connected || linkedin.expired
         ? " LinkedIn posting is not connected yet: ask the user to connect it in AILI Settings before then, or it will fail."
@@ -381,6 +386,7 @@ const createPost: Tool = {
     type: "object",
     properties: {
       text: { type: "string", description: "The post, exactly as it should appear." },
+      idea_id: { type: "string", description: "The idea from get_plan it was written from; it leaves the ideas list." },
       ...firstCommentProperty,
       ...timingProperties,
     },
@@ -402,6 +408,7 @@ const createPost: Tool = {
       throw new ToolError(err instanceof Error ? err.message : "The first comment does not work.");
     }
     const at = await scheduleFrom(ctx, args);
+    await removeUsedIdea(ctx, text(args.idea_id));
     const post = await db.post.create({
       data: { workspaceId: ctx.workspaceId, kind: "post", body, firstComment, source: ctx.appName },
     });
@@ -484,7 +491,9 @@ const saveArticle: Tool = {
     properties: {
       title: { type: "string" },
       body: { type: "string" },
-      article_id: { type: "string", description: "Update this saved article instead of making a new one." },
+      article_id: { type: "string", description: "Update this saved article instead of making a new one (e.g. a title-only draft in a plan slot)." },
+      planned_for: { type: "string", description: "The plan day it fills, YYYY-MM-DD, e.g. an empty article slot from get_plan." },
+      idea_id: { type: "string", description: "The idea from get_plan it was written from; it leaves the ideas list." },
     },
     required: ["title", "body"],
     additionalProperties: false,
@@ -495,23 +504,140 @@ const saveArticle: Tool = {
     const body = text(args.body).trim();
     if (!title || !body) throw new ToolError("An article needs a title and a body.");
     if (body.length > 110_000) throw new ToolError("That is longer than LinkedIn allows for an article.");
+    const planned = text(args.planned_for);
+    if (planned && !/^\d{4}-\d{2}-\d{2}$/.test(planned)) throw new ToolError("planned_for is a day: YYYY-MM-DD.");
+    await removeUsedIdea(ctx, text(args.idea_id));
     const id = text(args.article_id);
     if (id) {
       const existing = await db.post.findFirst({ where: { id, workspaceId: ctx.workspaceId, kind: "article" } });
       if (!existing) throw new ToolError("No such article in AILI.");
-      await db.post.update({ where: { id }, data: { title, body } });
+      await db.post.update({ where: { id }, data: { title, body, ...(planned ? { slotDay: planned } : {}) } });
       revalidatePath("/posts");
       return `Article updated in AILI: ${ctx.origin}/posts?post=${id}`;
     }
     const post = await db.post.create({
-      data: { workspaceId: ctx.workspaceId, kind: "article", title, body, source: ctx.appName },
+      data: { workspaceId: ctx.workspaceId, kind: "article", title, body, source: ctx.appName, slotDay: planned || null },
     });
     revalidatePath("/posts");
     return `Saved "${title}" in AILI (article id: ${post.id}). To publish it, open ${ctx.origin}/posts?post=${post.id} and click Open in LinkedIn; the user publishes or schedules it in LinkedIn.`;
   },
 };
 
-export const TOOLS: Tool[] = [findConversations, getConversation, saveDraft, listPosts, createPost, updatePost, saveArticle];
+/** An idea Claude wrote something from leaves the list. */
+async function removeUsedIdea(ctx: ToolContext, ideaId: string) {
+  if (ideaId) await db.idea.deleteMany({ where: { id: ideaId, workspaceId: ctx.workspaceId } });
+}
+
+// ---------------------------------------------------------------------------
+// The content plan
+// ---------------------------------------------------------------------------
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const getPlan: Tool = {
+  name: "get_plan",
+  title: "Read the content plan",
+  description:
+    "Read the user's content plan in AILI: their rhythm (how often they post and publish articles), how far ahead they are covered " +
+    "(runway), this week's progress, every slot for the coming days with its state (published, scheduled, draft, empty, missed), " +
+    "and their ideas list. To fill an empty post slot: create_post with schedule_at set to the slot's time (after the user agrees). " +
+    "A draft in a slot: update_post with its id, the full text and schedule_at. An article slot: save_article with planned_for set to the day " +
+    "(or article_id for a title-only draft). Pass idea_id when writing from an idea.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      days: { type: "integer", minimum: 1, maximum: 30, default: 14, description: "How many days ahead, from today." },
+      week: { type: "string", enum: ["this", "next"], description: "Instead of days: this week or next week (Monday to Sunday)." },
+    },
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  async run(args, ctx) {
+    const w = await workspace(ctx);
+    const plan = await loadContentPlan(w, { horizon: 30 });
+    const tz = plan.timeZone;
+    let from = plan.today;
+    let to = addDays(plan.today, Math.min(Math.max(Number(args.days) || 14, 1), 30) - 1);
+    if (args.week === "this" || args.week === "next") {
+      from = addDays(mondayOf(plan.today), args.week === "next" ? 7 : 0);
+      to = addDays(from, 6);
+    }
+    const rhythm = plan.rhythms
+      .filter((r) => r.saved && r.enabled)
+      .map(
+        (r) =>
+          `${r.kind === "article" ? "Articles" : "Posts"}: ${r.days.map((d) => DAY_NAMES[d - 1]).join(", ")} at ${r.time}` +
+          (r.everyWeeks > 1 ? `, every ${r.everyWeeks} weeks` : ", every week"),
+      );
+    const runway = plan.runway.complete
+      ? `Covered for the next ${plan.runway.days} days.`
+      : plan.runway.until === plan.today
+        ? "Covered for today only."
+        : plan.runway.until
+          ? `Covered until ${dayLabel(plan.runway.until)} (${plan.runway.days} days).`
+        : "Not covered: the next slot needs work now.";
+    const t = plan.thisWeek;
+    const slots = plan.allSlots.filter((s) => s.day >= from && s.day <= to);
+    const lines = slots.map((s) => {
+      const when = `${dayLabel(s.day)}, ${formatWhen(new Date(s.at), tz).split(", ")[1]}`;
+      const what = s.item
+        ? ` · ${s.item.kind === "article" ? `"${s.item.title}"${s.item.body.trim() ? "" : " (title only)"}` : `"${clip(oneLine(s.item.body), 90)}"`} (id: ${s.item.id})`
+        : "";
+      return `- ${when} (${s.day}) · ${s.kind} · ${s.state === "published" && s.late ? "published late" : s.state}${what}`;
+    });
+    const ideas = plan.ideas.map((i) => `- ${i.kind}: ${i.text} (idea id: ${i.id})`);
+    return [
+      `Now: ${formatWhen(new Date(), tz)} (${tz}).`,
+      rhythm.length ? `Rhythm: ${rhythm.join("; ")}.` : "No rhythm set yet: the user sets it in AILI, Content, Rhythm.",
+      `Runway: ${runway}`,
+      `This week: ${t.onTime + t.late + t.extra} of ${t.planned} out, ${t.scheduled} more ready. Streak: ${plan.streak} weeks.`,
+      "",
+      `Slots ${dayLabel(from)} to ${dayLabel(to)}:`,
+      lines.length ? lines.join("\n") : "None in this range.",
+      "",
+      `Ideas (${ideas.length}):`,
+      ideas.length ? ideas.join("\n") : "None yet.",
+      `Plan in AILI: ${ctx.origin}/posts`,
+    ].join("\n");
+  },
+};
+
+const saveIdea: Tool = {
+  name: "save_idea",
+  title: "Save an idea",
+  description: "Save a topic to the user's ideas list in AILI, to write about later. kind: post or article.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      text: { type: "string", description: "The idea in a line." },
+      kind: { type: "string", enum: ["post", "article"], default: "post" },
+    },
+    required: ["text"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  async run(args, ctx) {
+    const idea = oneLine(text(args.text)).slice(0, 500);
+    if (!idea) throw new ToolError("The idea is empty.");
+    const saved = await db.idea.create({
+      data: { workspaceId: ctx.workspaceId, kind: args.kind === "article" ? "article" : "post", text: idea, source: ctx.appName },
+    });
+    revalidatePath("/posts");
+    return `Saved to the ideas list in AILI (idea id: ${saved.id}).`;
+  },
+};
+
+export const TOOLS: Tool[] = [
+  findConversations,
+  getConversation,
+  saveDraft,
+  getPlan,
+  listPosts,
+  createPost,
+  updatePost,
+  saveArticle,
+  saveIdea,
+];
 
 export function toolList() {
   return TOOLS.map(({ name, title, description, inputSchema, annotations }) => ({

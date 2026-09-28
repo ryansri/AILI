@@ -15,7 +15,7 @@ const SECTIONS = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/people", label: "People", icon: Users },
   { href: "/today", label: "Today", icon: CalendarDays },
-  { href: "/posts", label: "Posts", icon: FileText },
+  { href: "/posts", label: "Content", icon: FileText },
 ] as const;
 
 function RailLink({

@@ -8,6 +8,7 @@ import { getWorkspace } from "./data";
 import { checkCommentText, checkPostText, checkScheduleTime, postFirstComment, publishPost } from "./posts";
 import { FIRST_COMMENT_DELAYS } from "./linkedin-text";
 import { validTimeZone } from "./time-zone";
+import { slotDayFor } from "./content-plan";
 
 /*
  * Server actions for the Posts page and the AI and LinkedIn parts of Settings.
@@ -32,6 +33,8 @@ async function savePostImpl(input: {
   title?: string;
   body: string;
   firstComment?: string;
+  /** New posts and articles: the plan day ("YYYY-MM-DD") they fill. */
+  slotDay?: string;
 }): Promise<string> {
   const body = input.body.trim();
   const title = (input.title ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
@@ -49,7 +52,15 @@ async function savePostImpl(input: {
   }
   const workspace = await getWorkspace();
   const post = await db.post.create({
-    data: { workspaceId: workspace.id, kind: input.kind, title, body, firstComment, source: "AILI" },
+    data: {
+      workspaceId: workspace.id,
+      kind: input.kind,
+      title,
+      body,
+      firstComment,
+      source: "AILI",
+      slotDay: input.slotDay && /^\d{4}-\d{2}-\d{2}$/.test(input.slotDay) ? input.slotDay : null,
+    },
   });
   done();
   return post.id;
@@ -57,13 +68,17 @@ async function savePostImpl(input: {
 
 /** at: an ISO time from the browser's date picker. */
 async function schedulePostImpl(postId: string, at: string) {
-  const { post } = await ownPost(postId);
+  const { workspace, post } = await ownPost(postId);
   if (post.kind === "article") throw new Error("Articles are scheduled in LinkedIn's own editor.");
   if (post.status === "published" || post.status === "publishing") throw new Error("It is already published.");
   const when = new Date(at);
   checkScheduleTime(when);
   checkPostText(post.body);
-  await db.post.update({ where: { id: post.id }, data: { status: "scheduled", scheduledAt: when, error: null } });
+  // The post now fills the plan on the day it goes out.
+  await db.post.update({
+    where: { id: post.id },
+    data: { status: "scheduled", scheduledAt: when, error: null, slotDay: slotDayFor(when, workspace) },
+  });
   done();
 }
 
@@ -122,7 +137,8 @@ async function markArticlePublishedImpl(postId: string, published = true) {
 async function saveTimeZoneImpl(timeZone: string) {
   if (!validTimeZone(timeZone)) return;
   const workspace = await getWorkspace();
-  if (workspace.timeZone === timeZone) return;
+  // A time zone picked in Settings stays put; only "Automatic" follows the browser.
+  if (!workspace.timeZoneAuto || workspace.timeZone === timeZone) return;
   await db.workspace.update({ where: { id: workspace.id }, data: { timeZone } });
 }
 

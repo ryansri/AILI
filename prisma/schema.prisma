@@ -45,8 +45,12 @@ model Workspace {
   /// Show a desktop notification (through the helper) when someone replies.
   notifyReplies    Boolean   @default(true)
   helperState      String?
-  /// The browser's time zone (e.g. Australia/Sydney), for scheduling posts from Claude or ChatGPT.
+  /// The account's time zone (e.g. Australia/Sydney), for scheduling and the content plan.
   timeZone         String?
+  /// True: timeZone follows the browser. False: the user picked it in Settings.
+  timeZoneAuto     Boolean   @default(true)
+  /// Remind the user when the content plan is covered for fewer days than this.
+  runwayAlertDays  Int       @default(3)
   /// LinkedIn's official connection for publishing posts (separate from the helper).
   /// The access token is encrypted with the server secret.
   linkedinPostToken   String?
@@ -66,6 +70,8 @@ model Workspace {
   outbox Outbox[]
   posts  Post[]
   aiGrants AiGrant[]
+  rhythms Rhythm[]
+  ideas  Idea[]
 }
 
 model Person {
@@ -235,6 +241,8 @@ model Post {
   error       String?
   /// Where it was written: "AILI", "Claude", "ChatGPT" or another app's name.
   source      String    @default("AILI")
+  /// The plan day ("YYYY-MM-DD", the user's time zone) this post or article fills, if it was put in a slot.
+  slotDay     String?
   /// Posted as a comment under the post once it is live, e.g. the link. Empty for none.
   firstComment      String    @default("")
   /// pending | posting | posted | failed; null when there is no first comment yet.
@@ -295,4 +303,41 @@ model AppState {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// How often the user means to publish one kind of content: the rhythm the plan's slots come from.
+model Rhythm {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// post | article
+  kind        String
+  /// Weekdays, 1 = Monday … 7 = Sunday, comma separated: "2,3,4".
+  days        String
+  /// "09:00" in the account's time zone.
+  time        String
+  /// 1 = every week, 2 = every other week, …
+  everyWeeks  Int       @default(1)
+  /// A Monday ("YYYY-MM-DD") in a week the rhythm is on, for every-other-week rhythms.
+  anchor      String
+  enabled     Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, kind])
+}
+
+/// A topic to write about some day, saved by the user or by Claude or ChatGPT.
+model Idea {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// post | article
+  kind        String    @default("post")
+  text        String
+  /// "AILI", "Claude", "ChatGPT", …
+  source      String    @default("AILI")
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
 }

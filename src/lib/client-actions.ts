@@ -6,6 +6,7 @@
 import { unwrap } from "./action-result";
 import * as actions from "./actions";
 import * as posts from "./post-actions";
+import * as plan from "./plan-actions";
 
 export type { ImportRow, PersonInput } from "./actions";
 
@@ -58,3 +59,11 @@ export const markArticlePublished = unwrap(posts.markArticlePublished);
 export const saveTimeZone = unwrap(posts.saveTimeZone);
 export const disconnectLinkedInPosting = unwrap(posts.disconnectLinkedInPosting);
 export const disconnectAiApp = unwrap(posts.disconnectAiApp);
+
+export const saveRhythm = unwrap(plan.saveRhythm);
+export const addIdea = unwrap(plan.addIdea);
+export const deleteIdea = unwrap(plan.deleteIdea);
+export const ideaToSlot = unwrap(plan.ideaToSlot);
+export const setSlotDay = unwrap(plan.setSlotDay);
+export const setTimeZone = unwrap(plan.setTimeZone);
+export const setRunwayAlert = unwrap(plan.setRunwayAlert);
