@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { ExternalLink, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
-import { updateNotes } from "@/lib/actions";
+import { updateNotes } from "@/lib/client-actions";
 import type { StageDef, Tag } from "@/lib/types";
 import { shortDate, shortTime } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";

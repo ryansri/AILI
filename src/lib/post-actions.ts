@@ -1,5 +1,7 @@
 "use server";
 
+import { run } from "./action-result";
+
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
@@ -24,7 +26,7 @@ function done() {
 }
 
 /** New post or article, or an edit of one not yet published. Returns its id. */
-export async function savePost(input: {
+async function savePostImpl(input: {
   id?: string;
   kind: "post" | "article";
   title?: string;
@@ -54,7 +56,7 @@ export async function savePost(input: {
 }
 
 /** at: an ISO time from the browser's date picker. */
-export async function schedulePost(postId: string, at: string) {
+async function schedulePostImpl(postId: string, at: string) {
   const { post } = await ownPost(postId);
   if (post.kind === "article") throw new Error("Articles are scheduled in LinkedIn's own editor.");
   if (post.status === "published" || post.status === "publishing") throw new Error("It is already published.");
@@ -65,7 +67,7 @@ export async function schedulePost(postId: string, at: string) {
   done();
 }
 
-export async function unschedulePost(postId: string) {
+async function unschedulePostImpl(postId: string) {
   const { post } = await ownPost(postId);
   await db.post.updateMany({
     where: { id: post.id, status: { in: ["scheduled", "failed"] } },
@@ -75,7 +77,7 @@ export async function unschedulePost(postId: string) {
 }
 
 /** Publish now. Returns the LinkedIn address when there is one. */
-export async function publishPostNow(postId: string): Promise<{ url?: string }> {
+async function publishPostNowImpl(postId: string): Promise<{ url?: string }> {
   const { workspace, post } = await ownPost(postId);
   const published = await publishPost(workspace.id, post.id);
   done();
@@ -83,7 +85,7 @@ export async function publishPostNow(postId: string): Promise<{ url?: string }> 
 }
 
 /** Try a first comment again after LinkedIn refused it. */
-export async function retryFirstComment(postId: string) {
+async function retryFirstCommentImpl(postId: string) {
   const { workspace, post } = await ownPost(postId);
   if (post.commentStatus !== "failed") return;
   await postFirstComment(workspace.id, post.id);
@@ -91,14 +93,14 @@ export async function retryFirstComment(postId: string) {
 }
 
 /** Settings: how many minutes after a post goes live its first comment follows. */
-export async function updateFirstCommentDelay(minutes: number) {
+async function updateFirstCommentDelayImpl(minutes: number) {
   if (!FIRST_COMMENT_DELAYS.includes(minutes)) throw new Error("Pick one of the listed times.");
   const workspace = await getWorkspace();
   await db.workspace.update({ where: { id: workspace.id }, data: { firstCommentDelay: minutes } });
   revalidatePath("/settings", "layout");
 }
 
-export async function deletePost(postId: string) {
+async function deletePostImpl(postId: string) {
   const { post } = await ownPost(postId);
   if (post.status === "publishing") throw new Error("It is being published right now.");
   await db.post.delete({ where: { id: post.id } });
@@ -106,7 +108,7 @@ export async function deletePost(postId: string) {
 }
 
 /** An article the user published themselves in LinkedIn. */
-export async function markArticlePublished(postId: string, published = true) {
+async function markArticlePublishedImpl(postId: string, published = true) {
   const { post } = await ownPost(postId);
   if (post.kind !== "article") throw new Error("Only articles are marked by hand.");
   await db.post.update({
@@ -117,14 +119,14 @@ export async function markArticlePublished(postId: string, published = true) {
 }
 
 /** The browser's time zone, so "Tuesday 9am" from Claude or ChatGPT means 9am where the user is. */
-export async function saveTimeZone(timeZone: string) {
+async function saveTimeZoneImpl(timeZone: string) {
   if (!validTimeZone(timeZone)) return;
   const workspace = await getWorkspace();
   if (workspace.timeZone === timeZone) return;
   await db.workspace.update({ where: { id: workspace.id }, data: { timeZone } });
 }
 
-export async function disconnectLinkedInPosting() {
+async function disconnectLinkedInPostingImpl() {
   const workspace = await getWorkspace();
   await db.workspace.update({
     where: { id: workspace.id },
@@ -135,11 +137,59 @@ export async function disconnectLinkedInPosting() {
 }
 
 /** Ends every connection of one app (e.g. all of Claude's) to this account. */
-export async function disconnectAiApp(clientName: string) {
+async function disconnectAiAppImpl(clientName: string) {
   const workspace = await getWorkspace();
   await db.aiGrant.updateMany({
     where: { workspaceId: workspace.id, clientName, revokedAt: null },
     data: { revokedAt: new Date() },
   });
   revalidatePath("/settings", "layout");
+}
+
+// ---------------------------------------------------------------------------
+// What the client calls. Each returns { ok, value } or { ok, error } (see action-result.ts).
+// ---------------------------------------------------------------------------
+
+export async function savePost(...args: Parameters<typeof savePostImpl>) {
+  return run(() => savePostImpl(...args));
+}
+
+export async function schedulePost(...args: Parameters<typeof schedulePostImpl>) {
+  return run(() => schedulePostImpl(...args));
+}
+
+export async function unschedulePost(...args: Parameters<typeof unschedulePostImpl>) {
+  return run(() => unschedulePostImpl(...args));
+}
+
+export async function publishPostNow(...args: Parameters<typeof publishPostNowImpl>) {
+  return run(() => publishPostNowImpl(...args));
+}
+
+export async function retryFirstComment(...args: Parameters<typeof retryFirstCommentImpl>) {
+  return run(() => retryFirstCommentImpl(...args));
+}
+
+export async function updateFirstCommentDelay(...args: Parameters<typeof updateFirstCommentDelayImpl>) {
+  return run(() => updateFirstCommentDelayImpl(...args));
+}
+
+export async function deletePost(...args: Parameters<typeof deletePostImpl>) {
+  return run(() => deletePostImpl(...args));
+}
+
+export async function markArticlePublished(...args: Parameters<typeof markArticlePublishedImpl>) {
+  return run(() => markArticlePublishedImpl(...args));
+}
+
+export async function saveTimeZone(...args: Parameters<typeof saveTimeZoneImpl>) {
+  return run(() => saveTimeZoneImpl(...args));
+}
+
+export async function disconnectLinkedInPosting(...args: Parameters<typeof disconnectLinkedInPostingImpl>) {
+  return run(() => disconnectLinkedInPostingImpl(...args));
+}
+
+export async function disconnectAiApp(...args: Parameters<typeof disconnectAiAppImpl>) {
+  return run(() => disconnectAiAppImpl(...args));
 }

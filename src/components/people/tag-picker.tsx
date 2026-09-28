@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { createTag, setPersonTag } from "@/lib/actions";
+import { createTag, setPersonTag } from "@/lib/client-actions";
 import { TAG_COLORS, type Tag, type TagColor } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

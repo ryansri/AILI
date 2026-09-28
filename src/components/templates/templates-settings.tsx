@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { createTemplate, deleteTemplate, updateTemplate } from "@/lib/actions";
+import { createTemplate, deleteTemplate, updateTemplate } from "@/lib/client-actions";
 import type { Template } from "@/lib/templates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

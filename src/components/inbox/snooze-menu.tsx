@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Clock } from "lucide-react";
 import { toast } from "sonner";
-import { snooze } from "@/lib/actions";
+import { snooze } from "@/lib/client-actions";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

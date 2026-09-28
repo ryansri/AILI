@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { importPeople } from "@/lib/actions";
+import { importPeople } from "@/lib/client-actions";
 import { rowsFromCsv } from "@/lib/csv";
 import type { StageDef, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";

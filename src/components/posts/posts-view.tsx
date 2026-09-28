@@ -32,7 +32,7 @@ import {
   savePost,
   schedulePost,
   unschedulePost,
-} from "@/lib/post-actions";
+} from "@/lib/client-actions";
 import { useHelperPresence } from "@/hooks/use-helper-presence";
 import { Button } from "@/components/ui/button";
 import {

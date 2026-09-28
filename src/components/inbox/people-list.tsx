@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Check, CheckCheck, ChevronDown, ChevronRight, PanelLeft, Plus, Send, Star } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { markDone } from "@/lib/actions";
+import { markDone } from "@/lib/client-actions";
 import { dueLabel, relativeTime, syncedLabel } from "@/lib/next-step";
 import { bucketOf, isGroupedView, type Condition, type Group, type Row, type View } from "@/lib/rows";
 import type { HelperStatus, Person, StageDef, Tag } from "@/lib/types";

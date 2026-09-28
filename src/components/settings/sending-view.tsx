@@ -3,8 +3,8 @@
 import { useRef, useState, useTransition } from "react";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { updateDailyCap, updateNotifyReplies } from "@/lib/actions";
-import { updateFirstCommentDelay } from "@/lib/post-actions";
+import { updateDailyCap, updateNotifyReplies } from "@/lib/client-actions";
+import { updateFirstCommentDelay } from "@/lib/client-actions";
 import { delayLabel, FIRST_COMMENT_DELAYS } from "@/lib/linkedin-text";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";

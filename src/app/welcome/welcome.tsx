@@ -4,7 +4,7 @@ import { useEffect, useRef, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ExternalLink, Loader2, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { finishOnboarding } from "@/lib/actions";
+import { finishOnboarding } from "@/lib/client-actions";
 import { EXTENSION_URL, rememberExtension, type ExtensionHint } from "@/lib/extension";
 import { useHelperPresence } from "@/hooks/use-helper-presence";
 import type { HelperStatus } from "@/lib/types";

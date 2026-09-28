@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { trackAsLead } from "@/lib/actions";
+import { trackAsLead } from "@/lib/client-actions";
 import type { StageDef, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

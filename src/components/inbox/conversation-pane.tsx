@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { ArrowUp, Check, ChevronDown, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { archivePerson, cancelQueued, discardDraft, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/actions";
+import { archivePerson, cancelQueued, discardDraft, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/client-actions";
 import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { relativeTime, shortDate, shortTime, type NextStep } from "@/lib/next-step";

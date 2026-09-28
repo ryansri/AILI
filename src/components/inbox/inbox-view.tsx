@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Account, Person, StageDef, Tag } from "@/lib/types";
-import { markDone } from "@/lib/actions";
+import { markDone } from "@/lib/client-actions";
 import type { Template } from "@/lib/templates";
 import { nextStep, type StatusKind } from "@/lib/next-step";
 import {

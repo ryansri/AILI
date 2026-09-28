@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { createPerson, updatePerson } from "@/lib/actions";
+import { createPerson, updatePerson } from "@/lib/client-actions";
 import type { Person, StageDef, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {

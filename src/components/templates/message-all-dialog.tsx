@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { queueBulk } from "@/lib/actions";
+import { queueBulk } from "@/lib/client-actions";
 import { fillTemplate, missingFields, TEMPLATE_FIELDS, type Template } from "@/lib/templates";
 import type { Account, Person } from "@/lib/types";
 import { Button } from "@/components/ui/button";

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { changePassword, updateAccount } from "@/lib/actions";
+import { changePassword, updateAccount } from "@/lib/client-actions";
 import { logout } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";

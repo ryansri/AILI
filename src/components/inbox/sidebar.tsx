@@ -5,7 +5,7 @@ import { GripVertical, Hourglass, Inbox, List, MessageSquare, MoreHorizontal, Pl
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { createStage, createTag, deleteStage, deleteTag, renameStage, reorderStages, updateTag } from "@/lib/actions";
+import { createStage, createTag, deleteStage, deleteTag, renameStage, reorderStages, updateTag } from "@/lib/client-actions";
 import { PROTECTED_STAGE_KEYS } from "@/lib/stage-rules";
 import { sameView, type View } from "@/lib/rows";
 import { TAG_COLORS, type Account, type Person, type StageDef, type Tag, type TagColor } from "@/lib/types";

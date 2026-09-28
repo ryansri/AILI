@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { saveTimeZone } from "@/lib/post-actions";
+import { saveTimeZone } from "@/lib/client-actions";
 
 /** Tells AILI the browser's time zone, so a post scheduled "Tuesday 9am" from Claude or ChatGPT goes out at 9am here. */
 export function TimeZoneSync({ saved }: { saved: string | null }) {

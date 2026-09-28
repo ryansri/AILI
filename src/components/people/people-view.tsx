@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Archive, ArrowDown, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther } from "@/lib/actions";
+import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther } from "@/lib/client-actions";
 import { buildFunnel, notMessaged } from "@/lib/funnel";
 import { daysBetween, relativeTime } from "@/lib/next-step";
 import type { Template } from "@/lib/templates";
