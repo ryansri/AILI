@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import type { LinkedInPosting, PostView } from "@/lib/posts";
 import { articleHtml, articlePlainText, wordCount } from "@/lib/article-html";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "@/lib/linkedin-text";
-import { formatWhen, toWallInput } from "@/lib/time-zone";
+import { formatWhen, toWallInput, wallTimeToDate } from "@/lib/time-zone";
 import {
   deletePost,
   markArticlePublished,
@@ -75,15 +75,16 @@ function tabOf(p: PostView): Tab {
   return "scheduled";
 }
 
-function localZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
+/*
+ * Times show in the account's time zone (Settings), passed from the server, so
+ * the server and the browser print the same time.
+ */
+const ZoneContext = createContext("UTC");
 
-const when = (iso: string | undefined) => (iso ? formatWhen(new Date(iso), localZone()) : "");
+function useWhen() {
+  const zone = useContext(ZoneContext);
+  return (iso: string | undefined) => (iso ? formatWhen(new Date(iso), zone) : "");
+}
 
 interface Editing {
   id?: string;
@@ -100,6 +101,7 @@ export function PostsView({
   authorInitials,
   timerRunning,
   commentDelay,
+  timeZone,
   initialId,
 }: {
   posts: PostView[];
@@ -109,6 +111,8 @@ export function PostsView({
   timerRunning: boolean;
   /** Minutes between a post going live and its first comment. */
   commentDelay: number;
+  /** The account's time zone, e.g. Australia/Sydney. */
+  timeZone: string;
   initialId?: string;
 }) {
   const initial = posts.find((p) => p.id === initialId);
@@ -144,6 +148,7 @@ export function PostsView({
   }
 
   return (
+    <ZoneContext.Provider value={timeZone}>
     <div className="flex min-w-0 flex-1">
       <section aria-label="Posts" className="flex w-[400px] shrink-0 flex-col border-r">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b pr-3 pl-4">
@@ -284,10 +289,12 @@ export function PostsView({
         )}
       </section>
     </div>
+    </ZoneContext.Provider>
   );
 }
 
 function StatusChip({ post }: { post: PostView }) {
+  const when = useWhen();
   const base = "inline-flex h-5 items-center gap-1 rounded-full px-2 text-xs font-medium";
   if (post.kind === "article" && post.status !== "published") {
     return (
@@ -467,22 +474,23 @@ function Editor({ editing, commentDelay, onDone }: { editing: Editing; commentDe
   );
 }
 
-function defaultScheduleValue(post: PostView): string {
-  const zone = localZone();
+function defaultScheduleValue(post: PostView, zone: string): string {
   if (post.scheduledAt) return toWallInput(new Date(post.scheduledAt), zone);
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(9, 0, 0, 0);
-  return toWallInput(d, zone);
+  // Tomorrow at 9:00 in the account's time zone.
+  const tomorrow = toWallInput(new Date(Date.now() + 86400000), zone).slice(0, 10);
+  return `${tomorrow}T09:00`;
 }
 
 function SchedulePicker({ post, label, onDone }: { post: PostView; label: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(() => defaultScheduleValue(post));
+  const zone = useContext(ZoneContext);
+  const when = useWhen();
+  const [value, setValue] = useState(() => defaultScheduleValue(post, zone));
   const [pending, start] = useTransition();
   function save() {
-    // datetime-local is read in the browser's own time zone.
-    const at = new Date(value);
+    // The picker's time is read in the account's time zone, the one shown under it.
+    const at = wallTimeToDate(value, zone);
+    if (!at) return;
     start(async () => {
       try {
         await schedulePost(post.id, at.toISOString());
@@ -506,7 +514,7 @@ function SchedulePicker({ post, label, onDone }: { post: PostView; label: string
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="schedule-at">Publish on LinkedIn at</Label>
           <Input id="schedule-at" type="datetime-local" value={value} onChange={(e) => setValue(e.target.value)} />
-          <span className="text-xs text-muted-foreground">Your time ({localZone()}).</span>
+          <span className="text-xs text-muted-foreground">Your time ({zone.replace(/_/g, " ")}).</span>
         </div>
         <Button disabled={pending || !value} onClick={save}>
           {pending && <Loader2 className="animate-spin" />}
@@ -519,6 +527,7 @@ function SchedulePicker({ post, label, onDone }: { post: PostView; label: string
 
 /** The first comment under the preview: what it says and whether it is posted. */
 function FirstComment({ post, authorInitials, commentDelay }: { post: PostView; authorInitials: string; commentDelay: number }) {
+  const when = useWhen();
   const [pending, start] = useTransition();
   const state =
     post.commentStatus === "posted"
@@ -584,6 +593,7 @@ function Detail({
   onEdit: () => void;
   onMoved: (tab: Tab) => void;
 }) {
+  const when = useWhen();
   const [pending, start] = useTransition();
   const [confirm, setConfirm] = useState<"publish" | "delete" | null>(null);
   const presence = useHelperPresence({ poll: false });

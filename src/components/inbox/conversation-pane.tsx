@@ -33,6 +33,7 @@ import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
 
@@ -139,6 +140,8 @@ export function ConversationPane({
   onToggleDetails: () => void;
 }) {
   const { person, step } = row;
+  // Message times are the viewer's local time, so they are printed in the browser only.
+  const hydrated = useHydrated();
   // Someone in Other: readable and repliable, but not a lead, so no stage, tags or next step.
   const isLead = person.lead !== false;
   const [draft, setDraft] = useState(person.draft?.text ?? "");
@@ -305,8 +308,8 @@ export function ConversationPane({
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <ol className="flex flex-col px-8 py-6">
           {person.connectedAt && (
-            <li className="mb-4 text-center text-2xs text-muted-foreground" suppressHydrationWarning>
-              Connected {shortDate(new Date(person.connectedAt))}
+            <li className="mb-4 text-center text-2xs text-muted-foreground">
+              {hydrated ? `Connected ${shortDate(new Date(person.connectedAt))}` : "\u00a0"}
             </li>
           )}
           {messages.map((m, i) => {
@@ -325,8 +328,8 @@ export function ConversationPane({
                 className={cn("flex flex-col gap-1", mine ? "items-end" : "items-start", joinsPrev ? "mt-0.5" : "mt-5 first:mt-0")}
               >
                 {gap && (
-                  <div className="mb-2 w-full text-center text-2xs text-muted-foreground" suppressHydrationWarning>
-                    {stamp(m.sentAt)}
+                  <div className="mb-2 w-full text-center text-2xs text-muted-foreground">
+                    {hydrated ? stamp(m.sentAt) : "\u00a0"}
                   </div>
                 )}
                 <div className={cn("flex w-full items-end gap-2", mine && "flex-row-reverse")}>

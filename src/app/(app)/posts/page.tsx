@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { getWorkspace } from "@/lib/data";
 import { linkedinConfigured } from "@/lib/linkedin-posting";
-import { linkedInPostingOf, timerStatus, toPostView } from "@/lib/posts";
+import { linkedInPostingOf, timeZoneOf, timerStatus, toPostView } from "@/lib/posts";
 import { PostsView } from "@/components/posts/posts-view";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,7 @@ export default async function PostsPage({ searchParams }: PageProps<"/posts">) {
       authorInitials={workspace.initials}
       timerRunning={timer.running}
       commentDelay={workspace.firstCommentDelay}
+      timeZone={timeZoneOf(workspace)}
       initialId={typeof post === "string" ? post : undefined}
     />
   );
