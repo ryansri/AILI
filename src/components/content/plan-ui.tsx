@@ -1,7 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, Check, Clock3, Minus, Sparkles, UserRound } from "lucide-react";
+import {
+  AlignLeft,
+  BarChart3,
+  Building2,
+  Check,
+  Clock3,
+  FileText,
+  GalleryHorizontalEnd,
+  Hash,
+  Image as ImageIcon,
+  ListOrdered,
+  Minus,
+  Quote,
+  Sparkles,
+  UserRound,
+  Video,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatWhen } from "@/lib/time-zone";
@@ -84,6 +100,32 @@ export function ChannelBadge({ channel, short }: { channel: string; short?: bool
         <Icon className="size-2.5" strokeWidth={2.5} />
       </span>
       <span className="truncate">{short && page ? "Company" : channel}</span>
+    </span>
+  );
+}
+
+// Checked in order: "Carousel (PDF)" is a carousel, "Text + image" an image post.
+const FORMATS: [RegExp, typeof AlignLeft][] = [
+  [/carousel|pdf|document|slides?|deck/i, GalleryHorizontalEnd],
+  [/video|reel|clip/i, Video],
+  [/poll/i, BarChart3],
+  [/list|truths|tips|steps/i, ListOrdered],
+  [/quote/i, Quote],
+  [/stat|number|chart/i, Hash],
+  [/image|photo|picture|graphic|card|infographic|screenshot|teardown|meme/i, ImageIcon],
+  [/article|newsletter|blog/i, FileText],
+  [/text/i, AlignLeft],
+];
+
+/** The post's format as a small badge with an icon: Carousel, Listicle, Image, Text… as the plan names it. */
+export function FormatBadge({ format, kind }: { format: string; kind?: "post" | "article" }) {
+  const label = format || (kind === "article" ? "Article" : "");
+  if (!label) return null;
+  const Icon = FORMATS.find(([re]) => re.test(label))?.[1] ?? AlignLeft;
+  return (
+    <span className="inline-flex h-[22px] max-w-full items-center gap-1.5 truncate rounded-md border bg-background px-1.5 text-xs text-foreground/80" title={label}>
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="truncate">{label}</span>
     </span>
   );
 }

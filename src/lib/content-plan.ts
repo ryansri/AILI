@@ -4,7 +4,9 @@ import { db } from "./db";
 import { linkedInPostUrl } from "./linkedin-posting";
 import { timeZoneOf } from "./posts";
 import { fieldsFromNotes } from "./plan-import";
-import { entryState, localDay, needsYou, type ContentKind, type EntryPost, type EntryState, type PlanClock } from "./plan";
+import { isBareRow } from "./plan-store";
+import { toWallInput } from "./time-zone";
+import { entryState, localDay, needsYou, strayPairs, type ContentKind, type EntryPost, type EntryState, type PlanClock } from "./plan";
 
 /*
  * The content plan as the pages and Claude read it: every row with its status
@@ -110,6 +112,34 @@ async function liftNoteFields(workspaceId: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * The same post twice: a bare row made for a post before the plan came in,
+ * and the planned row for that day and time. The post moves to the planned
+ * row and the bare one goes. True when anything changed.
+ */
+async function mergeStrays(rows: (PlanEntry & { post: Post | null })[], timeZone: string): Promise<boolean> {
+  const pairs = strayPairs(
+    rows.map((r) => {
+      const at = r.post?.scheduledAt ?? r.post?.publishedAt;
+      return {
+        id: r.id,
+        day: r.day ?? undefined,
+        time: r.time ?? undefined,
+        kind: (r.kind === "article" ? "article" : "post") as ContentKind,
+        bare: isBareRow(r),
+        open: !r.postId && !r.skipped && !r.postedAt,
+        postId: r.postId ?? undefined,
+        postAt: at ? toWallInput(at, timeZone) : undefined,
+      };
+    }),
+  );
+  if (pairs.length === 0) return false;
+  await db.$transaction(
+    pairs.flatMap((p) => [db.planEntry.delete({ where: { id: p.remove } }), db.planEntry.update({ where: { id: p.fill }, data: { postId: p.postId } })]),
+  );
+  return true;
+}
+
 export async function loadPlan(workspace: Workspace): Promise<PlanData> {
   const clock = clockFor(workspace);
   const read = () =>
@@ -120,7 +150,8 @@ export async function loadPlan(workspace: Workspace): Promise<PlanData> {
     });
   // Side by side, so a plan with nothing to lift costs no extra round trip.
   const [lifted, first] = await Promise.all([liftNoteFields(workspace.id), read()]);
-  const rows = lifted ? await read() : first;
+  let rows = lifted ? await read() : first;
+  if (await mergeStrays(rows, clock.timeZone)) rows = await read();
   return { timeZone: clock.timeZone, today: clock.today, warnDays: clock.warnDays, entries: rows.map((r) => toEntryView(r, clock)).sort(byDay) };
 }
 

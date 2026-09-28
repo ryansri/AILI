@@ -264,3 +264,40 @@ export function rhythmDays(from: string, weeks: number, weekdays: number[], ever
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// One post, one row
+// ---------------------------------------------------------------------------
+
+export interface MatchRow {
+  id: string;
+  day?: string;
+  time?: string;
+  kind: ContentKind;
+  /** Nothing of its own besides a topic: made for a post, not planned (no pillar, channel, hook, notes…). */
+  bare: boolean;
+  /** Not written, skipped or posted: free for a post to fill. */
+  open: boolean;
+  postId?: string;
+  /** When its post goes or went out, local "YYYY-MM-DDTHH:MM". */
+  postAt?: string;
+}
+
+/**
+ * Rows that are the same post twice: a bare row made for a post (e.g. before
+ * the sheet came in) and an open planned row on the same day and time, of the
+ * same kind. The post belongs to the planned row; the bare one goes.
+ */
+export function strayPairs(rows: MatchRow[]): { remove: string; fill: string; postId: string }[] {
+  const out: { remove: string; fill: string; postId: string }[] = [];
+  const taken = new Set<string>();
+  for (const a of rows) {
+    if (!a.bare || !a.postId || !a.postAt) continue;
+    const [day, time] = a.postAt.split("T");
+    const b = rows.find((r) => r.id !== a.id && r.open && !r.postId && !taken.has(r.id) && r.kind === a.kind && r.day === day && r.time === time);
+    if (!b) continue;
+    taken.add(b.id);
+    out.push({ remove: a.id, fill: b.id, postId: a.postId });
+  }
+  return out;
+}

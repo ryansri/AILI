@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChannelBadge, PillarChip, StatusCircle } from "./plan-ui";
+import { ChannelBadge, FormatBadge, PillarChip, StatusCircle } from "./plan-ui";
 
 /*
  * Content, Plan, Table: the plan as a sheet, like Notion. Pick the columns,
@@ -178,6 +178,9 @@ function Cell({
       break;
     case "kind":
       content = entry.kind === "article" ? <span className="font-semibold text-indigo-600">Article</span> : "Post";
+      break;
+    case "format":
+      content = <FormatBadge format={entry.format} />;
       break;
     case "pillar":
       content = <PillarChip pillar={entry.pillar} colour={colours[entry.pillar.trim()]} />;

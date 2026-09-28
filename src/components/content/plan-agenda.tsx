@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { EntryView } from "@/lib/content-plan";
 import { dayLabel, timeLabel } from "@/lib/plan";
 import { Button } from "@/components/ui/button";
-import { ChannelBadge, scheduledTime, StatusCircle, WriteMenu } from "./plan-ui";
+import { ChannelBadge, FormatBadge, scheduledTime, StatusCircle, WriteMenu } from "./plan-ui";
 
 /*
  * Content, Plan, Agenda: each day once, with how many posts and how many are
@@ -69,7 +69,7 @@ function Row({
   onSelect: () => void;
 }) {
   const done = entry.status === "posted" || (entry.day !== undefined && entry.day < today && entry.status !== "missed");
-  const meta = [entry.vertical, entry.funnel, entry.format].filter(Boolean);
+  const meta = [entry.vertical, entry.funnel].filter(Boolean);
   const time = entry.time ? timeLabel(entry.time) : scheduledTime(entry, timeZone);
   return (
     <div
@@ -79,14 +79,17 @@ function Row({
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect())}
       aria-current={selected || undefined}
       className={cn(
-        "grid cursor-pointer grid-cols-[18px_64px_128px_minmax(0,1fr)_auto] items-start gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50",
+        "grid cursor-pointer grid-cols-[18px_64px_148px_minmax(0,1fr)_auto] items-start gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50",
         selected && "bg-muted",
       )}
     >
       <StatusCircle entry={entry} className="mt-0.5" />
       <span className="pt-0.5 text-xs text-muted-foreground tabular-nums">{time || "Any time"}</span>
       <span className="min-w-0">
-        <ChannelBadge channel={entry.channel} />
+        <span className="flex flex-col items-start gap-1">
+          <ChannelBadge channel={entry.channel} />
+          <FormatBadge format={entry.format} kind={entry.kind} />
+        </span>
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span
@@ -98,7 +101,7 @@ function Row({
           )}
         >
           {entry.topic || "No topic yet"}
-          {entry.kind === "article" && <span className="ml-2 text-2xs font-bold tracking-wide text-indigo-600">ARTICLE</span>}
+          {entry.kind === "article" && entry.format && <span className="ml-2 text-2xs font-bold tracking-wide text-indigo-600">ARTICLE</span>}
         </span>
         {entry.hook && !done && <span className="truncate text-xs text-muted-foreground">&ldquo;{entry.hook}&rdquo;</span>}
         {(entry.pillar || meta.length > 0) && (

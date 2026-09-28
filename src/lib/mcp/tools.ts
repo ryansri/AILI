@@ -8,7 +8,7 @@ import { checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, 
 import { formatWhen, offsetLabel, parseWhen } from "../time-zone";
 import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel } from "../plan";
 import { clockFor, loadPlan, type EntryView } from "../content-plan";
-import { addEntries, followSchedule, linkPost, moveEntry, ownEntry, postedAtFor, updateEntry, type EntryInput } from "../plan-store";
+import { addEntries, fillMatchingRow, followSchedule, linkPost, moveEntry, ownEntry, postedAtFor, updateEntry, type EntryInput } from "../plan-store";
 import { stageLabel } from "../types";
 
 /*
@@ -343,6 +343,7 @@ async function applyTiming(ctx: ToolContext, postId: string, publishNow: boolean
   }
   if (at) {
     await db.post.update({ where: { id: postId }, data: { status: "scheduled", scheduledAt: at, error: null } });
+    await fillMatchingRow(ctx.workspaceId, postId, at, tz);
     await followSchedule(postId, localDay(at, tz));
     const warn =
       !linkedin.connected || linkedin.expired

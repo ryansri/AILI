@@ -215,3 +215,30 @@ export function postedAtFor(entry: { day: string | null; time: string | null }, 
   if (entry.day && entry.day < today) return entryWhen(entry, timeZone) ?? new Date();
   return new Date();
 }
+
+/** A row with nothing of its own but a topic: made for a post, not planned. */
+export function isBareRow(r: { pillar: string; channel: string; hook: string; goal: string; notes: string; vertical: string; funnel: string; format: string }): boolean {
+  return !(r.pillar || r.channel || r.hook || r.goal || r.notes || r.vertical || r.funnel || r.format);
+}
+
+/**
+ * A post scheduled for the same day and time as an open planned row of its
+ * kind fills that row. If the post already had a bare row of its own (made
+ * before the plan came in), that one goes, so the post shows once.
+ */
+export async function fillMatchingRow(workspaceId: string, postId: string, at: Date, timeZone: string): Promise<boolean> {
+  const post = await db.post.findFirst({ where: { id: postId, workspaceId }, include: { planEntry: true } });
+  if (!post) return false;
+  if (post.planEntry && !isBareRow(post.planEntry)) return false;
+  const wall = toWallInput(at, timeZone);
+  const row = await db.planEntry.findFirst({
+    where: { workspaceId, day: wall.slice(0, 10), time: wall.slice(11, 16), kind: post.kind, postId: null, skipped: false, postedAt: null },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!row) return false;
+  await db.$transaction([
+    ...(post.planEntry ? [db.planEntry.delete({ where: { id: post.planEntry.id } })] : []),
+    db.planEntry.update({ where: { id: row.id }, data: { postId } }),
+  ]);
+  return true;
+}

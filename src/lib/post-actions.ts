@@ -9,7 +9,7 @@ import { checkCommentText, checkPostText, checkScheduleTime, postFirstComment, p
 import { FIRST_COMMENT_DELAYS } from "./linkedin-text";
 import { validTimeZone } from "./time-zone";
 import { clockFor } from "./content-plan";
-import { followSchedule, linkPost } from "./plan-store";
+import { fillMatchingRow, followSchedule, linkPost } from "./plan-store";
 import { localDay } from "./plan";
 
 /*
@@ -79,8 +79,11 @@ async function schedulePostImpl(postId: string, at: string) {
   checkScheduleTime(when);
   checkPostText(post.body);
   await db.post.update({ where: { id: post.id }, data: { status: "scheduled", scheduledAt: when, error: null } });
-  // Its plan row, if it has one, moves to the day it now goes out.
-  await followSchedule(post.id, localDay(when, clockFor(workspace).timeZone));
+  // It fills the plan row planned for that day and time, if there is one;
+  // otherwise its own plan row, if it has one, moves to the day it now goes out.
+  const { timeZone } = clockFor(workspace);
+  await fillMatchingRow(workspace.id, post.id, when, timeZone);
+  await followSchedule(post.id, localDay(when, timeZone));
   done();
 }
 

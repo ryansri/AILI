@@ -12,6 +12,7 @@ import {
   realDay,
   rhythmDays,
   statusLabel,
+  strayPairs,
   weekday,
   type EntryFacts,
   type EntryPost,
@@ -140,5 +141,39 @@ describe("the plan as a whole", () => {
   it("turns a weekly rhythm into days", () => {
     expect(rhythmDays("2026-09-30", 2, [2, 4])).toEqual(["2026-10-01", "2026-10-06", "2026-10-08"]);
     expect(rhythmDays("2026-09-28", 4, [5], 2)).toEqual(["2026-10-02", "2026-10-16"]);
+  });
+});
+
+describe("the same post twice", () => {
+  const base = { kind: "post" as const, bare: false, open: false };
+  it("moves a post from its bare row to the planned row at the same day and time", () => {
+    const rows = [
+      { ...base, id: "bare", day: "2026-09-29", bare: true, postId: "p1", postAt: "2026-09-29T07:45" },
+      { ...base, id: "sheet", day: "2026-09-29", time: "07:45", open: true },
+      { ...base, id: "page", day: "2026-09-29", time: "12:15", open: true },
+    ];
+    expect(strayPairs(rows)).toEqual([{ remove: "bare", fill: "sheet", postId: "p1" }]);
+  });
+
+  it("leaves rows alone when the time, the kind or the planned row do not match", () => {
+    expect(
+      strayPairs([
+        { ...base, id: "bare", day: "2026-09-29", bare: true, postId: "p1", postAt: "2026-09-29T09:00" },
+        { ...base, id: "sheet", day: "2026-09-29", time: "07:45", open: true },
+      ]),
+    ).toEqual([]);
+    expect(
+      strayPairs([
+        { ...base, id: "bare", bare: true, postId: "p1", postAt: "2026-09-29T07:45" },
+        { ...base, id: "art", kind: "article", day: "2026-09-29", time: "07:45", open: true },
+      ]),
+    ).toEqual([]);
+    // A planned row of its own (with a pillar and so on) is never removed.
+    expect(
+      strayPairs([
+        { ...base, id: "mine", day: "2026-09-29", time: "07:45", postId: "p1", postAt: "2026-09-29T07:45" },
+        { ...base, id: "sheet", day: "2026-09-29", time: "07:45", open: true },
+      ]),
+    ).toEqual([]);
   });
 });
