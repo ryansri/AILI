@@ -3,6 +3,7 @@ import type { PlanEntry, Post, Workspace } from "@prisma/client";
 import { db } from "./db";
 import { linkedInPostUrl } from "./linkedin-posting";
 import { timeZoneOf } from "./posts";
+import { fieldsFromNotes } from "./plan-import";
 import { entryState, localDay, needsYou, type ContentKind, type EntryPost, type EntryState, type PlanClock } from "./plan";
 
 /*
@@ -20,6 +21,10 @@ export interface EntryView extends EntryState {
   goal: string;
   hook: string;
   notes: string;
+  channel: string;
+  funnel: string;
+  vertical: string;
+  format: string;
   source: string;
   skipped: boolean;
   postedAt?: string;
@@ -69,6 +74,10 @@ export function toEntryView(row: PlanEntry & { post: Post | null }, clock: PlanC
     goal: row.goal,
     hook: row.hook,
     notes: row.notes,
+    channel: row.channel,
+    funnel: row.funnel,
+    vertical: row.vertical,
+    format: row.format,
     source: row.source,
   };
 }
@@ -79,13 +88,39 @@ export function byDay(a: { day?: string; time?: string }, b: { day?: string; tim
   return a.day.localeCompare(b.day) || (a.time ?? "").localeCompare(b.time ?? "");
 }
 
+/**
+ * Rows imported before Channel, Funnel, Vertical and Format were fields kept
+ * them in their notes: move them into the fields. Runs when the plan loads and
+ * finds such rows; after that there are none.
+ */
+async function liftNoteFields(workspaceId: string): Promise<boolean> {
+  const rows = await db.planEntry.findMany({
+    where: {
+      workspaceId,
+      channel: "",
+      funnel: "",
+      vertical: "",
+      format: "",
+      OR: ["Channel: ", "Funnel: ", "Vertical: ", "Format: "].map((k) => ({ notes: { contains: k } })),
+    },
+    select: { id: true, notes: true },
+  });
+  if (rows.length === 0) return false;
+  await db.$transaction(rows.map((r) => db.planEntry.update({ where: { id: r.id }, data: fieldsFromNotes(r.notes) })));
+  return true;
+}
+
 export async function loadPlan(workspace: Workspace): Promise<PlanData> {
   const clock = clockFor(workspace);
-  const rows = await db.planEntry.findMany({
-    where: { workspaceId: workspace.id },
-    include: { post: true },
-    orderBy: [{ day: "asc" }, { time: "asc" }, { createdAt: "asc" }],
-  });
+  const read = () =>
+    db.planEntry.findMany({
+      where: { workspaceId: workspace.id },
+      include: { post: true },
+      orderBy: [{ day: "asc" }, { time: "asc" }, { createdAt: "asc" }],
+    });
+  // Side by side, so a plan with nothing to lift costs no extra round trip.
+  const [lifted, first] = await Promise.all([liftNoteFields(workspace.id), read()]);
+  const rows = lifted ? await read() : first;
   return { timeZone: clock.timeZone, today: clock.today, warnDays: clock.warnDays, entries: rows.map((r) => toEntryView(r, clock)).sort(byDay) };
 }
 

@@ -549,7 +549,11 @@ function describeRow(r: EntryView, tz: string): string {
     ? ` · ${r.kind === "article" ? "article" : "post"} id: ${r.post.id}${r.post.status === "scheduled" && r.post.scheduledAt ? `, goes out ${formatWhen(new Date(r.post.scheduledAt), tz)}` : ""}`
     : "";
   const extra = [
+    r.channel && `channel: ${r.channel}`,
     r.pillar && `pillar: ${r.pillar}`,
+    r.vertical && `vertical: ${r.vertical}`,
+    r.funnel && `funnel: ${r.funnel}`,
+    r.format && `format: ${r.format}`,
     r.goal && `goal: ${r.goal}`,
     r.hook && `hook: ${clip(oneLine(r.hook), 140)}`,
     r.notes && `notes: ${clip(oneLine(r.notes), 160)}`,
@@ -627,6 +631,10 @@ const rowProperties = {
   goal: { type: "string", description: "e.g. Reach, Trust, Leads." },
   hook: { type: "string", description: "The opening line or angle." },
   notes: { type: "string" },
+  channel: { type: "string", description: "Where it goes out, e.g. Personal or Company page. AILI publishes to the user's own profile only." },
+  funnel: { type: "string", description: "e.g. TOFU, MOFU, BOFU." },
+  vertical: { type: "string", description: "The audience or industry, e.g. Accounting." },
+  format: { type: "string", description: "e.g. Text, Carousel (PDF), Quote card, Poll." },
 };
 
 const addPlanRows: Tool = {
@@ -662,6 +670,10 @@ const addPlanRows: Tool = {
       goal: text(r.goal),
       hook: text(r.hook),
       notes: text(r.notes),
+      channel: text(r.channel),
+      funnel: text(r.funnel),
+      vertical: text(r.vertical),
+      format: text(r.format),
     }));
     const w = await workspace(ctx);
     const clock = clockFor(w);
@@ -702,7 +714,9 @@ const updatePlanRow: Tool = {
       done.push("Deleted from the plan.");
     } else {
       const patch: EntryInput = {};
-      for (const k of ["topic", "pillar", "goal", "hook", "notes", "time"] as const) if (typeof args[k] === "string") patch[k] = args[k] as string;
+      for (const k of ["topic", "pillar", "goal", "hook", "notes", "time", "channel", "funnel", "vertical", "format"] as const) {
+        if (typeof args[k] === "string") patch[k] = args[k] as string;
+      }
       if (typeof args.type === "string") patch.kind = args.type;
       if (Object.keys(patch).length) {
         await updateEntry(ctx.workspaceId, row.id, patch).catch(toolError);

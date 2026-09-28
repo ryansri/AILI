@@ -1,7 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { Building2, Check, Clock3, Minus, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { formatWhen } from "@/lib/time-zone";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { EntryView } from "@/lib/content-plan";
 import { dayLabel, statusLabel, timeLabel, type EntryStatus, type PillarColour } from "@/lib/plan";
 
@@ -21,6 +26,96 @@ export const STATUS_DOT: Record<EntryStatus, string> = {
 
 export function StatusDot({ status, className }: { status: EntryStatus; className?: string }) {
   return <i aria-hidden className={cn("inline-block size-2.5 shrink-0 rounded-full", STATUS_DOT[status], className)} />;
+}
+
+/**
+ * The status as a circle, read before the words: empty = to write, amber ring
+ * = due soon, half amber = written, blue clock = scheduled, green tick =
+ * posted, red ring = missed, grey dash = skipped.
+ */
+export function StatusCircle({ entry, className }: { entry: Pick<EntryView, "status" | "due">; className?: string }) {
+  const base = "flex size-[18px] shrink-0 items-center justify-center rounded-full";
+  switch (entry.status) {
+    case "posted":
+      return (
+        <span aria-hidden className={cn(base, "bg-emerald-500 text-white", className)}>
+          <Check className="size-3" strokeWidth={3} />
+        </span>
+      );
+    case "scheduled":
+      return (
+        <span aria-hidden className={cn(base, "bg-blue-500 text-white", className)}>
+          <Clock3 className="size-3" strokeWidth={2.5} />
+        </span>
+      );
+    case "written":
+      return <span aria-hidden className={cn(base, "border-2 border-amber-500 bg-[linear-gradient(90deg,var(--color-amber-500)_50%,transparent_50%)]", className)} />;
+    case "missed":
+      return <span aria-hidden className={cn(base, "border-2 border-red-500", className)} />;
+    case "skipped":
+      return (
+        <span aria-hidden className={cn(base, "bg-stone-200 text-stone-500", className)}>
+          <Minus className="size-3" strokeWidth={3} />
+        </span>
+      );
+    default:
+      return <span aria-hidden className={cn(base, "border-2", entry.due ? "border-amber-500" : "border-stone-300", className)} />;
+  }
+}
+
+/** A company or brand page, as opposed to the user's own profile. */
+export function isPageChannel(channel: string): boolean {
+  return /company|page|brand|business|org/i.test(channel);
+}
+
+/** Personal or Company page: a small badge, so two posts on one day are told apart. */
+export function ChannelBadge({ channel, short }: { channel: string; short?: boolean }) {
+  if (!channel) return null;
+  const page = isPageChannel(channel);
+  const Icon = page ? Building2 : UserRound;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-[22px] max-w-full items-center gap-1.5 truncate rounded-full pr-2 pl-1 text-xs",
+        page ? "bg-blue-50 text-blue-700" : "bg-muted text-foreground/75",
+      )}
+    >
+      <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full text-white", page ? "rounded-[4px] bg-[#0a66c2]" : "bg-foreground")}>
+        <Icon className="size-2.5" strokeWidth={2.5} />
+      </span>
+      <span className="truncate">{short && page ? "Company" : channel}</span>
+    </span>
+  );
+}
+
+/** "7:00 am": when a row's post is scheduled, in the account's time zone. */
+export function scheduledTime(entry: EntryView, timeZone: string): string {
+  return entry.post?.scheduledAt ? (formatWhen(new Date(entry.post.scheduledAt), timeZone).split(", ")[1] ?? "") : "";
+}
+
+/** Write it: with Claude, or by hand in Posts. */
+export function WriteMenu({ entry, size = "xs" }: { entry: EntryView; size?: "xs" | "sm" }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size={size} className="rounded-full" onClick={(e) => e.stopPropagation()}>
+          <Sparkles />
+          Write it
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onSelect={() => askClaudeFor(entry)}>
+          <Sparkles />
+          Write with Claude
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={entry.post ? `/posts?tab=posts&post=${entry.post.id}` : `/posts?tab=posts&new=${entry.kind}&entry=${entry.id}`}>
+            Write it myself
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /** The status in words, with its dot; amber when it needs the user, red when missed. */
@@ -74,7 +169,11 @@ export function askClaudeFor(entry: EntryView) {
   const what = entry.kind === "article" ? "LinkedIn article" : "LinkedIn post";
   const details = [
     `Topic: ${entry.topic || "(pick one that fits my plan)"}`,
+    entry.channel && `Channel: ${entry.channel}`,
     entry.pillar && `Pillar: ${entry.pillar}`,
+    entry.vertical && `Vertical: ${entry.vertical}`,
+    entry.funnel && `Funnel: ${entry.funnel}`,
+    entry.format && `Format: ${entry.format}`,
     entry.goal && `Goal: ${entry.goal}`,
     entry.hook && `Hook: ${entry.hook}`,
     entry.notes && `Notes: ${entry.notes}`,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
-import { buildEntries, channelValues, detectOrder, guessFields, guessTableFields, parseDay, parseKind, parseTable, parseTime, planScore, templateCsv, tidy } from "./plan-import";
+import { buildEntries, channelValues, detectOrder, fieldsFromNotes, guessFields, guessTableFields, parseDay, parseKind, parseTable, parseTime, planScore, templateCsv, tidy } from "./plan-import";
 import { readXlsx, readXlsxSheets } from "./xlsx";
 
 const TODAY = "2026-09-28";
@@ -103,9 +103,9 @@ describe("turning rows into plan rows", () => {
     ];
     const r = buildEntries(table, ["day", "kind", "pillar", "topic", "note", "status"], "dmy", TODAY);
     expect(r.entries).toEqual([
-      { day: "2026-10-06", time: undefined, kind: "post", topic: "Follow-ups", pillar: "Sales", goal: "", hook: "", notes: "Format: Carousel\nOwner: Ryan", text: "", posted: true },
-      { day: undefined, time: undefined, kind: "article", topic: "Case study", pillar: "Wins", goal: "", hook: "", notes: "Date in the sheet: TBC", text: "", posted: false },
-      { day: undefined, time: undefined, kind: "post", topic: "Someday idea", pillar: "", goal: "", hook: "", notes: "", text: "", posted: false },
+      { day: "2026-10-06", time: undefined, kind: "post", topic: "Follow-ups", pillar: "Sales", goal: "", hook: "", notes: "Owner: Ryan", text: "", posted: true, channel: "", funnel: "", vertical: "", format: "Carousel" },
+      { day: undefined, time: undefined, kind: "article", topic: "Case study", pillar: "Wins", goal: "", hook: "", notes: "Date in the sheet: TBC", text: "", posted: false, channel: "", funnel: "", vertical: "", format: "" },
+      { day: undefined, time: undefined, kind: "post", topic: "Someday idea", pillar: "", goal: "", hook: "", notes: "", text: "", posted: false, channel: "", funnel: "", vertical: "", format: "" },
     ]);
     expect(r.badDates).toEqual([2]);
     expect(r.undated).toBe(2);
@@ -228,10 +228,27 @@ describe("status and channel columns", () => {
       { value: "Company page", count: 1 },
     ]);
     const r = buildEntries(table, fields, "dmy", TODAY, { leaveOut: ["Company page"] });
-    expect(r.entries.map((e) => [e.day, e.time, e.topic, e.posted, e.notes])).toEqual([
-      ["2026-09-28", "07:45", "Posted one", true, "Log numbers\nChannel: Personal"],
-      ["2026-09-29", "07:45", "Planned one", false, "Channel: Personal"],
+    expect(r.entries.map((e) => [e.day, e.time, e.topic, e.posted, e.notes, e.channel])).toEqual([
+      ["2026-09-28", "07:45", "Posted one", true, "Log numbers", "Personal"],
+      ["2026-09-29", "07:45", "Planned one", false, "", "Personal"],
     ]);
     expect([r.posted, r.leftOut]).toEqual([1, 1]);
+  });
+});
+
+describe("rows imported before channel, funnel, vertical and format were fields", () => {
+  it("lifts them out of the notes and keeps the rest", () => {
+    expect(fieldsFromNotes("POSTED 28 Sep\nChannel: Personal\nPhase: 1. Name the pain\nFunnel: TOFU\nVertical: All three\nFormat: Carousel (PDF)")).toEqual({
+      channel: "Personal",
+      funnel: "TOFU",
+      vertical: "All three",
+      format: "Carousel (PDF)",
+      notes: "POSTED 28 Sep\nPhase: 1. Name the pain",
+    });
+    expect(fieldsFromNotes("Just a note")).toEqual({ channel: "", funnel: "", vertical: "", format: "", notes: "Just a note" });
+  });
+
+  it("guesses funnel and vertical columns", () => {
+    expect(guessFields(["Funnel", "Vertical", "Industry"])).toEqual(["funnel", "vertical", "note"]);
   });
 });

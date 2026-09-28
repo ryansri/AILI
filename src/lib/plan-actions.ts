@@ -90,6 +90,25 @@ async function deleteEntryImpl(id: string) {
   done();
 }
 
+/** Ticked rows in the table: skip them (or not). Posted rows are left as they are. */
+async function skipEntriesImpl(ids: string[], skipped: boolean) {
+  const workspace = await getWorkspace();
+  const { count } = await db.planEntry.updateMany({
+    where: { id: { in: ids.slice(0, 500) }, workspaceId: workspace.id, postedAt: null },
+    data: { skipped },
+  });
+  done();
+  return count;
+}
+
+/** Ticked rows in the table go; their posts and articles stay in Posts. */
+async function deleteEntriesImpl(ids: string[]) {
+  const workspace = await getWorkspace();
+  const { count } = await db.planEntry.deleteMany({ where: { id: { in: ids.slice(0, 500) }, workspaceId: workspace.id } });
+  done();
+  return count;
+}
+
 /** The whole plan goes; posts and articles stay. */
 async function deletePlanImpl() {
   const workspace = await getWorkspace();
@@ -176,6 +195,14 @@ export async function markEntryPosted(...args: Parameters<typeof markEntryPosted
 
 export async function deleteEntry(...args: Parameters<typeof deleteEntryImpl>) {
   return run(() => deleteEntryImpl(...args));
+}
+
+export async function skipEntries(...args: Parameters<typeof skipEntriesImpl>) {
+  return run(() => skipEntriesImpl(...args));
+}
+
+export async function deleteEntries(...args: Parameters<typeof deleteEntriesImpl>) {
+  return run(() => deleteEntriesImpl(...args));
 }
 
 export async function deletePlan(...args: Parameters<typeof deletePlanImpl>) {

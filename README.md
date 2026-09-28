@@ -157,7 +157,11 @@ with the extension (it checks in every minute).
 per post or article: a day and a topic, plus pillar, goal, hook and notes if
 you have them. Bring it in from Excel (.xlsx) or CSV, paste rows straight from
 a sheet, or ask Claude to add them (add_plan_rows); AILI guesses what each
-column is and you check. A blank template is under •••. Each row's status
+column is and you check. A blank template is under •••. Three views: **Agenda** (each day once, status
+first, Personal or Company page on every post, the hook in grey, and the
+next step on the row), **Table** (like the sheet: pick columns, click a cell
+to change it, tick rows to skip or delete several) and **Calendar**. When a
+plan mixes channels, one tap shows just one. Each row's status
 comes from its post, so nobody updates a status column: planned, written,
 scheduled, posted, or missed when its day passes with nothing out. Skip a row
 to take it out of the count; Mark as posted covers posts put up straight on

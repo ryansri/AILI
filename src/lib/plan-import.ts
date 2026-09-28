@@ -22,6 +22,10 @@ export type Field =
   | "status"
   /** Personal profile, company page…: the user picks which to bring in. */
   | "channel"
+  /** TOFU, MOFU, BOFU. */
+  | "funnel"
+  /** The audience or industry, e.g. Accounting. */
+  | "vertical"
   /** Kept on the row as a note, "Heading: value". */
   | "note"
   | "skip";
@@ -38,12 +42,14 @@ export const FIELD_LABEL: Record<Field, string> = {
   text: "Post text",
   status: "Status (posted ones)",
   channel: "Channel",
+  funnel: "Funnel",
+  vertical: "Vertical",
   note: "Keep as a note",
   skip: "Don't import",
 };
 
 /** Fields a sheet can have one column of. */
-export const SINGLE_FIELDS: Field[] = ["day", "time", "kind", "topic", "pillar", "goal", "hook", "notes", "text", "status", "channel"];
+export const SINGLE_FIELDS: Field[] = ["day", "time", "kind", "topic", "pillar", "goal", "hook", "notes", "text", "status", "channel", "funnel", "vertical"];
 
 // Checked in order: the first match wins, so "Content pillar" is a pillar, not post text.
 const GUESSES: [Field, RegExp][] = [
@@ -55,6 +61,8 @@ const GUESSES: [Field, RegExp][] = [
   ["pillar", /pillar|theme|category|bucket|series|topic ?area|content ?type ?pillar/i],
   ["kind", /^(type|kind|format|content ?type|post ?type|medium|channel ?type)$/i],
   ["channel", /^(channel|account|profile|page|platform|network|where)$/i],
+  ["funnel", /^(funnel|funnel ?stage|stage of funnel|awareness|buyer ?stage|tofu\/mofu\/bofu)$/i],
+  ["vertical", /^(vertical|industry|audience|segment|niche|persona|icp|market|sector)$/i],
   ["time", /^(time|post ?time|publish ?time|hour|time ?\(.*\))$/i],
   ["day", /date|^day$|publish|go ?live|when|schedule|post ?day/i],
   ["goal", /goal|cta|call to action|objective|purpose|intent|aim/i],
@@ -347,6 +355,11 @@ export interface ImportEntry {
   text: string;
   /** The sheet says it went out already (Status: Published, Posted, Done…). */
   posted: boolean;
+  channel: string;
+  funnel: string;
+  vertical: string;
+  /** The Type column as the sheet says it: Text, Carousel (PDF)… */
+  format: string;
 }
 
 export interface ImportResult {
@@ -396,6 +409,8 @@ export function buildEntries(
     text: at("text"),
     status: at("status"),
     channel: at("channel"),
+    funnel: at("funnel"),
+    vertical: at("vertical"),
   };
   const noteCols = fields.map((f, i) => (f === "note" ? i : -1)).filter((i) => i >= 0);
   const get = (r: string[], i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
@@ -419,13 +434,12 @@ export function buildEntries(
     const day = rawDay ? parseDay(rawDay, order, today) : null;
     if (rawDay && !day) badDates.push(n + 1);
     if (!day) undated++;
-    const { kind, format } = parseKind(get(r, col.kind));
+    const rawKind = get(r, col.kind);
+    const { kind } = parseKind(rawKind);
     const isPosted = POSTED_RE.test(get(r, col.status));
     if (isPosted) posted++;
     const notes = [
       get(r, col.notes),
-      channel ? `Channel: ${channel}` : "",
-      format ? `Format: ${format}` : "",
       rawDay && !day ? `Date in the sheet: ${rawDay}` : "",
       ...noteCols.map((i) => (get(r, i) ? `${headings[i] || "Note"}: ${get(r, i)}` : "")),
     ]
@@ -442,6 +456,11 @@ export function buildEntries(
       notes: notes.slice(0, 2000),
       text,
       posted: isPosted,
+      channel: channel.slice(0, 60),
+      funnel: get(r, col.funnel).slice(0, 30),
+      vertical: get(r, col.vertical).slice(0, 60),
+      // "Post" or "Article" alone says nothing the type does not.
+      format: /^(post|article)$/i.test(rawKind) ? "" : rawKind.slice(0, 60),
     });
   });
   return { entries, badDates, undated, posted, leftOut };
@@ -463,4 +482,22 @@ export function templateCsv(today: string): string {
 
 export function csvCell(v: string): string {
   return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+/**
+ * Channel, Funnel, Vertical and Format lines out of a row's notes, for rows
+ * imported before those were fields ("Channel: Personal" and so on). The
+ * rest of the notes stay as they were.
+ */
+export function fieldsFromNotes(notes: string): { channel: string; funnel: string; vertical: string; format: string; notes: string } {
+  const out = { channel: "", funnel: "", vertical: "", format: "", notes: "" };
+  const keep: string[] = [];
+  for (const line of notes.split("\n")) {
+    const m = line.match(/^(Channel|Funnel|Vertical|Format): (.+)$/);
+    const key = m?.[1].toLowerCase() as "channel" | "funnel" | "vertical" | "format" | undefined;
+    if (m && key && !out[key]) out[key] = m[2].trim().slice(0, 60);
+    else keep.push(line);
+  }
+  out.notes = keep.join("\n").trim();
+  return out;
 }

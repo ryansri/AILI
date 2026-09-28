@@ -13,6 +13,7 @@ import {
   List,
   MoreHorizontal,
   Repeat,
+  Table2,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -22,7 +23,6 @@ import type { EntryView, PlanData } from "@/lib/content-plan";
 import {
   addDays,
   countStatuses,
-  daysBetween,
   dayLabel,
   mondayOf,
   needsYou,
@@ -31,7 +31,6 @@ import {
   pillarColours,
   planSpan,
   statusLabel,
-  timeLabel,
   type PillarColour,
 } from "@/lib/plan";
 import { csvCell, templateCsv } from "@/lib/plan-import";
@@ -47,9 +46,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntryPanel } from "./entry-panel";
 import { ImportPlanDialog } from "./import-plan-dialog";
 import { AddRowDialog, MoveDialog, RhythmDialog } from "./plan-dialogs";
+import { PlanAgenda } from "./plan-agenda";
 import { PlanCalendar } from "./plan-calendar";
+import { PlanTable } from "./plan-table";
 import { PlanStart } from "./plan-start";
-import { downloadText, PILLAR_CLASS, PillarChip, StatusDot, StatusText } from "./plan-ui";
+import { downloadText, PILLAR_CLASS, StatusDot } from "./plan-ui";
 
 /*
  * Content, Plan: the user's content plan, row by row. On top, how far along
@@ -57,6 +58,7 @@ import { downloadText, PILLAR_CLASS, PillarChip, StatusDot, StatusText } from ".
  * or a month calendar. Click a row to open it on the right.
  */
 
+type View = "agenda" | "table" | "calendar";
 type Range = "week" | "next30" | "next90" | "past" | "all";
 const RANGES: { key: Range; label: string }[] = [
   { key: "week", label: "This week" },
@@ -81,75 +83,16 @@ function inRange(day: string, range: Range, today: string): boolean {
   }
 }
 
-function weekTitle(monday: string, today: string): string {
-  const diff = daysBetween(mondayOf(today), monday) / 7;
-  if (diff === 0) return "This week";
-  if (diff === 1) return "Next week";
-  if (diff === -1) return "Last week";
-  return `Week of ${dayLabel(monday).split(" ").slice(1).join(" ")}`;
-}
-
-function shortRange(from: string, to: string): string {
-  const a = dayLabel(from).split(" ").slice(1);
-  const b = dayLabel(to).split(" ").slice(1);
-  return a[1] === b[1] ? `${a[0]} to ${b.join(" ")}` : `${a.join(" ")} to ${b.join(" ")}`;
-}
-
-function Row({
-  entry,
-  colour,
-  today,
-  selected,
-  onSelect,
-}: {
-  entry: EntryView;
-  colour?: PillarColour;
-  today: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const [, d, m] = entry.day ? dayLabel(entry.day).split(" ") : ["", "", ""];
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-current={selected || undefined}
-      className={cn(
-        "grid w-full grid-cols-[92px_58px_minmax(0,128px)_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border-t px-2 py-2.5 text-left text-md transition-colors first:border-t-0 hover:bg-muted/50",
-        selected && "border-transparent bg-muted",
-        entry.day && entry.day < today && entry.status !== "missed" && "text-muted-foreground",
-        entry.status === "skipped" && "opacity-60",
-      )}
-    >
-      <span className="text-md">
-        {entry.day ? (
-          <>
-            <b className="font-semibold text-foreground">{dayLabel(entry.day).split(" ")[0]}</b> {d}
-            {entry.day.slice(0, 7) !== today.slice(0, 7) || d === "1" ? ` ${m}` : ""}
-            {entry.time && <span className="block text-2xs text-muted-foreground">{timeLabel(entry.time)}</span>}
-          </>
-        ) : (
-          <span className="text-muted-foreground">No day</span>
-        )}
-      </span>
-      <span className={cn("text-xs", entry.kind === "article" ? "font-semibold text-indigo-600" : "text-muted-foreground")}>
-        {entry.kind === "article" ? "Article" : "Post"}
-      </span>
-      <span className="min-w-0">
-        <PillarChip pillar={entry.pillar} colour={colour} />
-      </span>
-      <span className={cn("truncate", !entry.topic && "text-muted-foreground", entry.status === "skipped" && "line-through")}>
-        {entry.topic || "No topic yet"}
-      </span>
-      <StatusText entry={entry} />
-    </button>
-  );
-}
-
 function NeedsBox({ plan, onOpen, onRange }: { plan: PlanData; onOpen: (id: string) => void; onRange: (r: Range) => void }) {
   const n = useMemo(() => needsYou(plan.entries, plan.today), [plan]);
   const short = (e: EntryView) => dayLabel(e.day!).split(" ")[0];
-  const days = (list: EntryView[]) => list.map((e) => dayLabel(e.day!)).slice(0, 4).join(", ") + (list.length > 4 ? "…" : "");
+  // "Tue 29 Sep (2), Wed 30 Sep": each day once, with how many.
+  const days = (list: EntryView[]) => {
+    const counts = new Map<string, number>();
+    for (const e of list) counts.set(e.day!, (counts.get(e.day!) ?? 0) + 1);
+    const parts = [...counts.entries()].map(([d, n]) => `${dayLabel(d)}${n > 1 ? ` (${n})` : ""}`);
+    return parts.slice(0, 4).join(", ") + (parts.length > 4 ? "…" : "");
+  };
   const lines: React.ReactNode[] = [];
   if (n.missed.length === 1 || n.missed.length === 2) {
     for (const e of n.missed) {
@@ -240,6 +183,9 @@ function Aside({ plan, colours }: { plan: PlanData; colours: Record<string, Pill
   const ahead = plan.entries.filter((e) => e.day && e.day >= plan.today && e.day <= addDays(plan.today, 29) && e.status !== "skipped");
   const ready = ahead.filter((e) => e.status === "scheduled" || e.status === "posted" || (e.status === "written" && e.kind === "article")).length;
   const unplanned = plan.entries.filter((e) => !e.day).length;
+  const monday = mondayOf(plan.today);
+  const week = plan.entries.filter((e) => e.day && e.day >= monday && e.day <= addDays(monday, 6) && e.status !== "skipped");
+  const byChannel = [...week.reduce((m, e) => m.set(e.channel || "No channel", (m.get(e.channel || "No channel") ?? 0) + 1), new Map<string, number>())];
   return (
     <aside className="hidden w-[280px] shrink-0 flex-col gap-6 overflow-y-auto border-l bg-sidebar/50 px-5 py-6 xl:flex">
       <section>
@@ -255,6 +201,20 @@ function Aside({ plan, colours }: { plan: PlanData; colours: Record<string, Pill
           <p className="text-md text-muted-foreground">Nothing was due yet.</p>
         )}
       </section>
+      {week.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-md font-semibold">This week</h3>
+          <p className="text-md leading-relaxed text-muted-foreground">
+            {week.length} planned · {week.filter((e) => e.status === "scheduled" || e.status === "posted").length} out or scheduled
+            {byChannel.length > 1 && (
+              <>
+                <br />
+                {byChannel.map(([c, n]) => `${c} ${n}`).join(" · ")}
+              </>
+            )}
+          </p>
+        </section>
+      )}
       {balance.length > 0 && (
         <section>
           <h3 className="mb-3 text-md font-semibold">Pillar balance</h3>
@@ -298,12 +258,16 @@ function Aside({ plan, colours }: { plan: PlanData; colours: Record<string, Pill
 }
 
 function planCsv(plan: PlanData): string {
-  const head = ["Date", "Time", "Type", "Pillar", "Topic", "Hook", "Goal", "Notes", "Status", "Post text"];
+  const head = ["Date", "Time", "Channel", "Type", "Format", "Pillar", "Vertical", "Funnel", "Topic", "Hook", "Goal", "Notes", "Status", "Post text"];
   const rows = plan.entries.map((e) => [
     e.day ?? "",
     e.time ?? "",
+    e.channel,
     e.kind === "article" ? "Article" : "Post",
+    e.format,
     e.pillar,
+    e.vertical,
+    e.funnel,
     e.topic,
     e.hook,
     e.goal,
@@ -322,10 +286,11 @@ export function PlanView({
 }: {
   plan: PlanData;
   initialRow?: string;
-  initialView: "list" | "calendar";
+  initialView: View;
   openAdd?: boolean;
 }) {
-  const [view, setView] = useState(initialView);
+  const [view, setView] = useState<View>(initialView);
+  const [channel, setChannel] = useState<string>("all");
   const [range, setRange] = useState<Range>("next30");
   const [selectedId, setSelectedId] = useState<string | undefined>(initialRow);
   const [importing, setImporting] = useState<"file" | "paste" | null>(null);
@@ -339,7 +304,6 @@ export function PlanView({
   const pillars = Object.keys(colours);
   const selected = entries.find((e) => e.id === selectedId);
   const span = planSpan(entries, today);
-  const counts = countStatuses(entries);
 
   const dialogs = (
     <>
@@ -387,15 +351,16 @@ export function PlanView({
     );
   }
 
-  const shown = entries.filter((e) => e.day && inRange(e.day, range, today));
-  const unplanned = range === "past" ? [] : entries.filter((e) => !e.day);
-  const weeks = new Map<string, EntryView[]>();
-  for (const e of shown) {
-    const w = mondayOf(e.day!);
-    weeks.set(w, [...(weeks.get(w) ?? []), e]);
-  }
-  const weekList = [...weeks.entries()];
-  if (range === "past") weekList.reverse();
+  // Personal, Company page…: one tap shows just one. Only when the plan has more than one.
+  const channels = [...new Map(entries.filter((e) => e.channel).map((e) => [e.channel, 0])).keys()].map((c) => ({
+    value: c,
+    count: entries.filter((e) => e.channel === c).length,
+  }));
+  channels.sort((a, b) => b.count - a.count);
+  const visible = channel === "all" ? entries : entries.filter((e) => e.channel === channel);
+  const vplan = { ...plan, entries: visible };
+  const counts = countStatuses(visible);
+  const shown = visible.filter((e) => (e.day ? inRange(e.day, range, today) : range !== "past"));
 
   const segments: [number, string][] = [
     [counts.posted, "bg-emerald-500"],
@@ -404,11 +369,11 @@ export function PlanView({
     [counts.written, "bg-amber-500"],
   ];
 
-  function switchView(v: "list" | "calendar") {
+  function switchView(v: View) {
     setView(v);
     const url = new URL(window.location.href);
-    if (v === "calendar") url.searchParams.set("view", "calendar");
-    else url.searchParams.delete("view");
+    if (v === "agenda") url.searchParams.delete("view");
+    else url.searchParams.set("view", v);
     window.history.replaceState(null, "", url);
   }
 
@@ -425,44 +390,6 @@ export function PlanView({
               </span>
             )}
             <div className="ml-auto flex items-center gap-2">
-              {view === "list" && (
-                <Select value={range} onValueChange={(v) => setRange(v as Range)}>
-                  <SelectTrigger size="sm" className="w-40" aria-label="Show">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    {RANGES.map((r) => (
-                      <SelectItem key={r.key} value={r.key}>
-                        {r.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <div className="flex rounded-lg bg-muted p-[3px]" role="radiogroup" aria-label="View">
-                {(
-                  [
-                    ["list", List, "List"],
-                    ["calendar", CalendarDays, "Calendar"],
-                  ] as const
-                ).map(([key, Icon, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    role="radio"
-                    aria-checked={view === key}
-                    aria-label={label}
-                    title={label}
-                    onClick={() => switchView(key)}
-                    className={cn(
-                      "flex h-7 w-9 items-center justify-center rounded-md",
-                      view === key ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="size-4" />
-                  </button>
-                ))}
-              </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon-sm" aria-label="More">
@@ -547,63 +474,93 @@ export function PlanView({
           )}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg bg-muted p-[3px]" role="radiogroup" aria-label="View">
+            {(
+              [
+                ["agenda", List, "Agenda"],
+                ["table", Table2, "Table"],
+                ["calendar", CalendarDays, "Calendar"],
+              ] as const
+            ).map(([key, Icon, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="radio"
+                aria-checked={view === key}
+                onClick={() => switchView(key)}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-md px-3 text-md",
+                  view === key ? "bg-background font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+          {channels.length > 1 &&
+            [{ value: "all", count: entries.length }, ...channels].map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                aria-pressed={channel === c.value}
+                onClick={() => setChannel(c.value)}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded-full border px-3 text-md transition-colors",
+                  channel === c.value ? "border-foreground bg-foreground text-background" : "bg-background hover:bg-muted",
+                )}
+              >
+                {c.value === "all" ? "All" : c.value}
+                <span className={cn("text-xs", channel === c.value ? "text-background/70" : "text-muted-foreground")}>{c.count}</span>
+              </button>
+            ))}
+          {view !== "calendar" && (
+            <Select value={range} onValueChange={(v) => setRange(v as Range)}>
+              <SelectTrigger size="sm" className="ml-auto w-40" aria-label="Show">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {RANGES.map((r) => (
+                  <SelectItem key={r.key} value={r.key}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
         <NeedsBox
-          plan={plan}
+          plan={vplan}
           onOpen={(id) => setSelectedId(id)}
           onRange={(r) => {
             setRange(r);
-            switchView("list");
+            if (view === "calendar") switchView("agenda");
           }}
         />
 
         {view === "calendar" ? (
-          <PlanCalendar entries={entries} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} />
+          <PlanCalendar entries={visible} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} />
+        ) : shown.length === 0 ? (
+          <p className="rounded-xl border border-dashed p-6 text-center text-md text-muted-foreground">
+            Nothing in the plan {RANGES.find((r) => r.key === range)!.label.toLowerCase().replace("the whole plan", "yet")}.{" "}
+            <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setRange("all")}>
+              See the whole plan
+            </button>
+          </p>
+        ) : view === "table" ? (
+          <PlanTable entries={shown} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} newestFirst={range === "past"} />
         ) : (
-          <div className="flex flex-col">
-            {weekList.map(([monday, list]) => (
-              <section key={monday} className="flex flex-col">
-                <h3 className="flex items-baseline gap-2 px-2 pt-4 pb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                  {weekTitle(monday, today)}
-                  <span className="font-normal tracking-normal normal-case">{shortRange(monday, addDays(monday, 6))}</span>
-                </h3>
-                {list.map((e) => (
-                  <Row
-                    key={e.id}
-                    entry={e}
-                    colour={colours[e.pillar.trim()]}
-                    today={today}
-                    selected={e.id === selectedId}
-                    onSelect={() => setSelectedId(e.id)}
-                  />
-                ))}
-              </section>
-            ))}
-            {weekList.length === 0 && (
-              <p className="rounded-xl border border-dashed p-6 text-center text-md text-muted-foreground">
-                Nothing in the plan {RANGES.find((r) => r.key === range)!.label.toLowerCase().replace("the whole plan", "yet")}.{" "}
-                <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setRange("all")}>
-                  See the whole plan
-                </button>
-              </p>
-            )}
-            {unplanned.length > 0 && (
-              <section className="flex flex-col">
-                <h3 className="px-2 pt-6 pb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                  Not planned <span className="font-normal tracking-normal normal-case">topics without a day</span>
-                </h3>
-                {unplanned.map((e) => (
-                  <Row key={e.id} entry={e} colour={colours[e.pillar.trim()]} today={today} selected={e.id === selectedId} onSelect={() => setSelectedId(e.id)} />
-                ))}
-              </section>
-            )}
-          </div>
+          <PlanAgenda entries={shown} today={today} timeZone={plan.timeZone} selectedId={selectedId} onSelect={setSelectedId} newestFirst={range === "past"} />
         )}
       </div>
 
       {selected ? (
         <EntryPanel key={selected.id} entry={selected} today={today} onClose={() => setSelectedId(undefined)} onMove={() => setMoving(selected.id)} />
-      ) : (
-        <Aside plan={plan} colours={colours} />
+      ) : view === "table" ? null : (
+        // The table needs the width; the summary column stays with Agenda and Calendar.
+        <Aside plan={vplan} colours={colours} />
       )}
       {dialogs}
     </div>

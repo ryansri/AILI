@@ -20,6 +20,10 @@ export interface EntryInput {
   goal?: string;
   hook?: string;
   notes?: string;
+  channel?: string;
+  funnel?: string;
+  vertical?: string;
+  format?: string;
   /** The post's full text, when there is one: saved as a draft linked to the row. */
   text?: string;
   /** The sheet says it went out already: the row comes in as posted, on its day. */
@@ -55,6 +59,10 @@ function fields(input: EntryInput) {
     goal: oneLine(input.goal, 60),
     hook: (input.hook ?? "").trim().slice(0, 500),
     notes: (input.notes ?? "").trim().slice(0, 2000),
+    channel: oneLine(input.channel, 60),
+    funnel: oneLine(input.funnel, 30),
+    vertical: oneLine(input.vertical, 60),
+    format: oneLine(input.format, 60),
   };
 }
 
@@ -117,6 +125,10 @@ export async function updateEntry(workspaceId: string, id: string, patch: EntryI
   if (patch.goal !== undefined) data.goal = oneLine(patch.goal, 60);
   if (patch.hook !== undefined) data.hook = patch.hook.trim().slice(0, 500);
   if (patch.notes !== undefined) data.notes = patch.notes.trim().slice(0, 2000);
+  if (patch.channel !== undefined) data.channel = oneLine(patch.channel, 60);
+  if (patch.funnel !== undefined) data.funnel = oneLine(patch.funnel, 30);
+  if (patch.vertical !== undefined) data.vertical = oneLine(patch.vertical, 60);
+  if (patch.format !== undefined) data.format = oneLine(patch.format, 60);
   if (patch.time !== undefined) data.time = cleanTime(patch.time);
   if (patch.kind !== undefined && cleanKind(patch.kind) !== entry.kind) {
     if (entry.post) throw new Error("It is already written, so its type stays.");

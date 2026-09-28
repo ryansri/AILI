@@ -326,6 +326,14 @@ model PlanEntry {
   goal        String    @default("")
   hook        String    @default("")
   notes       String    @default("")
+  /// Where it goes out: "Personal", "Company page"…, as the user's sheet names it.
+  channel     String    @default("")
+  /// TOFU, MOFU, BOFU…
+  funnel      String    @default("")
+  /// The audience or industry it speaks to, e.g. Accounting.
+  vertical    String    @default("")
+  /// Text, Carousel (PDF), Quote card… (kind says post or article).
+  format      String    @default("")
   /// The post or article written for it.
   postId      String?   @unique
   post        Post?     @relation(fields: [postId], references: [id], onDelete: SetNull)

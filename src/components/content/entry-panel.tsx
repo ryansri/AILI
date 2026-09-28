@@ -149,8 +149,12 @@ export function EntryPanel({
 
         <Field label="Topic" value={entry.topic} placeholder="What it is about" onSave={(topic) => save({ topic })} />
         <div className="grid grid-cols-2 gap-3">
+          <Field label="Channel" value={entry.channel} placeholder="e.g. Personal" onSave={(channel) => save({ channel })} />
+          <Field label="Format" value={entry.format} placeholder="e.g. Carousel" onSave={(format) => save({ format })} />
           <Field label="Pillar" value={entry.pillar} list="plan-pillars" placeholder="e.g. Sales tips" onSave={(pillar) => save({ pillar })} />
           <Field label="Goal" value={entry.goal} placeholder="e.g. Trust" onSave={(goal) => save({ goal })} />
+          <Field label="Vertical" value={entry.vertical} placeholder="e.g. Accounting" onSave={(vertical) => save({ vertical })} />
+          <Field label="Funnel" value={entry.funnel} placeholder="e.g. TOFU" onSave={(funnel) => save({ funnel })} />
         </div>
         <Field label="Hook" value={entry.hook} multiline placeholder="The first line or angle" onSave={(hook) => save({ hook })} />
         <Field label="Notes" value={entry.notes} multiline onSave={(notes) => save({ notes })} />
