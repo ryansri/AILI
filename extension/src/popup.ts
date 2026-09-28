@@ -239,7 +239,7 @@ pAdd.addEventListener("click", async () => {
     const tag = tagName ? ` · ${tagName}` : "";
     const name = $("p-name").textContent ?? current.tab.name;
     if (res.existed) renderPerson(name, "already", "Already in AILI", res.id);
-    else renderPerson(name, "added", `${res.tracked ? "Now a lead · " : ""}${stage}${tag}`, res.id);
+    else renderPerson(name, "added", `${res.tracked ? "In Leads now · " : ""}${stage}${tag}`, res.id);
   } catch (err) {
     show(pError, true);
     pError.textContent = err instanceof Error ? err.message : String(err);
@@ -272,8 +272,8 @@ async function renderProfile(tab: ProfileTab, pairing: Pairing, check: PersonChe
   if (remembered.addTag && check.tags.some((t) => t.id === remembered.addTag)) pTag.value = remembered.addTag;
   // Someone in Other is in AILI already, just not a lead: same form, tracks them instead.
   const inOther = check.person?.lead === false;
-  renderPerson(check.person?.name || tab.name || tab.publicId, "add", inOther ? "In AILI, not a lead yet" : "Not in AILI yet");
-  $("p-add-label").textContent = inOther ? "Track as lead" : "Add to AILI";
+  renderPerson(check.person?.name || tab.name || tab.publicId, "add", inOther ? "In AILI, in Other" : "Not in AILI yet");
+  $("p-add-label").textContent = inOther ? "Add to Leads" : "Add to AILI";
 }
 
 // ---------------------------------------------------------------------------

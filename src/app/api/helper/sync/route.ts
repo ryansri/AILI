@@ -35,7 +35,9 @@ export async function POST(request: Request) {
   revalidatePath("/inbox");
   revalidatePath("/people");
   revalidatePath("/today");
-  // The helper shows these as desktop notifications, if you have them turned on.
+  // The helper shows these as desktop notifications, if you have them turned on:
+  // new replies, and "Add to Leads?" for new conversations you started.
   const notify = workspace.notifyReplies ? repliesToNotify(result.newReplies) : [];
-  return NextResponse.json({ ...result, newReplies: undefined, notify }, { headers: corsHeaders(request) });
+  const ask = workspace.notifyReplies ? result.startedByYou : [];
+  return NextResponse.json({ ...result, newReplies: undefined, startedByYou: undefined, notify, ask }, { headers: corsHeaders(request) });
 }

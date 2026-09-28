@@ -8,16 +8,11 @@ const synced: LeadSignals = {
   tagCount: 0,
   lastActionAt: null,
   pendingCount: 0,
-  firstDirection: "in",
 };
 
 describe("startsAsLead", () => {
-  it("leaves someone who messaged you first, untouched, in Other", () => {
+  it("leaves anyone synced and untouched in Other, whoever wrote first", () => {
     expect(startsAsLead(synced)).toBe(false);
-  });
-
-  it("makes anyone you wrote to first a lead", () => {
-    expect(startsAsLead({ ...synced, firstDirection: "out" })).toBe(true);
   });
 
   it("keeps anyone you added yourself", () => {

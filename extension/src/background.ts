@@ -19,7 +19,7 @@
  * clicked, and AILI caps it per day.
  */
 
-import { addPerson, linkPerson, postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type ReplyToNotify } from "./aili";
+import { addPerson, answerLead, linkPerson, postSync, reportLookups, reportOutbox, reportStatus, takeLookups, takeOutbox, type LeadToAsk, type ReplyToNotify } from "./aili";
 import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
 import {
   fetchConversationsPage,
@@ -60,6 +60,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 chrome.notifications.onClicked.addListener((id) => {
   void openFromNotification(id);
+});
+chrome.notifications.onButtonClicked.addListener((id, button) => {
+  void answerFromNotification(id, button);
 });
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === "sync-now") {
@@ -285,6 +288,7 @@ async function importConversations(
   }
   const response = await postSync(pairing, payload);
   if (notify && response?.notify?.length) await showReplies(pairing, response.notify);
+  if (notify && response?.ask?.length) await askAboutLeads(pairing, response.ask);
   for (const conv of payload.conversations) syncedAt[conv.id] = conv.lastActivityAt;
   await setSyncedAt(syncedAt);
   return payload.conversations.length;
@@ -385,9 +389,49 @@ async function showReplies(pairing: Pairing, replies: ReplyToNotify[]): Promise<
   }
 }
 
+/**
+ * "Add to Leads?" for new conversations you started on LinkedIn. One person:
+ * a notice with Add to Leads and Not a lead. Several at once: one notice that
+ * opens Other in AILI, where each one asks the same question.
+ */
+async function askAboutLeads(pairing: Pairing, people: LeadToAsk[]): Promise<void> {
+  const base = pairing.serverUrl.replace(/\/$/, "");
+  const show = (id: string, options: chrome.notifications.NotificationCreateOptions) =>
+    new Promise<void>((resolve) => chrome.notifications.create(id, options, () => resolve()));
+  if (people.length > 1) {
+    await show(`aili|${base}/inbox?view=other`, {
+      type: "basic",
+      iconUrl: "icon-128.png",
+      title: `You started ${people.length} new conversations`,
+      message: `${people.map((p) => p.name).slice(0, 5).join(", ")}. Add the leads among them in AILI.`,
+      priority: 1,
+    });
+    return;
+  }
+  const [p] = people;
+  await show(`ask|${base}/inbox?person=${encodeURIComponent(p.personId)}|${p.personId}`, {
+    type: "basic",
+    iconUrl: "icon-128.png",
+    title: `You messaged ${p.name}`,
+    message: "Add them to Leads in AILI?",
+    buttons: [{ title: "Add to Leads" }, { title: "Not a lead" }],
+    requireInteraction: true,
+    priority: 1,
+  });
+}
+
+/** The buttons on an "Add to Leads?" notice. */
+async function answerFromNotification(id: string, button: number): Promise<void> {
+  const [prefix, , personId] = id.split("|");
+  if (prefix !== "ask" || !personId) return;
+  chrome.notifications.clear(id);
+  const pairing = await getPairing();
+  if (pairing) await answerLead(pairing, personId, button === 0).catch(() => {});
+}
+
 async function openFromNotification(id: string): Promise<void> {
   const [prefix, url] = id.split("|");
-  if (prefix !== "aili" || !url) return;
+  if ((prefix !== "aili" && prefix !== "ask") || !url) return;
   await chrome.tabs.create({ url });
   chrome.notifications.clear(id);
 }

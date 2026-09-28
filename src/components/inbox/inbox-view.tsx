@@ -63,6 +63,7 @@ export function InboxView({
   account,
   helperToken,
   initialPersonId,
+  openOther,
 }: {
   /** Leads. Everything below counts only these. */
   people: Person[];
@@ -75,11 +76,15 @@ export function InboxView({
   /** For the setup card, which shows it to paste into the helper. */
   helperToken: string;
   initialPersonId: string | null;
+  /** Open on Other (?view=other), e.g. from the helper's "new conversations" notice. */
+  openOther?: boolean;
 }) {
   // A deep link may point at someone outside Now, so open on All (or Other) then.
   const [view, setView] = useState<View>(
     !initialPersonId
-      ? { kind: "now" }
+      ? openOther
+        ? { kind: "other" }
+        : { kind: "now" }
       : others.some((p) => p.id === initialPersonId)
         ? { kind: "other" }
         : { kind: "all" },

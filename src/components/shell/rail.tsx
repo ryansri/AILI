@@ -13,7 +13,7 @@ import { CountBadge } from "@/components/count-badge";
 
 const SECTIONS = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/people", label: "People", icon: Users },
+  { href: "/people", label: "Leads", icon: Users },
   { href: "/today", label: "Today", icon: CalendarDays },
   { href: "/posts", label: "Content", icon: FileText },
 ] as const;

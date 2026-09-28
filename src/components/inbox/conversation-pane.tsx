@@ -278,7 +278,7 @@ export function ConversationPane({
               )}
               {isLead && (
                 <DropdownMenuItem onSelect={() => run(() => moveToOther([person.id]), `${first} moved to Other.`)}>
-                  Not a lead, move to Other
+                  Move to Other
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
@@ -302,7 +302,7 @@ export function ConversationPane({
           <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
         </div>
       ) : (
-        <NotLeadBar personId={person.id} firstName={first} currentStage={person.stage} stages={stages} tags={tags} />
+        <NotLeadBar personId={person.id} firstName={first} currentStage={person.stage} stages={stages} tags={tags} ask={person.askLead} />
       )}
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">

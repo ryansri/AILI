@@ -161,6 +161,7 @@ export async function POST(request: Request) {
       where: { id: existing.id },
       data: {
         lead: true,
+        askLead: false,
         ...(stage !== existing.stage ? { stage, stageChangedAt: now } : {}),
         ...(stage === "requested" && !existing.requestedAt ? { requestedAt: now } : {}),
         ...(TALKING.includes(stage) && !existing.connectedAt ? { connectedAt: now } : {}),

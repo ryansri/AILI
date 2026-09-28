@@ -1,6 +1,5 @@
 import "server-only";
 import { db } from "./db";
-import { startsAsLead } from "./leads";
 
 /*
  * Applies what the Chrome helper saw on LinkedIn to the database.
@@ -47,6 +46,14 @@ export interface NewReply {
   sentAt: number;
 }
 
+/** A new conversation you started on LinkedIn: AILI asks whether they are a lead. */
+export interface StartedByYou {
+  personId: string;
+  name: string;
+  /** When your first message went, ms. */
+  sentAt: number;
+}
+
 export interface SyncResult {
   peopleCreated: number;
   peopleUpdated: number;
@@ -54,6 +61,8 @@ export interface SyncResult {
   skippedGroups: number;
   /** Messages from other people stored for the first time in this sync. */
   newReplies: NewReply[];
+  /** People new to AILI whose conversation you started recently. */
+  startedByYou: StartedByYou[];
 }
 
 const COMPANY_SPLIT = /\s+(?:at|@)\s+/i;
@@ -89,6 +98,27 @@ export function myPictureFromSync(payload: SyncPayload): string | null {
     if (isLinkedInImage(me?.pictureUrl)) return me.pictureUrl;
   }
   return null;
+}
+
+/**
+ * How recent your first message must be for AILI to ask "Add to Leads?".
+ * Older conversations (the history import) come in quietly, in Other.
+ */
+export const ASK_WITHIN_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Who sent the first message in a synced thread, and when. */
+export function firstMessage(
+  messages: { senderUrn: string; sentAt: number }[],
+  memberUrn: string,
+): { direction: "in" | "out"; sentAt: number } | null {
+  const first = [...messages].sort((a, b) => a.sentAt - b.sentAt)[0];
+  if (!first) return null;
+  return { direction: first.senderUrn === memberUrn ? "out" : "in", sentAt: first.sentAt };
+}
+
+/** Whether to ask about a new conversation: you wrote first, recently. */
+export function shouldAskLead(first: { direction: "in" | "out"; sentAt: number } | null, now: number = Date.now()): boolean {
+  return first?.direction === "out" && now - first.sentAt < ASK_WITHIN_MS;
 }
 
 /** Replies worth a desktop notification: recent ones only, so an old thread coming in never pings. */
@@ -137,15 +167,8 @@ export function validatePayload(input: unknown): SyncPayload | null {
   return { memberUrn: p.memberUrn, displayName: typeof p.displayName === "string" ? p.displayName : undefined, conversations };
 }
 
-/** Who wrote first in a synced thread: "out" when it was you. */
-function firstDirection(messages: { senderUrn: string; sentAt: number }[], memberUrn: string): "in" | "out" | null {
-  const first = [...messages].sort((a, b) => a.sentAt - b.sentAt)[0];
-  if (!first) return null;
-  return first.senderUrn === memberUrn ? "out" : "in";
-}
-
 export async function applySync(workspaceId: string, payload: SyncPayload): Promise<SyncResult> {
-  const result: SyncResult = { peopleCreated: 0, peopleUpdated: 0, messagesAdded: 0, skippedGroups: 0, newReplies: [] };
+  const result: SyncResult = { peopleCreated: 0, peopleUpdated: 0, messagesAdded: 0, skippedGroups: 0, newReplies: [], startedByYou: [] };
 
   for (const conv of payload.conversations) {
     const others = conv.participants.filter((p) => p.urn !== payload.memberUrn);
@@ -184,6 +207,8 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
       });
       result.peopleUpdated += 1;
     } else {
+      const first = firstMessage(conv.messages, payload.memberUrn);
+      const ask = shouldAskLead(first);
       const created = await db.person.create({
         data: {
           workspaceId,
@@ -197,16 +222,10 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
           conversationId: conv.id,
           source: "linkedin",
           stage: "conversation",
-          // Someone you wrote to first is outreach, so a lead; someone who wrote first waits in Other.
-          lead: startsAsLead({
-            source: "linkedin",
-            stage: "conversation",
-            starred: false,
-            tagCount: 0,
-            lastActionAt: null,
-            pendingCount: 0,
-            firstDirection: firstDirection(conv.messages, payload.memberUrn),
-          }),
+          // Everyone synced starts in Other: messaging someone does not make them a lead.
+          // For a conversation you just started, AILI asks instead (see leads.ts).
+          lead: false,
+          askLead: ask,
           connectedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
           stageChangedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
         },
@@ -214,6 +233,7 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
       personId = created.id;
       isLead = created.lead;
       result.peopleCreated += 1;
+      if (ask && first) result.startedByYou.push({ personId, name: created.name, sentAt: first.sentAt });
     }
 
     for (const m of conv.messages) {

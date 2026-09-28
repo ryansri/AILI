@@ -70,6 +70,14 @@ function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
       </Badge>
     );
   }
+  // In Other, a conversation you started: AILI is asking whether they are a lead.
+  if (row.person.askLead && row.person.lead === false) {
+    return (
+      <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+        Lead?
+      </Badge>
+    );
+  }
   const bucket = bucketOf(row);
   if (bucket === "new" && !grouped) {
     return (
@@ -190,8 +198,8 @@ export function PeopleList({
           <span className="font-medium text-foreground">
             {total === 1 ? "1 conversation" : `${total} conversations`} that are not leads.
           </span>{" "}
-          Read and reply here as normal. They stay out of People, your funnel and the Inbox count. Track anyone who
-          becomes a lead.
+          Read and reply here as normal. They stay out of Leads, your funnel and the Inbox count. Add anyone who
+          becomes a lead to Leads.
         </p>
       )}
       {onMessageAll && visible > 0 && (

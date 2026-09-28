@@ -4,7 +4,7 @@ import { helperTokenFor, loadWorkspaceData } from "@/lib/data";
 export const dynamic = "force-dynamic";
 
 export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
-  const { person } = await searchParams;
+  const { person, view } = await searchParams;
   const { workspace, people, others, tags, stages, templates, account } = await loadWorkspaceData();
   const initialPersonId = typeof person === "string" ? person : null;
   // Only needed for the setup card, before anything has synced.
@@ -19,6 +19,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
       account={account}
       helperToken={helperToken}
       initialPersonId={initialPersonId}
+      openOther={view === "other"}
     />
   );
 }

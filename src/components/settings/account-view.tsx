@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { changePassword, updateAccount } from "@/lib/client-actions";
+import { changePassword, moveEveryoneToOther, updateAccount } from "@/lib/client-actions";
 import { logout } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -66,6 +66,28 @@ export function AccountView({
         <Row title="Password" status="Used to log in to AILI.">
           <Button size="sm" variant="outline" onClick={() => setPasswordOpen(true)}>
             Change password
+          </Button>
+        </Row>
+      </Group>
+      <Group>
+        <Row title="Start Leads over" status="Moves everyone to Other. Stages, tags, notes and messages stay. Then add back the ones who are leads.">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm("Move everyone in Leads to Other? You can add each one back to Leads at any time.")) return;
+              start(async () => {
+                try {
+                  const n = await moveEveryoneToOther();
+                  toast.success(n ? `Moved ${n} ${n === 1 ? "person" : "people"} to Other.` : "Leads was already empty.");
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "That did not work.");
+                }
+              });
+            }}
+          >
+            Move everyone to Other
           </Button>
         </Row>
       </Group>

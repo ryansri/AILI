@@ -416,6 +416,7 @@ async function trackAsLeadImpl(personId: string, input: { stage: string; tagId?:
     where: { id: personId },
     data: {
       lead: true,
+      askLead: false,
       stage: input.stage,
       ...(input.stage !== person.stage ? { stageChangedAt: now } : {}),
       ...(input.stage === "requested" && !person.requestedAt ? { requestedAt: now } : {}),
@@ -442,7 +443,28 @@ async function moveToOtherImpl(personIds: string[]) {
   const ids = [...new Set(personIds)].slice(0, 500);
   const res = await db.person.updateMany({
     where: { id: { in: ids }, workspaceId: workspace.id },
-    data: { lead: false },
+    data: { lead: false, askLead: false },
+  });
+  refresh();
+  return res.count;
+}
+
+/** "Not a lead" to AILI's question about a conversation you started: they stay in Other, and AILI stops asking. */
+async function keepInOtherImpl(personId: string) {
+  const { person } = await ownPerson(personId);
+  await db.person.update({ where: { id: person.id }, data: { askLead: false } });
+  refresh();
+}
+
+/**
+ * Settings: start Leads over. Everyone moves to Other (their stages, tags,
+ * notes and messages stay), and you add back the ones you want as leads.
+ */
+async function moveEveryoneToOtherImpl() {
+  const workspace = await getWorkspace();
+  const res = await db.person.updateMany({
+    where: { workspaceId: workspace.id, lead: true },
+    data: { lead: false, askLead: false },
   });
   refresh();
   return res.count;
@@ -791,6 +813,14 @@ export async function finishOnboarding(...args: Parameters<typeof finishOnboardi
 
 export async function trackAsLead(...args: Parameters<typeof trackAsLeadImpl>) {
   return run(() => trackAsLeadImpl(...args));
+}
+
+export async function keepInOther(...args: Parameters<typeof keepInOtherImpl>) {
+  return run(() => keepInOtherImpl(...args));
+}
+
+export async function moveEveryoneToOther(...args: Parameters<typeof moveEveryoneToOtherImpl>) {
+  return run(() => moveEveryoneToOtherImpl(...args));
 }
 
 export async function moveToOther(...args: Parameters<typeof moveToOtherImpl>) {

@@ -50,6 +50,7 @@ function toPerson(row: PersonRow): Person {
     source: row.source === "linkedin" ? "linkedin" : "manual",
     stage: row.stage || "warming",
     lead: row.lead,
+    askLead: row.askLead || undefined,
     tagIds: row.tags.map((t) => t.tagId),
     notes: row.notes,
     starred: row.starred,
@@ -197,7 +198,6 @@ async function sortLeadsOnce(workspace: { id: string; leadsSortedAt: Date | null
       starred: true,
       lastActionAt: true,
       _count: { select: { tags: true, outbox: true } },
-      messages: { orderBy: { sentAt: "asc" }, take: 1, select: { direction: true } },
     },
   });
   const other = synced
@@ -210,7 +210,6 @@ async function sortLeadsOnce(workspace: { id: string; leadsSortedAt: Date | null
           tagCount: p._count.tags,
           lastActionAt: p.lastActionAt,
           pendingCount: p._count.outbox,
-          firstDirection: p.messages[0] ? (p.messages[0].direction === "out" ? "out" : "in") : null,
         }),
     )
     .map((p) => p.id);

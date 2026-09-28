@@ -179,7 +179,7 @@ export function PeopleView({
   return (
     <div className="relative flex h-full w-full flex-col">
       <PageHeader
-        title="People"
+        title="Leads"
         after={
           title ? (
             <span className="flex min-w-0 items-center gap-1 pt-1 text-sm text-muted-foreground">

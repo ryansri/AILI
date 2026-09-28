@@ -79,8 +79,20 @@ export interface ReplyToNotify {
   sentAt: number;
 }
 
-export function postSync(pairing: Pairing, payload: unknown): Promise<{ notify?: ReplyToNotify[] }> {
+/** A new conversation you started: AILI asks whether the person is a lead. */
+export interface LeadToAsk {
+  personId: string;
+  name: string;
+  sentAt: number;
+}
+
+export function postSync(pairing: Pairing, payload: unknown): Promise<{ notify?: ReplyToNotify[]; ask?: LeadToAsk[] }> {
   return call(pairing, "/api/helper/sync", { method: "POST", body: JSON.stringify(payload) });
+}
+
+/** The answer to "Add to Leads?": true moves them to Leads, false keeps them in Other. */
+export function answerLead(pairing: Pairing, personId: string, lead: boolean) {
+  return call(pairing, "/api/helper/lead", { method: "POST", body: JSON.stringify({ personId, lead }) });
 }
 
 export async function takeOutbox(pairing: Pairing): Promise<OutboxItem[]> {

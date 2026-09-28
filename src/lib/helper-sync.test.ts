@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { myPictureFromSync, repliesToNotify, sameBody, splitHeadline, validatePayload } from "./helper-sync";
+import { myPictureFromSync, repliesToNotify, sameBody, splitHeadline, validatePayload, firstMessage, shouldAskLead } from "./helper-sync";
 
 describe("splitHeadline", () => {
   it("splits role and company on ' at '", () => {
@@ -84,5 +84,27 @@ describe("repliesToNotify", () => {
       now,
     );
     expect(out.map((r) => r.name)).toEqual(["C", "B"]);
+  });
+});
+
+describe("asking whether a new conversation is a lead", () => {
+  const me = "urn:li:member:me";
+  const them = "urn:li:member:them";
+  const now = Date.UTC(2026, 8, 28, 12);
+
+  it("finds who wrote first, whatever order the messages come in", () => {
+    const msgs = [
+      { senderUrn: them, sentAt: now - 1000 },
+      { senderUrn: me, sentAt: now - 5000 },
+    ];
+    expect(firstMessage(msgs, me)).toEqual({ direction: "out", sentAt: now - 5000 });
+    expect(firstMessage([], me)).toBeNull();
+  });
+
+  it("asks only when you wrote first, in the last 3 days", () => {
+    expect(shouldAskLead({ direction: "out", sentAt: now - 60_000 }, now)).toBe(true);
+    expect(shouldAskLead({ direction: "out", sentAt: now - 4 * 86400_000 }, now)).toBe(false);
+    expect(shouldAskLead({ direction: "in", sentAt: now - 60_000 }, now)).toBe(false);
+    expect(shouldAskLead(null, now)).toBe(false);
   });
 });

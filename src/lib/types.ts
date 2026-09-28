@@ -88,6 +88,8 @@ export interface Person {
   handledAt?: string; // ISO
   /** False for people in Other: synced from LinkedIn but not tracked as a lead. Missing means a lead. */
   lead?: boolean;
+  /** In Other, and you started the conversation: AILI asks "Add to Leads?". */
+  askLead?: boolean;
   /** When the person was added to AILI. */
   createdAt?: string; // ISO
   /** When the person last moved stage. */
