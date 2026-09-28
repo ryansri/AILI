@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
-import { checkPostText, checkScheduleTime, publishPost } from "./posts";
+import { checkCommentText, checkPostText, checkScheduleTime, postFirstComment, publishPost } from "./posts";
+import { FIRST_COMMENT_DELAYS } from "./linkedin-text";
 import { validTimeZone } from "./time-zone";
 
 /*
@@ -23,20 +24,31 @@ function done() {
 }
 
 /** New post or article, or an edit of one not yet published. Returns its id. */
-export async function savePost(input: { id?: string; kind: "post" | "article"; title?: string; body: string }): Promise<string> {
+export async function savePost(input: {
+  id?: string;
+  kind: "post" | "article";
+  title?: string;
+  body: string;
+  firstComment?: string;
+}): Promise<string> {
   const body = input.body.trim();
   const title = (input.title ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
-  if (input.kind === "post") checkPostText(body);
-  else if (!title || !body) throw new Error("An article needs a title and some text.");
+  const firstComment = input.kind === "post" ? (input.firstComment ?? "").trim() : "";
+  if (input.kind === "post") {
+    checkPostText(body);
+    checkCommentText(firstComment);
+  } else if (!title || !body) throw new Error("An article needs a title and some text.");
   if (input.id) {
     const { post } = await ownPost(input.id);
     if (post.status === "published" || post.status === "publishing") throw new Error("It is already published. Edit it on LinkedIn.");
-    await db.post.update({ where: { id: post.id }, data: { body, title } });
+    await db.post.update({ where: { id: post.id }, data: { body, title, firstComment } });
     done();
     return post.id;
   }
   const workspace = await getWorkspace();
-  const post = await db.post.create({ data: { workspaceId: workspace.id, kind: input.kind, title, body, source: "AILI" } });
+  const post = await db.post.create({
+    data: { workspaceId: workspace.id, kind: input.kind, title, body, firstComment, source: "AILI" },
+  });
   done();
   return post.id;
 }
@@ -68,6 +80,22 @@ export async function publishPostNow(postId: string): Promise<{ url?: string }> 
   const published = await publishPost(workspace.id, post.id);
   done();
   return { url: published.linkedinUrn ? `https://www.linkedin.com/feed/update/${published.linkedinUrn}/` : undefined };
+}
+
+/** Try a first comment again after LinkedIn refused it. */
+export async function retryFirstComment(postId: string) {
+  const { workspace, post } = await ownPost(postId);
+  if (post.commentStatus !== "failed") return;
+  await postFirstComment(workspace.id, post.id);
+  done();
+}
+
+/** Settings: how many minutes after a post goes live its first comment follows. */
+export async function updateFirstCommentDelay(minutes: number) {
+  if (!FIRST_COMMENT_DELAYS.includes(minutes)) throw new Error("Pick one of the listed times.");
+  const workspace = await getWorkspace();
+  await db.workspace.update({ where: { id: workspace.id }, data: { firstCommentDelay: minutes } });
+  revalidatePath("/settings", "layout");
 }
 
 export async function deletePost(postId: string) {

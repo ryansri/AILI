@@ -141,9 +141,16 @@ official API, which needs a free LinkedIn developer app.
 
 **Scheduled posts timer:** set `CRON_SECRET` in Vercel to a long random
 string and redeploy. At https://cron-job.org (free) create a job that calls
-`https://your-address/api/cron/posts?key=<CRON_SECRET>` every 5 minutes.
-Scheduled posts then go out within 5 minutes of their time, with your
-computer off. Without it they still go out, but only while Chrome is open
+`https://your-address/api/cron/posts?key=<CRON_SECRET>` every minute.
+Scheduled posts and first comments then go out within a minute of their
+time, with your computer off.
+
+**First comment:** a post can carry a first comment (a link, say, so the post
+itself is not shown less for linking out). AILI posts it under the post, as
+you, a set time after the post goes live: Settings, Sending, First comment
+(right away, or 1 to 30 minutes after). Claude and ChatGPT can set it too. If
+LinkedIn refuses the comment, the post stays up and the comment shows "Not
+posted" with Try again. Without it they still go out, but only while Chrome is open
 with the extension (it checks in every minute).
 
 **Articles:** LinkedIn does not let apps publish articles. Claude or ChatGPT

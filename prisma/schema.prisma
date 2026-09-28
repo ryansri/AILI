@@ -55,6 +55,8 @@ model Workspace {
   /// urn:li:person:<id>, the author of published posts.
   linkedinPostUrn     String?
   linkedinPostName    String?
+  /// Minutes between a post going live and its first comment (0 is right away).
+  firstCommentDelay   Int       @default(5)
   createdAt    DateTime  @default(now())
 
   people Person[]
@@ -233,10 +235,19 @@ model Post {
   error       String?
   /// Where it was written: "AILI", "Claude", "ChatGPT" or another app's name.
   source      String    @default("AILI")
+  /// Posted as a comment under the post once it is live, e.g. the link. Empty for none.
+  firstComment      String    @default("")
+  /// pending | posting | posted | failed; null when there is no first comment yet.
+  commentStatus     String?
+  /// When the first comment is due: the publish time plus the workspace's delay.
+  commentAt         DateTime?
+  commentUrn        String?
+  commentError      String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([status, scheduledAt])
+  @@index([commentStatus, commentAt])
   @@index([workspaceId, status])
 }
 

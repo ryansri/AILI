@@ -20,6 +20,7 @@ export default async function PostsPage({ searchParams }: PageProps<"/posts">) {
       authorName={workspace.linkedinPostName ?? workspace.name}
       authorInitials={workspace.initials}
       timerRunning={timer.running}
+      commentDelay={workspace.firstCommentDelay}
       initialId={typeof post === "string" ? post : undefined}
     />
   );

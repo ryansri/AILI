@@ -107,33 +107,29 @@ export class LinkedInPostError extends Error {
   }
 }
 
-function explain(status: number, detail: string): LinkedInPostError {
-  if (status === 401) return new LinkedInPostError("LinkedIn needs reconnecting. Go to Settings, LinkedIn posting.", true);
+function explain(status: number, detail: string, what: "post" | "comment"): LinkedInPostError {
+  if (status === 401) return new LinkedInPostError("LinkedIn needs reconnecting. Go to Settings, Connections.", true);
   if (status === 403) {
     return new LinkedInPostError(
-      "LinkedIn refused the post. Check the LinkedIn app has the Share on LinkedIn product, then reconnect.",
+      `LinkedIn refused the ${what}. Check the LinkedIn app has the Share on LinkedIn product, then reconnect.`,
       true,
     );
   }
-  if (status === 422 && /duplicate/i.test(detail)) return new LinkedInPostError("LinkedIn says this post is a duplicate of a recent one.");
+  if (status === 422 && /duplicate/i.test(detail)) return new LinkedInPostError(`LinkedIn says this ${what} is a duplicate of a recent one.`);
   if (status === 429) return new LinkedInPostError("LinkedIn's limit for today is reached. Try again tomorrow.");
   const short = detail.replace(/\s+/g, " ").slice(0, 200);
-  return new LinkedInPostError(`LinkedIn did not publish it (${status})${short ? `: ${short}` : "."}`);
+  return new LinkedInPostError(`LinkedIn did not publish the ${what} (${status})${short ? `: ${short}` : "."}`);
 }
 
-/** Publishes a text post to the member's feed. Returns the new post's urn. */
-export async function publishLinkedInPost(accessToken: string, authorUrn: string, text: string): Promise<string> {
-  const body = JSON.stringify({
-    author: authorUrn,
-    commentary: toCommentary(text),
-    visibility: "PUBLIC",
-    distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
-    lifecycleState: "PUBLISHED",
-    isReshareDisabledByAuthor: false,
-  });
+/**
+ * POSTs to LinkedIn's versioned REST API, trying older versions when one has
+ * retired. Returns the id LinkedIn gives the new item.
+ */
+async function restCreate(accessToken: string, path: string, payload: unknown, what: "post" | "comment"): Promise<string> {
+  const body = JSON.stringify(payload);
   let lastError: LinkedInPostError | null = null;
   for (const version of versions()) {
-    const res = await fetch("https://api.linkedin.com/rest/posts", {
+    const res = await fetch(`https://api.linkedin.com/rest/${path}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -143,14 +139,46 @@ export async function publishLinkedInPost(accessToken: string, authorUrn: string
       },
       body,
     });
-    if (res.ok) return res.headers.get("x-restli-id") ?? res.headers.get("x-linkedin-id") ?? "";
+    if (res.ok) {
+      const header = res.headers.get("x-restli-id") ?? res.headers.get("x-linkedin-id");
+      if (header) return header;
+      const data = (await res.json().catch(() => ({}))) as { $URN?: string; id?: string };
+      return data.$URN ?? data.id ?? "";
+    }
     const detail = await res.text().catch(() => "");
-    lastError = explain(res.status, detail);
+    lastError = explain(res.status, detail, what);
     // An inactive version: try the month before. Anything else is a real answer.
     if ((res.status === 426 || res.status === 400) && /version/i.test(detail)) continue;
     throw lastError;
   }
-  throw lastError ?? new LinkedInPostError("LinkedIn did not publish it.");
+  throw lastError ?? new LinkedInPostError(`LinkedIn did not publish the ${what}.`);
+}
+
+/** Publishes a text post to the member's feed. Returns the new post's urn. */
+export function publishLinkedInPost(accessToken: string, authorUrn: string, text: string): Promise<string> {
+  return restCreate(
+    accessToken,
+    "posts",
+    {
+      author: authorUrn,
+      commentary: toCommentary(text),
+      visibility: "PUBLIC",
+      distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
+      lifecycleState: "PUBLISHED",
+      isReshareDisabledByAuthor: false,
+    },
+    "post",
+  );
+}
+
+/** Adds a comment, as the member, under one of their posts (the "first comment"). Returns the comment's id. */
+export function commentOnLinkedInPost(accessToken: string, authorUrn: string, postUrn: string, text: string): Promise<string> {
+  return restCreate(
+    accessToken,
+    `socialActions/${encodeURIComponent(postUrn)}/comments`,
+    { actor: authorUrn, object: postUrn, message: { text } },
+    "comment",
+  );
 }
 
 /** The public address of a published post. */

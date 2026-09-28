@@ -2,8 +2,8 @@ import "server-only";
 import type { Post as PostRow } from "@prisma/client";
 import { db } from "./db";
 import { open, seal } from "./secret-box";
-import { LinkedInPostError, linkedInPostUrl, publishLinkedInPost, refreshLinkedIn } from "./linkedin-posting";
-import { POST_MAX_CHARS } from "./linkedin-text";
+import { commentOnLinkedInPost, LinkedInPostError, linkedInPostUrl, publishLinkedInPost, refreshLinkedIn } from "./linkedin-posting";
+import { COMMENT_MAX_CHARS, POST_MAX_CHARS } from "./linkedin-text";
 import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
 
 /*
@@ -27,6 +27,11 @@ export interface PostView {
   url?: string;
   error?: string;
   source: string;
+  /** Posted under the post once it is live, after the workspace's delay. */
+  firstComment: string;
+  commentStatus?: "pending" | "posting" | "posted" | "failed";
+  commentAt?: string;
+  commentError?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +48,12 @@ export function toPostView(p: PostRow): PostView {
     url: linkedInPostUrl(p.linkedinUrn) ?? undefined,
     error: p.error ?? undefined,
     source: p.source,
+    firstComment: p.firstComment,
+    commentStatus: (["pending", "posting", "posted", "failed"].includes(p.commentStatus ?? "")
+      ? p.commentStatus
+      : undefined) as PostView["commentStatus"],
+    commentAt: p.commentAt?.toISOString(),
+    commentError: p.commentError ?? undefined,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };
@@ -57,6 +68,12 @@ export function checkPostText(text: string) {
   if (!text.trim()) throw new Error("The post is empty.");
   if (text.length > POST_MAX_CHARS) {
     throw new Error(`LinkedIn posts can be up to ${POST_MAX_CHARS.toLocaleString()} characters; this one is ${text.length.toLocaleString()}.`);
+  }
+}
+
+export function checkCommentText(text: string) {
+  if (text.length > COMMENT_MAX_CHARS) {
+    throw new Error(`A LinkedIn comment can be up to ${COMMENT_MAX_CHARS.toLocaleString()} characters; the first comment is ${text.length.toLocaleString()}.`);
   }
 }
 
@@ -101,7 +118,7 @@ async function postingToken(workspaceId: string): Promise<{ token: string; autho
   const w = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
   const token = open(w.linkedinPostToken);
   if (!token || !w.linkedinPostUrn) {
-    throw new LinkedInPostError("Connect LinkedIn posting first: Settings, LinkedIn posting.", true);
+    throw new LinkedInPostError("Connect LinkedIn posting first: Settings, Connections.", true);
   }
   const soon = Date.now() + 5 * 60_000;
   if ((w.linkedinPostExpires?.getTime() ?? 0) > soon) return { token, author: w.linkedinPostUrn };
@@ -138,13 +155,49 @@ export async function publishPost(workspaceId: string, postId: string): Promise<
   try {
     const { token, author } = await postingToken(workspaceId);
     const urn = await publishLinkedInPost(token, author, post.body);
-    return await db.post.update({
+    const now = new Date();
+    const w = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { firstCommentDelay: true } });
+    const hasComment = Boolean(post.firstComment.trim() && urn);
+    const published = await db.post.update({
       where: { id: postId },
-      data: { status: "published", publishedAt: new Date(), linkedinUrn: urn || null, error: null },
+      data: {
+        status: "published",
+        publishedAt: now,
+        linkedinUrn: urn || null,
+        error: null,
+        ...(hasComment
+          ? { commentStatus: "pending", commentAt: new Date(now.getTime() + w.firstCommentDelay * 60_000), commentError: null }
+          : {}),
+      },
     });
+    // "Right away": no need to wait for the timer.
+    if (hasComment && w.firstCommentDelay === 0) await postFirstComment(workspaceId, postId).catch(() => {});
+    return published;
   } catch (err) {
     const message = err instanceof Error ? err.message : "LinkedIn did not publish it.";
     await db.post.update({ where: { id: postId }, data: { status: "failed", error: message } });
+    throw err instanceof Error ? err : new Error(message);
+  }
+}
+
+/**
+ * Posts a published post's first comment. Claimed as "posting" first, so the
+ * timer and a retry at the same moment cannot comment twice.
+ */
+export async function postFirstComment(workspaceId: string, postId: string): Promise<void> {
+  const claimed = await db.post.updateMany({
+    where: { id: postId, workspaceId, status: "published", commentStatus: { in: ["pending", "failed"] }, linkedinUrn: { not: null } },
+    data: { commentStatus: "posting", commentError: null },
+  });
+  if (claimed.count === 0) return;
+  const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
+  try {
+    const { token, author } = await postingToken(workspaceId);
+    const urn = await commentOnLinkedInPost(token, author, post.linkedinUrn!, post.firstComment.trim());
+    await db.post.update({ where: { id: postId }, data: { commentStatus: "posted", commentUrn: urn || null } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "LinkedIn did not post the comment.";
+    await db.post.update({ where: { id: postId }, data: { commentStatus: "failed", commentError: message } });
     throw err instanceof Error ? err : new Error(message);
   }
 }
@@ -169,6 +222,10 @@ export async function publishDuePosts({ fromTimer = false, now = new Date() } = 
     where: { status: "publishing", updatedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
     data: { status: "failed", error: "Publishing was interrupted. Check your LinkedIn profile before trying again." },
   });
+  await db.post.updateMany({
+    where: { commentStatus: "posting", updatedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
+    data: { commentStatus: "failed", commentError: "Posting the comment was interrupted. Check LinkedIn before trying again." },
+  });
   const due = await db.post.findMany({
     where: { status: "scheduled", kind: "post", scheduledAt: { lte: now } },
     orderBy: { scheduledAt: "asc" },
@@ -183,6 +240,15 @@ export async function publishDuePosts({ fromTimer = false, now = new Date() } = 
     } catch {
       failed++;
     }
+  }
+  // First comments whose time has come.
+  const comments = await db.post.findMany({
+    where: { status: "published", commentStatus: "pending", commentAt: { lte: now } },
+    orderBy: { commentAt: "asc" },
+    take: 20,
+  });
+  for (const post of comments) {
+    await postFirstComment(post.workspaceId, post.id).catch(() => {});
   }
   return { published, failed };
 }

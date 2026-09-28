@@ -3,8 +3,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "../db";
 import { getStages } from "../data";
 import { linkedInPostUrl } from "../linkedin-posting";
-import { POST_MAX_CHARS } from "../linkedin-text";
-import { checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
+import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "../linkedin-text";
+import { checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
 import { formatWhen, offsetLabel, parseWhen } from "../time-zone";
 import { stageLabel } from "../types";
 
@@ -230,7 +230,24 @@ const saveDraft: Tool = {
 // Posts and articles
 // ---------------------------------------------------------------------------
 
-function describePost(p: { id: string; kind: string; title: string; body: string; status: string; scheduledAt: Date | null; publishedAt: Date | null; linkedinUrn: string | null; error: string | null }, tz: string, full = false) {
+function describePost(
+  p: {
+    id: string;
+    kind: string;
+    title: string;
+    body: string;
+    status: string;
+    scheduledAt: Date | null;
+    publishedAt: Date | null;
+    linkedinUrn: string | null;
+    error: string | null;
+    firstComment: string;
+    commentStatus: string | null;
+    commentError: string | null;
+  },
+  tz: string,
+  full = false,
+) {
   const when =
     p.status === "scheduled" && p.scheduledAt
       ? `scheduled for ${formatWhen(p.scheduledAt, tz)}`
@@ -241,7 +258,12 @@ function describePost(p: { id: string; kind: string; title: string; body: string
           : p.status;
   const label = p.kind === "article" ? `Article "${p.title}"` : "Post";
   const body = full ? `\n${p.body}` : `: "${clip(oneLine(p.body), 120)}"`;
-  return `- ${label} (id: ${p.id}) · ${when}${body}`;
+  const comment = p.firstComment.trim()
+    ? full
+      ? `\nFirst comment (${p.commentStatus === "failed" ? `failed: ${p.commentError ?? "unknown"}` : (p.commentStatus ?? "posts after publishing")}): ${p.firstComment}`
+      : ` · first comment ${p.commentStatus === "failed" ? "failed" : (p.commentStatus ?? "set")}`
+    : "";
+  return `- ${label} (id: ${p.id}) · ${when}${body}${comment}`;
 }
 
 const listPosts: Tool = {
@@ -329,6 +351,15 @@ async function applyTiming(ctx: ToolContext, postId: string, publishNow: boolean
   return `Saved as a draft in AILI: ${ctx.origin}/posts`;
 }
 
+const firstCommentProperty = {
+  first_comment: {
+    type: "string",
+    description:
+      `Optional. Posted as a comment under the post once it is live (the user's first-comment delay applies), up to ${COMMENT_MAX_CHARS} characters. ` +
+      "Good for a link, so the post itself is not penalised for linking out. Only when the user asks for one.",
+  },
+};
+
 const timingProperties = {
   publish_now: { type: "boolean", description: "Publish on LinkedIn straight away. Only when the user asked to publish now." },
   schedule_at: {
@@ -348,7 +379,11 @@ const createPost: Tool = {
     "Show the user the final text and time and get their go-ahead before scheduling or publishing. Call list_posts first if you need the current date.",
   inputSchema: {
     type: "object",
-    properties: { text: { type: "string", description: "The post, exactly as it should appear." }, ...timingProperties },
+    properties: {
+      text: { type: "string", description: "The post, exactly as it should appear." },
+      ...firstCommentProperty,
+      ...timingProperties,
+    },
     required: ["text"],
     additionalProperties: false,
   },
@@ -360,12 +395,22 @@ const createPost: Tool = {
     } catch (err) {
       throw new ToolError(err instanceof Error ? err.message : "The post text does not work.");
     }
+    const firstComment = text(args.first_comment).trim();
+    try {
+      checkCommentText(firstComment);
+    } catch (err) {
+      throw new ToolError(err instanceof Error ? err.message : "The first comment does not work.");
+    }
     const at = await scheduleFrom(ctx, args);
-    const post = await db.post.create({ data: { workspaceId: ctx.workspaceId, kind: "post", body, source: ctx.appName } });
+    const post = await db.post.create({
+      data: { workspaceId: ctx.workspaceId, kind: "post", body, firstComment, source: ctx.appName },
+    });
     revalidatePath("/posts");
     const outcome = await applyTiming(ctx, post.id, args.publish_now === true, at);
     revalidatePath("/posts");
-    return `${outcome}\n(post id: ${post.id})`;
+    const delay = firstComment ? (await workspace(ctx)).firstCommentDelay : 0;
+    const note = firstComment ? `\nFirst comment: ${delayLabel(delay).toLowerCase()} the post goes live.` : "";
+    return `${outcome}${note}\n(post id: ${post.id})`;
   },
 };
 
@@ -380,6 +425,7 @@ const updatePost: Tool = {
     properties: {
       post_id: { type: "string" },
       text: { type: "string", description: "New text for the post, if it changes." },
+      ...firstCommentProperty,
       unschedule: { type: "boolean", description: "Take it off the schedule and keep it as a draft." },
       ...timingProperties,
     },
@@ -405,6 +451,16 @@ const updatePost: Tool = {
       await db.post.update({ where: { id: post.id }, data: { body: newText } });
     }
     let outcome = newText ? "Text updated." : "";
+    if (typeof args.first_comment === "string") {
+      const firstComment = args.first_comment.trim();
+      try {
+        checkCommentText(firstComment);
+      } catch (err) {
+        throw new ToolError(err instanceof Error ? err.message : "The first comment does not work.");
+      }
+      await db.post.update({ where: { id: post.id }, data: { firstComment } });
+      outcome = `${outcome} ${firstComment ? "First comment set." : "First comment removed."}`.trim();
+    }
     if (args.unschedule === true) {
       await db.post.update({ where: { id: post.id }, data: { status: "draft", scheduledAt: null } });
       outcome = `${outcome} Taken off the schedule; it is a draft now.`.trim();

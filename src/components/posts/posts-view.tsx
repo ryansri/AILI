@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -21,12 +22,13 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { LinkedInPosting, PostView } from "@/lib/posts";
 import { articleHtml, articlePlainText, wordCount } from "@/lib/article-html";
-import { POST_MAX_CHARS } from "@/lib/linkedin-text";
+import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "@/lib/linkedin-text";
 import { formatWhen, toWallInput } from "@/lib/time-zone";
 import {
   deletePost,
   markArticlePublished,
   publishPostNow,
+  retryFirstComment,
   savePost,
   schedulePost,
   unschedulePost,
@@ -88,6 +90,7 @@ interface Editing {
   kind: "post" | "article";
   title: string;
   body: string;
+  firstComment: string;
 }
 
 export function PostsView({
@@ -96,6 +99,7 @@ export function PostsView({
   authorName,
   authorInitials,
   timerRunning,
+  commentDelay,
   initialId,
 }: {
   posts: PostView[];
@@ -103,6 +107,8 @@ export function PostsView({
   authorName: string;
   authorInitials: string;
   timerRunning: boolean;
+  /** Minutes between a post going live and its first comment. */
+  commentDelay: number;
   initialId?: string;
 }) {
   const initial = posts.find((p) => p.id === initialId);
@@ -152,7 +158,7 @@ export function PostsView({
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onSelect={() => {
-                  setEditing({ kind: "post", title: "", body: "" });
+                  setEditing({ kind: "post", title: "", body: "", firstComment: "" });
                   if (tab === "published" || tab === "articles") setTab("drafts");
                 }}
               >
@@ -161,7 +167,7 @@ export function PostsView({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
-                  setEditing({ kind: "article", title: "", body: "" });
+                  setEditing({ kind: "article", title: "", body: "", firstComment: "" });
                   setTab("articles");
                 }}
               >
@@ -230,7 +236,10 @@ export function PostsView({
           <Editor
             key={editing.id ?? `new-${editing.kind}`}
             editing={editing}
+            commentDelay={commentDelay}
             onDone={(id) => {
+              // A new one lands in Drafts or Articles; show it there.
+              if (id && !editing.id) setTab(editing.kind === "article" ? "articles" : "drafts");
               setEditing(null);
               if (id) setSelectedId(id);
             }}
@@ -242,7 +251,16 @@ export function PostsView({
             linkedin={linkedin}
             authorName={authorName}
             authorInitials={authorInitials}
-            onEdit={() => setEditing({ id: selected.id, kind: selected.kind, title: selected.title, body: selected.body })}
+            commentDelay={commentDelay}
+            onEdit={() =>
+              setEditing({
+                id: selected.id,
+                kind: selected.kind,
+                title: selected.title,
+                body: selected.body,
+                firstComment: selected.firstComment,
+              })
+            }
             onMoved={(t) => {
               setTab(t);
               setSelectedId(selected.id);
@@ -362,17 +380,18 @@ function PostingStatus({
   );
 }
 
-function Editor({ editing, onDone }: { editing: Editing; onDone: (id?: string) => void }) {
+function Editor({ editing, commentDelay, onDone }: { editing: Editing; commentDelay: number; onDone: (id?: string) => void }) {
   const [title, setTitle] = useState(editing.title);
   const [body, setBody] = useState(editing.body);
+  const [firstComment, setFirstComment] = useState(editing.firstComment);
   const [pending, start] = useTransition();
   const isPost = editing.kind === "post";
-  const over = isPost && body.length > POST_MAX_CHARS;
+  const over = isPost && (body.length > POST_MAX_CHARS || firstComment.length > COMMENT_MAX_CHARS);
 
   function save() {
     start(async () => {
       try {
-        const id = await savePost({ id: editing.id, kind: editing.kind, title, body });
+        const id = await savePost({ id: editing.id, kind: editing.kind, title, body, firstComment });
         toast.success(editing.id ? "Saved." : isPost ? "Saved in Drafts." : "Article saved.");
         onDone(id);
       } catch (err) {
@@ -414,9 +433,34 @@ function Editor({ editing, onDone }: { editing: Editing; onDone: (id?: string) =
               className={cn("min-h-[320px] bg-background text-md leading-relaxed", !isPost && "min-h-[440px]")}
             />
           </div>
-          <p className={cn("text-right text-xs text-muted-foreground", over && "font-medium text-red-600")}>
+          <p className={cn("text-right text-xs text-muted-foreground", body.length > POST_MAX_CHARS && isPost && "font-medium text-red-600")}>
             {isPost ? `${body.length.toLocaleString()} / ${POST_MAX_CHARS.toLocaleString()} characters` : `${wordCount(body).toLocaleString()} words`}
           </p>
+          {isPost && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="first-comment">
+                First comment <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="first-comment"
+                value={firstComment}
+                onChange={(e) => setFirstComment(e.target.value)}
+                placeholder="A link or extra detail. LinkedIn shows posts with links further down, so links go here."
+                className="min-h-[88px] bg-background text-md leading-relaxed"
+              />
+              <p className="flex justify-between gap-3 text-xs text-muted-foreground">
+                <span>
+                  Posted {delayLabel(commentDelay).toLowerCase()} the post goes live.{" "}
+                  <Link href="/settings/sending" className="underline underline-offset-2">
+                    Change
+                  </Link>
+                </span>
+                <span className={cn(firstComment.length > COMMENT_MAX_CHARS && "font-medium text-red-600")}>
+                  {firstComment.length.toLocaleString()} / {COMMENT_MAX_CHARS.toLocaleString()}
+                </span>
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -473,11 +517,62 @@ function SchedulePicker({ post, label, onDone }: { post: PostView; label: string
   );
 }
 
+/** The first comment under the preview: what it says and whether it is posted. */
+function FirstComment({ post, authorInitials, commentDelay }: { post: PostView; authorInitials: string; commentDelay: number }) {
+  const [pending, start] = useTransition();
+  const state =
+    post.commentStatus === "posted"
+      ? { text: "Posted", className: "text-emerald-700" }
+      : post.commentStatus === "failed"
+        ? { text: `Not posted: ${post.commentError ?? "LinkedIn refused it"}`, className: "text-red-700" }
+        : post.commentStatus === "pending" || post.commentStatus === "posting"
+          ? { text: `Posting ${when(post.commentAt)}`, className: "text-muted-foreground" }
+          : { text: `${delayLabel(commentDelay)} the post goes live`, className: "text-muted-foreground" };
+  return (
+    <div className="flex gap-2.5 border-t pt-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-2xs font-semibold text-background">
+        {authorInitials}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="rounded-lg rounded-tl-none bg-muted px-3 py-2 text-md leading-relaxed whitespace-pre-wrap">{post.firstComment}</div>
+        <div className="flex items-center gap-2 text-xs">
+          <MessageCircle className="size-3.5 text-muted-foreground" />
+          <span className="text-muted-foreground">First comment ·</span>
+          <span className={state.className} suppressHydrationWarning>
+            {state.text}
+          </span>
+          {post.commentStatus === "failed" && (
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  try {
+                    await retryFirstComment(post.id);
+                    toast.success("First comment posted.");
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "LinkedIn did not post it.");
+                  }
+                })
+              }
+            >
+              Try again
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Detail({
   post,
   linkedin,
   authorName,
   authorInitials,
+  commentDelay,
   onEdit,
   onMoved,
 }: {
@@ -485,6 +580,7 @@ function Detail({
   linkedin: LinkedInPosting & { configured: boolean };
   authorName: string;
   authorInitials: string;
+  commentDelay: number;
   onEdit: () => void;
   onMoved: (tab: Tab) => void;
 }) {
@@ -718,6 +814,9 @@ function Detail({
               </span>
               <span>How it will look on LinkedIn</span>
             </div>
+            {post.firstComment.trim() && (
+              <FirstComment post={post} authorInitials={authorInitials} commentDelay={commentDelay} />
+            )}
           </article>
         )}
       </div>

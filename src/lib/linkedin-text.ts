@@ -28,3 +28,14 @@ export function toCommentary(text: string): string {
 
 /** LinkedIn's limit for a post's text. */
 export const POST_MAX_CHARS = 3000;
+
+/** LinkedIn's limit for a comment, such as a post's first comment. */
+export const COMMENT_MAX_CHARS = 1250;
+
+/** How long after a post goes live its first comment follows, in minutes. 0 is right away. */
+export const FIRST_COMMENT_DELAYS = [0, 1, 2, 5, 10, 15, 30];
+export const DEFAULT_FIRST_COMMENT_DELAY = 5;
+
+export function delayLabel(minutes: number): string {
+  return minutes === 0 ? "Right away" : minutes === 1 ? "1 minute after" : `${minutes} minutes after`;
+}
