@@ -32,6 +32,8 @@ export interface PostView {
   commentStatus?: "pending" | "posting" | "posted" | "failed";
   commentAt?: string;
   commentError?: string;
+  /** Scheduled, and its time passed more than 2 minutes ago: the timer has not run. */
+  overdue: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -54,6 +56,7 @@ export function toPostView(p: PostRow): PostView {
       : undefined) as PostView["commentStatus"],
     commentAt: p.commentAt?.toISOString(),
     commentError: p.commentError ?? undefined,
+    overdue: p.status === "scheduled" && (p.scheduledAt?.getTime() ?? Infinity) < Date.now() - 2 * 60_000,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };

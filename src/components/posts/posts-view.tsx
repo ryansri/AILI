@@ -306,6 +306,14 @@ function StatusChip({ post }: { post: PostView }) {
   }
   switch (post.status) {
     case "scheduled":
+      if (post.overdue) {
+        return (
+          <span className={cn(base, "bg-red-50 text-red-700")}>
+            <AlertCircle className="size-3" />
+            Overdue · {when(post.scheduledAt)}
+          </span>
+        );
+      }
       return (
         <span className={cn(base, "bg-amber-50 text-amber-700")} suppressHydrationWarning>
           <CalendarClock className="size-3" />
@@ -766,6 +774,15 @@ function Detail({
     <div className="flex min-h-0 flex-1 flex-col">
       {bar}
       <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto p-8">
+        {post.overdue && (
+          <div className="flex w-full max-w-[560px] items-start gap-2.5 rounded-xl bg-red-50 px-4 py-3 text-md text-red-800">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              Its time has passed and the scheduled-posts timer has not run. It goes out the next time the timer runs or
+              this page reloads; Publish now sends it straight away.
+            </span>
+          </div>
+        )}
         {post.status === "failed" && post.error && (
           <div className="flex w-full max-w-[560px] items-start gap-2.5 rounded-xl bg-red-50 px-4 py-3 text-md text-red-800">
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
