@@ -94,6 +94,8 @@ export interface Person {
   stageChangedAt?: string; // ISO
   messages: Message[];
   pending: PendingMessage[];
+  /** A reply written in Claude or ChatGPT, waiting in the message box until the user sends or discards it. */
+  draft?: { text: string; source: string; at: string };
 }
 
 export interface HelperStatus {

@@ -14,6 +14,9 @@ import { Switch } from "@/components/ui/switch";
 import { TemplatesSettings } from "@/components/templates/templates-settings";
 import type { Template } from "@/lib/templates";
 import { PageHeader } from "@/components/page-header";
+import { AiConnectors, LinkedInPostingSettings } from "./ai-settings";
+import type { ConnectedApp } from "@/lib/ai-oauth";
+import type { LinkedInPosting } from "@/lib/posts";
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -72,12 +75,24 @@ export function SettingsView({
   email,
   helperToken,
   helperMemberUrn,
+  connectorUrl,
+  aiApps,
+  linkedin,
+  linkedinCallbackUrl,
+  linkedinResult,
+  timerRunning,
 }: {
   account: Account;
   templates: Template[];
   email: string;
   helperToken: string;
   helperMemberUrn?: string;
+  connectorUrl: string;
+  aiApps: ConnectedApp[];
+  linkedin: LinkedInPosting & { configured: boolean };
+  linkedinCallbackUrl: string;
+  linkedinResult?: string;
+  timerRunning: boolean;
 }) {
   const [pending, start] = useTransition();
   const [token, setToken] = useState(helperToken);
@@ -181,6 +196,33 @@ export function SettingsView({
               <p className="text-2xs text-muted-foreground">LinkedIn id seen by the helper: {helperMemberUrn}</p>
             )}
           </Section>
+
+          <Separator />
+
+          <div id="ai" className="scroll-mt-6">
+            <Section
+              title="Claude and ChatGPT"
+              hint="Ask for summaries, reply drafts and posts in the chat you already use. It runs on your own Claude or ChatGPT plan; no API key."
+            >
+              <AiConnectors connectorUrl={connectorUrl} apps={aiApps} />
+            </Section>
+          </div>
+
+          <Separator />
+
+          <div id="linkedin-posting" className="scroll-mt-6">
+            <Section
+              title="LinkedIn posting"
+              hint="LinkedIn's official connection, used only to publish your posts. Separate from the Chrome helper."
+            >
+              <LinkedInPostingSettings
+                linkedin={linkedin}
+                callbackUrl={linkedinCallbackUrl}
+                result={linkedinResult}
+                timerRunning={timerRunning}
+              />
+            </Section>
+          </div>
 
           <Separator />
 

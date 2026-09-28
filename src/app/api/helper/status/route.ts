@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isLinkedInImage } from "@/lib/helper-sync";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { publishDuePosts } from "@/lib/posts";
 
 export const dynamic = "force-dynamic";
 
@@ -71,5 +72,8 @@ export async function POST(request: Request) {
   }
   revalidatePath("/inbox");
   revalidatePath("/settings");
+  // While Chrome is open the helper checks in every minute: a free chance to
+  // publish scheduled posts on time, on top of the timer.
+  after(() => publishDuePosts().catch((err) => console.error("Publishing scheduled posts failed", err)));
   return NextResponse.json({ ok: true, resync }, { headers: corsHeaders(request) });
 }

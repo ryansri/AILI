@@ -56,6 +56,9 @@ function toPerson(row: PersonRow): Person {
       sentAt: m.sentAt.toISOString(),
       followUp: m.followUp === 1 || m.followUp === 2 ? m.followUp : undefined,
     })),
+    draft: row.draft
+      ? { text: row.draft, source: row.draftSource ?? "AI", at: (row.draftAt ?? row.updatedAt).toISOString() }
+      : undefined,
     pending: row.outbox.map((o) => ({
       id: o.id,
       body: o.body,

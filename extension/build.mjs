@@ -46,9 +46,9 @@ await build({
   define,
 });
 
-// The AILI page script is a classic content script, so it is its own bundle.
+// The content scripts (the AILI page, LinkedIn's article editor) are classic scripts, so they are their own bundles.
 await build({
-  entryPoints: [join(here, "src/aili-page.ts")],
+  entryPoints: [join(here, "src/aili-page.ts"), join(here, "src/linkedin-article.ts")],
   bundle: true,
   format: "iife",
   target: "chrome120",

@@ -1,7 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { appOrigin } from "./app-url";
 import { sendEmail } from "./email";
 import { createResetLink, RESET_MINUTES, sha256 } from "./password-reset";
 import { db } from "./db";
@@ -60,15 +60,6 @@ export async function register(_prev: AuthResult, form: FormData): Promise<AuthR
   redirect("/welcome");
 }
 
-/** This AILI's own address: APP_URL when set, otherwise from the request. */
-async function appUrl(): Promise<string> {
-  if (process.env.APP_URL) return process.env.APP_URL;
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
-
 /**
  * Forgot password on a hosted AILI: emails a one-time link. The answer is the
  * same whether or not the email has an account, so it cannot be used to find out.
@@ -78,7 +69,7 @@ export async function requestPasswordReset(_prev: AuthResult, form: FormData): P
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "That email does not look right." };
   const workspace = await db.workspace.findFirst({ where: { email, passwordHash: { not: null } } });
   if (workspace) {
-    const link = await createResetLink(db, workspace.id, await appUrl());
+    const link = await createResetLink(db, workspace.id, await appOrigin());
     await sendEmail({
       to: email,
       subject: "Reset your AILI password",

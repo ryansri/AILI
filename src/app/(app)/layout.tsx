@@ -1,5 +1,6 @@
 import { Rail } from "@/components/shell/rail";
 import { AutoRefresh } from "@/components/shell/auto-refresh";
+import { TimeZoneSync } from "@/components/shell/time-zone-sync";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { redirect } from "next/navigation";
 import { loadWorkspaceData } from "@/lib/data";
@@ -24,6 +25,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         />
         <main className="flex min-w-0 flex-1">{children}</main>
         <AutoRefresh />
+        <TimeZoneSync saved={workspace.timeZone} />
       </div>
     </TooltipProvider>
   );

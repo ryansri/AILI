@@ -62,6 +62,14 @@ function lastTime(row: Row): string {
  */
 function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
   const { step } = row;
+  // A reply from Claude or ChatGPT waiting to be checked and sent comes first.
+  if (row.person.draft) {
+    return (
+      <Badge variant="secondary" className="bg-sky-50 text-sky-700">
+        Draft
+      </Badge>
+    );
+  }
   const bucket = bucketOf(row);
   if (bucket === "new" && !grouped) {
     return (

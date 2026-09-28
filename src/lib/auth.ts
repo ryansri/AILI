@@ -41,6 +41,11 @@ function secret(): string {
   }
 }
 
+/** The server's signing secret, also used to encrypt stored LinkedIn tokens (see secret-box.ts). */
+export function serverSecret(): string {
+  return secret();
+}
+
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   const hash = (await scrypt(password, salt, 64)) as Buffer;

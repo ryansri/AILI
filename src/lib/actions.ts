@@ -152,7 +152,9 @@ export async function logMessage(input: {
     updates.stageChangedAt = new Date();
   }
   if (!person.connectedAt) updates.connectedAt = sentAt;
-  await db.person.update({ where: { id: input.personId }, data: updates });
+  // A message the user sent by hand replaces any draft from Claude or ChatGPT.
+  const draft = input.direction === "out" ? { draft: null, draftSource: null, draftAt: null } : {};
+  await db.person.update({ where: { id: input.personId }, data: { ...updates, ...draft } });
   refresh();
 }
 
@@ -179,8 +181,18 @@ export async function queueSend(input: { personId: string; body: string; followU
   await db.outbox.create({
     data: { workspaceId: workspace.id, personId: person.id, body, followUp: input.followUp ?? null },
   });
-  await db.person.update({ where: { id: person.id }, data: { handledAt: null, ...touched() } });
+  await db.person.update({
+    where: { id: person.id },
+    data: { handledAt: null, draft: null, draftSource: null, draftAt: null, ...touched() },
+  });
   refresh();
+}
+
+/** Discard on a draft from Claude or ChatGPT. */
+export async function discardDraft(personId: string) {
+  await ownPerson(personId);
+  await db.person.update({ where: { id: personId }, data: { draft: null, draftSource: null, draftAt: null } });
+  revalidatePath("/inbox");
 }
 
 export async function cancelQueued(outboxId: string) {

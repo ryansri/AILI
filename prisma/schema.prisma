@@ -45,6 +45,16 @@ model Workspace {
   /// Show a desktop notification (through the helper) when someone replies.
   notifyReplies    Boolean   @default(true)
   helperState      String?
+  /// The browser's time zone (e.g. Australia/Sydney), for scheduling posts from Claude or ChatGPT.
+  timeZone         String?
+  /// LinkedIn's official connection for publishing posts (separate from the helper).
+  /// The access token is encrypted with the server secret.
+  linkedinPostToken   String?
+  linkedinPostRefresh String?
+  linkedinPostExpires DateTime?
+  /// urn:li:person:<id>, the author of published posts.
+  linkedinPostUrn     String?
+  linkedinPostName    String?
   createdAt    DateTime  @default(now())
 
   people Person[]
@@ -52,6 +62,8 @@ model Workspace {
   stages Stage[]
   templates Template[]
   outbox Outbox[]
+  posts  Post[]
+  aiGrants AiGrant[]
 }
 
 model Person {
@@ -97,6 +109,11 @@ model Person {
   profileCheckedAt DateTime?
   /// When the user last saved this person by hand. Profile lookups never overwrite after that.
   profileEditedAt  DateTime?
+  /// A message written for this person in Claude or ChatGPT, waiting in the message box. Never sent by itself.
+  draft       String?
+  /// Who wrote the draft, e.g. "Claude" or "ChatGPT".
+  draftSource String?
+  draftAt     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -194,4 +211,77 @@ model Outbox {
   sentAt      DateTime?
 
   @@index([workspaceId, status])
+}
+
+/// A LinkedIn post or article. Posts publish through LinkedIn's official API,
+/// now or at scheduledAt; articles are opened in LinkedIn's editor for the user to publish.
+model Post {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// post | article
+  kind        String    @default("post")
+  /// Articles only.
+  title       String    @default("")
+  body        String
+  /// draft | scheduled | publishing | published | failed
+  status      String    @default("draft")
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  /// The LinkedIn post's urn once published, e.g. urn:li:share:123.
+  linkedinUrn String?
+  error       String?
+  /// Where it was written: "AILI", "Claude", "ChatGPT" or another app's name.
+  source      String    @default("AILI")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([workspaceId, status])
+}
+
+/// An app such as Claude or ChatGPT that registered itself to connect to AILI (OAuth dynamic client registration).
+model AiClient {
+  id           String   @id
+  name         String
+  /// JSON array of allowed redirect addresses.
+  redirectUris String
+  createdAt    DateTime @default(now())
+}
+
+/// A one-time code from the Allow screen, swapped for tokens within 10 minutes.
+model AiCode {
+  id            String   @id @default(cuid())
+  codeHash      String   @unique
+  clientId      String
+  workspaceId   String
+  redirectUri   String
+  codeChallenge String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+}
+
+/// One connection of Claude or ChatGPT to a workspace. Tokens are stored as sha256 hashes.
+model AiGrant {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId       String
+  clientName     String
+  accessHash     String    @unique
+  accessExpires  DateTime
+  refreshHash    String    @unique
+  refreshExpires DateTime
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([workspaceId])
+}
+
+/// Small shared values, e.g. when the scheduled-posts timer last ran.
+model AppState {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

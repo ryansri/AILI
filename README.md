@@ -6,15 +6,16 @@ today, and keeps sends human-clicked and capped so the account stays safe.
 
 ## Status
 
-Step 3 of 4. Login, a Chrome helper that syncs your real LinkedIn inbox and
-delivers the messages you click Send on, and a Settings page.
+Step 4 of 4. Login, a Chrome helper that syncs your real LinkedIn inbox and
+delivers the messages you click Send on, AILI inside Claude and ChatGPT, and
+LinkedIn posts you can publish or schedule.
 
 | Step | What it adds | State |
 | --- | --- | --- |
 | 1 | Rail, sidebar, Notion-grey theme, inbox with the next-step engine | Done |
 | 2 | Database, people you can add and edit, tags, notes, snooze, manual send and reply logging, People and Today pages | Done |
 | 3 | Login, Chrome helper (LinkedIn client adapted from inflow), live inbox sync, sends delivered by the helper, Settings | Done |
-| 4 | AI drafting with Claude or ChatGPT, official LinkedIn posting | Next |
+| 4 | AILI as a connector in Claude and ChatGPT (summaries, reply drafts, posts), Posts page, official LinkedIn posting and scheduling, articles opened in LinkedIn's editor | Done |
 
 ## Run it
 
@@ -104,6 +105,52 @@ to Pro once AILI earns money.
    press the reload arrow on the AILI helper in `chrome://extensions`. Then open
    your hosted AILI and log in; it connects the extension by itself. The
    extension talks only to that exact address and localhost, never a wildcard.
+
+## Claude, ChatGPT and LinkedIn posts
+
+AILI is an MCP connector: people add it to Claude or ChatGPT and ask things
+like "summarize my conversation with Rachel", "draft a reply and put it in
+AILI", or "write a post about onboarding and schedule it for Tuesday 9am".
+It runs on their own Claude or ChatGPT plan; AILI holds no AI key.
+
+- **What it can do:** read conversations, save a draft in a conversation's
+  message box, write, schedule and publish posts, save articles. It has no
+  way to send a LinkedIn message: a draft waits, labelled "Draft from
+  Claude", until you click Send in AILI.
+- **Connect (each user, once):** Settings, Claude and ChatGPT shows the
+  connector address, `https://your-address/mcp`.
+  - Claude: Settings, Connectors, Add custom connector, paste the address,
+    Connect, then Allow on AILI's screen.
+  - ChatGPT: Settings, Apps and Connectors, turn on Developer mode, create a
+    connector with the address, then Allow. (Custom connectors need a paid
+    ChatGPT plan.)
+  - Disconnect any time in Settings. Behind it is standard OAuth with PKCE
+    and dynamic client registration; tokens are stored hashed.
+
+**LinkedIn posting (once per AILI):** posts go out through LinkedIn's
+official API, which needs a free LinkedIn developer app.
+
+1. At https://developer.linkedin.com create an app (it needs a LinkedIn
+   company page to attach to; any page you admin works).
+2. Products: add **Sign In with LinkedIn using OpenID Connect** and **Share on
+   LinkedIn**.
+3. Auth: add the redirect URL `https://your-address/api/linkedin/callback`.
+4. In Vercel add `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` (Secret)
+   and redeploy. Then each user clicks Connect LinkedIn in Settings. LinkedIn
+   asks them to reconnect every 60 days; AILI shows when.
+
+**Scheduled posts timer:** set `CRON_SECRET` in Vercel to a long random
+string and redeploy. At https://cron-job.org (free) create a job that calls
+`https://your-address/api/cron/posts?key=<CRON_SECRET>` every 5 minutes.
+Scheduled posts then go out within 5 minutes of their time, with your
+computer off. Without it they still go out, but only while Chrome is open
+with the extension (it checks in every minute).
+
+**Articles:** LinkedIn does not let apps publish articles. Claude or ChatGPT
+saves them in AILI; Open in LinkedIn opens LinkedIn's article editor and the
+extension fills in the title and text (they are also put on the clipboard in
+case LinkedIn's editor changes). You publish or schedule it there, then mark
+it as published in AILI.
 
 Changing the database layout later: edit `prisma/schema.prisma`, run
 `npm run db:migration -- short_name` to write the SQL into

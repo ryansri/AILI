@@ -4,10 +4,10 @@ import { useState, useTransition } from "react";
 import { ArrowUp, Check, ChevronDown, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { archivePerson, cancelQueued, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/actions";
+import { archivePerson, cancelQueued, discardDraft, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/actions";
 import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
-import { shortDate, shortTime, type NextStep } from "@/lib/next-step";
+import { relativeTime, shortDate, shortTime, type NextStep } from "@/lib/next-step";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,7 @@ import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
+import { DraftWithAi } from "./draft-with-ai";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
 
@@ -140,7 +141,15 @@ export function ConversationPane({
   const { person, step } = row;
   // Someone in Other: readable and repliable, but not a lead, so no stage, tags or next step.
   const isLead = person.lead !== false;
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(person.draft?.text ?? "");
+  // A draft from Claude or ChatGPT that arrives while this conversation is open
+  // fills the box, unless the user is already typing something else.
+  const [draftAt, setDraftAt] = useState(person.draft?.at);
+  if (person.draft && person.draft.at !== draftAt) {
+    setDraftAt(person.draft.at);
+    if (!draft.trim()) setDraft(person.draft.text);
+  }
+  const aiDraft = person.draft && draftAt === person.draft.at ? person.draft : undefined;
   const [sending, setSending] = useState(false);
   const [logging, setLogging] = useState(false);
   const [pending, start] = useTransition();
@@ -394,19 +403,35 @@ export function ConversationPane({
             {actionable && (
               <>
                 <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} label="Not now" />
-                <Button
-                  size="sm"
-                  className="h-7 rounded-full px-3 text-xs"
-                  onClick={() => toast("AI drafting arrives in step 4.")}
-                >
-                  <Sparkles />
-                  Draft with AI
-                </Button>
+                <DraftWithAi personName={person.name} />
               </>
             )}
           </div>
         )}
 
+        {aiDraft && (
+          <div className="-mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <span className="inline-flex h-5 items-center gap-1 rounded-full bg-sky-50 px-2 font-medium text-sky-700">
+              <Sparkles className="size-3" />
+              Draft from {aiDraft.source}
+            </span>
+            <span suppressHydrationWarning>{relativeTime(aiDraft.at)}</span>
+            <span>· Check it, then send</span>
+            <button
+              type="button"
+              className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground"
+              onClick={() =>
+                run(async () => {
+                  await discardDraft(person.id);
+                  setDraft("");
+                }, "Draft discarded.")
+              }
+            >
+              <X className="size-3" />
+              Discard
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2.5">
           <TemplatePicker
             templates={templates}

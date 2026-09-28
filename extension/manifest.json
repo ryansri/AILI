@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AILI helper",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Syncs your LinkedIn inbox with AILI and delivers the messages you click Send on. Not affiliated with LinkedIn.",
   "permissions": [
     "cookies",
@@ -47,6 +47,15 @@
         "aili-page.js"
       ],
       "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.linkedin.com/article/*"
+      ],
+      "js": [
+        "linkedin-article.js"
+      ],
+      "run_at": "document_idle"
     }
   ]
 }
