@@ -34,12 +34,12 @@ const COLS: { key: Col; label: string; width: string; edit?: "text" | "date" | "
   { key: "day", label: "Date", width: "112px", edit: "date" },
   { key: "time", label: "Time", width: "84px", edit: "time" },
   { key: "channel", label: "Channel", width: "118px", edit: "text" },
+  { key: "format", label: "Format", width: "150px", edit: "text" },
   { key: "topic", label: "Topic", width: "minmax(280px,2fr)", edit: "text" },
   { key: "hook", label: "Hook", width: "minmax(220px,1.5fr)", edit: "text" },
   { key: "pillar", label: "Pillar", width: "136px", edit: "text" },
   { key: "vertical", label: "Vertical", width: "120px", edit: "text" },
   { key: "funnel", label: "Funnel", width: "76px", edit: "text" },
-  { key: "format", label: "Format", width: "128px", edit: "text" },
   { key: "kind", label: "Type", width: "84px", edit: "kind" },
   { key: "goal", label: "Goal (CTA)", width: "150px", edit: "text" },
   { key: "notes", label: "Notes", width: "minmax(200px,1fr)", edit: "text" },
@@ -50,7 +50,7 @@ interface Prefs {
   group: "week" | "none";
 }
 
-const DEFAULT_PREFS: Prefs = { cols: ["status", "day", "time", "channel", "topic", "pillar", "vertical", "funnel", "format"], group: "week" };
+const DEFAULT_PREFS: Prefs = { cols: ["status", "day", "time", "channel", "format", "topic", "pillar", "vertical", "funnel"], group: "week" };
 const KEY = "aili-plan-table";
 const listeners = new Set<() => void>();
 

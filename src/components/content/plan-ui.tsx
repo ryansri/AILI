@@ -105,27 +105,50 @@ export function ChannelBadge({ channel, short }: { channel: string; short?: bool
 }
 
 // Checked in order: "Carousel (PDF)" is a carousel, "Text + image" an image post.
-const FORMATS: [RegExp, typeof AlignLeft][] = [
-  [/carousel|pdf|document|slides?|deck/i, GalleryHorizontalEnd],
-  [/video|reel|clip/i, Video],
-  [/poll/i, BarChart3],
-  [/list|truths|tips|steps/i, ListOrdered],
-  [/quote/i, Quote],
-  [/stat|number|chart/i, Hash],
-  [/image|photo|picture|graphic|card|infographic|screenshot|teardown|meme/i, ImageIcon],
-  [/article|newsletter|blog/i, FileText],
-  [/text/i, AlignLeft],
+// Each family has its own colour, so a week of posts reads at a glance.
+const FORMATS: { re: RegExp; icon: typeof AlignLeft; tone: string; chip: string }[] = [
+  { re: /carousel|pdf|document|slides?|deck/i, icon: GalleryHorizontalEnd, tone: "text-violet-700", chip: "bg-violet-50 text-violet-700" },
+  { re: /video|reel|clip/i, icon: Video, tone: "text-red-700", chip: "bg-red-50 text-red-700" },
+  { re: /poll/i, icon: BarChart3, tone: "text-teal-700", chip: "bg-teal-50 text-teal-700" },
+  { re: /list|truths|tips|steps/i, icon: ListOrdered, tone: "text-amber-700", chip: "bg-amber-50 text-amber-800" },
+  { re: /quote/i, icon: Quote, tone: "text-pink-700", chip: "bg-pink-50 text-pink-700" },
+  { re: /stat|number|chart/i, icon: Hash, tone: "text-pink-700", chip: "bg-pink-50 text-pink-700" },
+  { re: /image|photo|picture|graphic|card|infographic|screenshot|teardown|meme/i, icon: ImageIcon, tone: "text-pink-700", chip: "bg-pink-50 text-pink-700" },
+  { re: /article|newsletter|blog/i, icon: FileText, tone: "text-indigo-700", chip: "bg-indigo-50 text-indigo-700" },
 ];
+const PLAIN = { icon: AlignLeft, tone: "text-stone-500", chip: "bg-stone-100 text-stone-600" };
 
-/** The post's format as a small badge with an icon: Carousel, Listicle, Image, Text… as the plan names it. */
-export function FormatBadge({ format, kind }: { format: string; kind?: "post" | "article" }) {
+function formatOf(format: string, kind?: "post" | "article") {
   const label = format || (kind === "article" ? "Article" : "");
-  if (!label) return null;
-  const Icon = FORMATS.find(([re]) => re.test(label))?.[1] ?? AlignLeft;
+  return { label, ...(FORMATS.find((f) => f.re.test(label)) ?? PLAIN) };
+}
+
+/**
+ * The post's format, as the plan names it (Carousel, Listicle, Image, Text…),
+ * with its icon and colour. "label" sits above a title, in capitals;
+ * "chip" is a small coloured badge for tables.
+ */
+export function FormatBadge({ format, kind, variant = "chip" }: { format: string; kind?: "post" | "article"; variant?: "label" | "chip" }) {
+  const f = formatOf(format, kind);
+  if (!f.label) return null;
+  const Icon = f.icon;
+  // A newsletter is still an article, published in LinkedIn by hand.
+  const also = kind === "article" && !/article|newsletter|blog/i.test(f.label) ? " · Article" : "";
+  if (variant === "label") {
+    return (
+      <span className={cn("inline-flex max-w-full items-center gap-1 text-2xs font-bold tracking-wide uppercase", f.tone)} title={f.label + also}>
+        <Icon className="size-3.5 shrink-0" strokeWidth={2.25} />
+        <span className="truncate">
+          {f.label}
+          {also}
+        </span>
+      </span>
+    );
+  }
   return (
-    <span className="inline-flex h-[22px] max-w-full items-center gap-1.5 truncate rounded-md border bg-background px-1.5 text-xs text-foreground/80" title={label}>
-      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="truncate">{label}</span>
+    <span className={cn("inline-flex h-[22px] max-w-full items-center gap-1.5 truncate rounded-md px-1.5 text-xs font-medium", f.chip)} title={f.label + also}>
+      <Icon className="size-3.5 shrink-0" />
+      <span className="truncate">{f.label}</span>
     </span>
   );
 }
