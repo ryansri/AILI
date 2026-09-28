@@ -11,7 +11,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
   const workspace = await getWorkspace();
   const { linkedin } = await searchParams;
   const [account, apps, origin, helperToken] = await Promise.all([
-    getAccount(workspace.id),
+    getAccount(workspace.id, workspace),
     connectedApps(workspace.id),
     appOrigin(),
     // Accounts created before the helper existed get a token on first visit.

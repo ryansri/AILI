@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SendingPage() {
   const workspace = await getWorkspace();
-  const account = await getAccount(workspace.id);
+  const account = await getAccount(workspace.id, workspace);
   return (
     <SendingView
       dailyCap={account.dailyCap}

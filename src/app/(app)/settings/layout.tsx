@@ -4,7 +4,7 @@ import { SettingsNav } from "@/components/settings/settings-nav";
 
 export default async function SettingsLayout({ children }: LayoutProps<"/settings">) {
   const workspace = await getWorkspace();
-  const account = await getAccount(workspace.id);
+  const account = await getAccount(workspace.id, workspace);
   const h = account.helper;
   const posting = linkedInPostingOf(workspace);
   // Something set up has stopped working: the extension, or LinkedIn posting about to lapse.

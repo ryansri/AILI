@@ -14,7 +14,7 @@ export default async function WelcomePage() {
   if (workspace.onboardedAt) redirect("/inbox");
   const hint = readExtensionHint((await cookies()).get(EXTENSION_HINT_COOKIE)?.value);
   const [account, people, token] = await Promise.all([
-    getAccount(workspace.id),
+    getAccount(workspace.id, workspace),
     db.person.count({ where: { workspaceId: workspace.id, archivedAt: null } }),
     helperTokenFor(workspace),
   ]);

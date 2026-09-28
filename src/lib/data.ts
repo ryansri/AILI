@@ -1,5 +1,6 @@
 import "server-only";
-import { Prisma } from "@prisma/client";
+import { cache } from "react";
+import { Prisma, type Workspace } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId, newHelperToken } from "./auth";
@@ -8,13 +9,23 @@ import { startsAsLead } from "./leads";
 import type { Template } from "./templates";
 import { DEFAULT_STAGES, isTagColor, type Account, type Person, type StageDef, type Tag } from "./types";
 
-/** The logged-in workspace. Pages and actions call this; unauthenticated callers go to /login. */
-export async function getWorkspace() {
+/** The logged-in workspace's id, from the session cookie (no database trip). Anyone else goes to /login. */
+async function requireWorkspaceId(): Promise<string> {
   const id = await currentWorkspaceId();
-  const workspace = id ? await db.workspace.findUnique({ where: { id } }) : null;
+  if (!id) redirect("/login");
+  return id;
+}
+
+/**
+ * The logged-in workspace. Pages and actions call this; unauthenticated callers
+ * go to /login. Read once per request, however many layouts and pages ask.
+ */
+export const getWorkspace = cache(async () => {
+  const id = await requireWorkspaceId();
+  const workspace = await db.workspace.findUnique({ where: { id } });
   if (!workspace) redirect("/login");
   return workspace;
-}
+});
 
 const personInclude = {
   tags: { select: { tagId: true } },
@@ -119,8 +130,8 @@ export async function helperTokenFor(workspace: { id: string; helperToken: strin
 /** The helper counts as connected when it reported in during the last few minutes. */
 export const HELPER_ONLINE_MS = 5 * 60 * 1000;
 
-export async function getAccount(workspaceId: string): Promise<Account> {
-  const workspace = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+/** Sent today plus anything still queued for the helper, which counts against the daily cap. */
+async function usedToday(workspaceId: string): Promise<number> {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const [sentToday, queued] = await Promise.all([
@@ -129,6 +140,19 @@ export async function getAccount(workspaceId: string): Promise<Account> {
     }),
     db.outbox.count({ where: { workspaceId, status: { in: ["queued", "sending"] } } }),
   ]);
+  return sentToday + queued;
+}
+
+/** The account, from the workspace row when the caller already has it (saves a trip to the database). */
+export async function getAccount(workspaceId: string, known?: Workspace): Promise<Account> {
+  const [workspace, used] = await Promise.all([
+    known ?? db.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
+    usedToday(workspaceId),
+  ]);
+  return accountOf(workspace, used);
+}
+
+function accountOf(workspace: Workspace, used: number): Account {
   const seen = workspace.helperLastSeenAt?.getTime() ?? 0;
   const online = Date.now() - seen < HELPER_ONLINE_MS;
   return {
@@ -137,7 +161,7 @@ export async function getAccount(workspaceId: string): Promise<Account> {
     pictureUrl: workspace.helperPictureUrl ?? undefined,
     dailyCap: workspace.dailyCap,
     notifyReplies: workspace.notifyReplies,
-    sentToday: sentToday + queued,
+    sentToday: used,
     helper: {
       connected: online && workspace.helperState === "ok",
       state: workspace.helperState ?? "never",
@@ -201,17 +225,24 @@ async function sortLeadsOnce(workspace: { id: string; leadsSortedAt: Date | null
  * each. `people` is leads only, so counts, People and the funnel never see
  * Other; the inbox gets `others` separately.
  */
-export async function loadWorkspaceData() {
-  const workspace = await getWorkspace();
-  await sortLeadsOnce(workspace);
-  const [everyone, tags, stages, templates, account] = await Promise.all([
-    getPeople(workspace.id),
-    getTags(workspace.id),
-    getStages(workspace.id),
-    getTemplates(workspace.id),
-    getAccount(workspace.id),
+export const loadWorkspaceData = cache(async () => {
+  // Everything at once: over a hosted database each trip costs time, so there is only one.
+  const id = await requireWorkspaceId();
+  const [workspace, loaded, tags, stages, templates, used] = await Promise.all([
+    getWorkspace(),
+    getPeople(id),
+    getTags(id),
+    getStages(id),
+    getTemplates(id),
+    usedToday(id),
   ]);
+  let everyone = loaded;
+  if (!workspace.leadsSortedAt) {
+    await sortLeadsOnce(workspace);
+    everyone = await getPeople(id);
+  }
+  const account = accountOf(workspace, used);
   const people = everyone.filter((p) => p.lead !== false);
   const others = everyone.filter((p) => p.lead === false);
   return { workspace, people, others, tags, stages, templates, account };
-}
+});
