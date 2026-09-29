@@ -2,14 +2,15 @@
 
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArrowDown, Bell, BellOff, Building2, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
+import { Archive, Bell, Building2, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } from "@/lib/client-actions";
 import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
-import { buildFunnel, notMessaged } from "@/lib/funnel";
-import { connectionOf, waitingDays, type InviteFacts } from "@/lib/invites";
-import { daysBetween, relativeTime } from "@/lib/next-step";
+import { buildFunnel, notMessaged, type Funnel } from "@/lib/funnel";
+import { waitingDays, type InviteFacts } from "@/lib/invites";
+import { leadNext } from "@/lib/lead-next";
+import { relativeTime } from "@/lib/next-step";
 import type { Template } from "@/lib/templates";
 import { stageLabel, type Account, type Person, type StageDef, type Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -26,9 +27,7 @@ import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/compo
 import { CountBadge } from "@/components/count-badge";
 import { TagChip, TagDot } from "@/components/tag-chip";
 import { PersonAvatar } from "@/components/person-avatar";
-import { LinkedInButton } from "@/components/linkedin-bits";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
-import { FunnelRow, type Pick } from "./funnel";
 import { ImportDialog } from "./import-dialog";
 import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./company-view";
 import { PersonDialog } from "./person-dialog";
@@ -36,15 +35,11 @@ import { RequestsStrip } from "./requests-strip";
 import { PostAlertsPanel, usePostAlerts } from "./post-alerts";
 
 const ALL = "all";
-const RANGES = [
-  { value: ALL, label: "All time" },
-  { value: "7", label: "Added in the last 7 days" },
-  { value: "30", label: "Added in the last 30 days" },
-  { value: "90", label: "Added in the last 90 days" },
-];
 
-type Sort = "recent" | "inStage";
 type View = "people" | "companies";
+
+/** What the table shows: everyone, one step of the funnel, or the connected who have no message yet. */
+type Pick = { kind: "stage"; key: string } | { kind: "notMessaged" } | null;
 
 /* People or Companies: remembered on this computer. */
 const VIEW_KEY = "aili-leads-view";
@@ -93,49 +88,66 @@ function lastTouch(p: Person): { text: string; at: string | undefined } {
   return { text: p.createdAt ? `Added ${ago(p.createdAt)}` : "", at: p.createdAt };
 }
 
-/** When they moved to their stage. Older records have no date, so the nearest one stands in. */
-const stageSince = (p: Person) =>
-  p.stageChangedAt ??
-  (p.stage === "requested" ? p.requestedAt : p.stage === "warming" ? undefined : p.connectedAt) ??
-  p.createdAt;
+/** The early stages the ring on the photo already shows. Past them, the stage shows by the name. */
+const RING_STAGES = new Set(["warming", "requested", "connected"]);
 
-/** Post alerts (the bell) and warm-up comments, in one small cell. */
-function WarmUp({ person, needed }: { person: Person; needed: number }) {
-  const count = person.touches?.length ?? 0;
-  const BellIcon = person.alerts === "impossible" ? BellOff : Bell;
+/**
+ * The funnel in one line: how many are at each step right now. Click a step
+ * to see just those people; click the first to see everyone again.
+ */
+function FunnelLine({
+  funnel,
+  unit,
+  pick,
+  onPick,
+}: {
+  funnel: Funnel;
+  unit: string;
+  pick: Pick;
+  onPick: (pick: Pick) => void;
+}) {
+  const chip = (on: boolean) =>
+    cn(
+      "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+      on && "bg-foreground text-background hover:bg-foreground hover:text-background",
+    );
   return (
-    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-      <BellIcon
-        aria-label={person.alerts === "on" ? "Post alerts on" : person.alerts === "impossible" ? "No bell" : "Post alerts not on yet"}
-        className={cn("size-3.5", person.alerts === "on" ? "text-emerald-600" : "opacity-40")}
-      />
-      {/* Comments only count before you connect. */}
-      {connectionOf(person) !== "connected" && (
-        <>
-          <span className="flex gap-0.5" title={`${count} of ${needed} comments`}>
-            {Array.from({ length: needed }, (_, i) => (
-              <span key={i} className={cn("size-1.5 rounded-full", i < count ? "bg-foreground" : "bg-border")} />
-            ))}
-          </span>
-          {count >= needed && <span className="font-medium text-foreground">Ready</span>}
-        </>
-      )}
-    </span>
-  );
-}
-
-function SortHead({ label, on, onClick, className }: { label: string; on: boolean; onClick: () => void; className?: string }) {
-  return (
-    <TableHead className={className}>
-      <button
-        type="button"
-        onClick={onClick}
-        className={cn("inline-flex items-center gap-1 hover:text-foreground", on && "text-foreground")}
-      >
-        {label}
-        {on && <ArrowDown className="size-3" />}
+    <nav aria-label="Your funnel" className="flex flex-wrap items-center gap-x-1 gap-y-1.5 border-b px-5 py-3">
+      <button type="button" aria-pressed={pick === null} onClick={() => onPick(null)} className={chip(pick === null)}>
+        <b className="text-md font-semibold tabular-nums">{funnel.total}</b>
+        {unit}
       </button>
-    </TableHead>
+      {funnel.steps.map((step) => {
+        const on = pick?.kind === "stage" && pick.key === step.key;
+        return (
+          <span key={step.key} className="flex items-center gap-1">
+            <span aria-hidden="true" className="text-border">
+              →
+            </span>
+            <button
+              type="button"
+              aria-pressed={on}
+              onClick={() => onPick(on ? null : { kind: "stage", key: step.key })}
+              className={chip(on)}
+            >
+              <b className={cn("text-md font-semibold tabular-nums", !on && "text-foreground")}>{step.here}</b>
+              {step.label.toLowerCase()}
+            </button>
+          </span>
+        );
+      })}
+      {funnel.lost > 0 && (
+        <button
+          type="button"
+          aria-pressed={pick?.kind === "stage" && pick.key === "lost"}
+          onClick={() => onPick({ kind: "stage", key: "lost" })}
+          className={cn(chip(pick?.kind === "stage" && pick.key === "lost"), "ml-3")}
+        >
+          <b className="text-md font-semibold tabular-nums">{funnel.lost}</b>
+          not a fit
+        </button>
+      )}
+    </nav>
   );
 }
 
@@ -167,9 +179,7 @@ export function PeopleView({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [tagId, setTagId] = useState(ALL);
-  const [range, setRange] = useState(ALL);
   const [pick, setPick] = useState<Pick>(null);
-  const [sort, setSort] = useState<Sort>("recent");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<{ company: string } | null>(null);
   const view = useView();
@@ -182,17 +192,8 @@ export function PeopleView({
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [pending, start] = useTransition();
   const search = useHeaderSearch(query);
-  const [openedAt] = useState(() => Date.now());
-
-  // The tag and date range narrow the whole page: funnel and table.
-  const scope = useMemo(() => {
-    const since = range === ALL ? 0 : openedAt - Number(range) * 24 * 60 * 60 * 1000;
-    return people.filter(
-      (p) =>
-        (tagId === ALL || p.tagIds.includes(tagId)) &&
-        (!since || (p.createdAt ? new Date(p.createdAt).getTime() >= since : true)),
-    );
-  }, [people, tagId, range, openedAt]);
+  // The tag narrows the whole page: funnel and table.
+  const scope = useMemo(() => people.filter((p) => tagId === ALL || p.tagIds.includes(tagId)), [people, tagId]);
 
   const companies = useMemo(() => groupByCompany(scope, stages, companyRules), [scope, stages, companyRules]);
   const byCompany = view === "companies";
@@ -200,10 +201,6 @@ export function PeopleView({
   const funnel = useMemo(
     () => buildFunnel(byCompany ? companyStandIns(companies) : scope, stages),
     [byCompany, companies, scope, stages],
-  );
-  const unmessaged = useMemo(
-    () => (byCompany ? companies.filter((g) => g.people.some(notMessaged)).length : scope.filter(notMessaged).length),
-    [byCompany, companies, scope],
   );
 
   const companyRows = useMemo(() => {
@@ -229,12 +226,8 @@ export function PeopleView({
       return true;
     });
     const time = (iso: string | undefined) => (iso ? new Date(iso).getTime() : 0);
-    return list.sort((a, b) =>
-      sort === "inStage"
-        ? time(stageSince(a)) - time(stageSince(b))
-        : time(lastTouch(b).at) - time(lastTouch(a).at),
-    );
-  }, [scope, pick, query, sort]);
+    return list.sort((a, b) => time(lastTouch(b).at) - time(lastTouch(a).at));
+  }, [scope, pick, query]);
 
   const shownIds = rows.map((p) => p.id);
   const chosen = shownIds.filter((id) => selected.has(id));
@@ -280,14 +273,12 @@ export function PeopleView({
   const isStale = (p: Person) => p.invite?.status === "sent" && waitingDays(p.invite.sentAt, now) > staleDays;
   const withdrawable = chosenPeople.filter((p) => ["queued", "sending", "sent", "failed"].includes(p.invite?.status ?? ""));
   const showRequests = !byCompany && pick?.kind === "stage" && pick.key === "requested";
-  const unitOf = (n: number) => (byCompany ? (n === 1 ? "company" : "companies") : n === 1 ? "person" : "people");
 
   function switchView(next: View) {
     writeView(next);
     setSelected(new Set());
     setConfirmArchive(false);
   }
-  const weakest = funnel.weakest;
   const now = new Date();
 
   return (
@@ -335,76 +326,7 @@ export function PeopleView({
       />
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <section aria-label="Your funnel" className="border-b px-6 pt-5 pb-4">
-          <div className="mb-3.5 flex flex-wrap items-center gap-2">
-            <h2 className="text-md font-semibold">Your funnel</h2>
-            <span className="text-xs text-muted-foreground">
-              {byCompany ? "Companies that reached each step, at their furthest person" : "Everyone who reached each step"}
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <Select value={tagId} onValueChange={setTagId}>
-                <SelectTrigger size="sm" aria-label="Tag" className="min-w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  <SelectItem value={ALL}>All tags</SelectItem>
-                  {tags.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      <TagDot color={t.color} />
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={range} onValueChange={setRange}>
-                <SelectTrigger size="sm" aria-label="When added">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  {RANGES.map((r) => (
-                    <SelectItem key={r.value} value={r.value}>
-                      {r.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <FunnelRow funnel={funnel} pick={pick} onPick={choose} />
-
-          {weakest && (
-            <div className="mt-3.5 flex items-center gap-3 rounded-lg bg-muted/70 px-3.5 py-2.5 text-md">
-              <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-amber-500" />
-              <span className="min-w-0 flex-1">
-                <span className="font-semibold">
-                  Biggest drop: {weakest.from.label} to {weakest.to.label}.
-                </span>{" "}
-                {weakest.stuck} of {weakest.from.reached} {byCompany ? unitOf(weakest.from.reached) + " " : ""}
-                {weakest.stuck === 1 ? "has" : "have"} not moved on
-                {weakest.from.key === "connected" && unmessaged > 0
-                  ? `, and ${unmessaged} of them ${byCompany ? "have someone who has" : "have"} not had a message from you yet.`
-                  : "."}
-              </span>
-              {weakest.from.key === "connected" && unmessaged > 0 ? (
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => choose({ kind: "notMessaged" })}>
-                  Show the {unmessaged}
-                </Button>
-              ) : (
-                weakest.from.here > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full"
-                    onClick={() => choose({ kind: "stage", key: weakest.from.key })}
-                  >
-                    Show the {weakest.from.here}
-                  </Button>
-                )
-              )}
-            </div>
-          )}
-        </section>
+        <FunnelLine funnel={funnel} unit={byCompany ? "companies" : "leads"} pick={pick} onPick={choose} />
 
         <div className="flex items-center gap-2 px-6 pt-4 pb-2">
           <h2 className="text-md font-semibold">{title ? (pick?.kind === "stage" ? `In ${title} now` : title) : "Everyone"}</h2>
@@ -437,6 +359,20 @@ export function PeopleView({
               Show everyone
             </Button>
           )}
+          <Select value={tagId} onValueChange={setTagId}>
+            <SelectTrigger size="sm" aria-label="Tag" className="ml-auto min-w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value={ALL}>All tags</SelectItem>
+              {tags.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  <TagDot color={t.color} />
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {showRequests && (
@@ -480,26 +416,15 @@ export function PeopleView({
                 />
               </TableHead>
               <TableHead>Person</TableHead>
-              <TableHead>Stage</TableHead>
-              <TableHead>Warm-up</TableHead>
+              <TableHead>Next</TableHead>
               <TableHead>Tags</TableHead>
-              <SortHead label="Last touch" on={sort === "recent"} onClick={() => setSort("recent")} />
-              <TableHead className="text-right">Sent / got</TableHead>
-              <SortHead
-                label="In stage"
-                on={sort === "inStage"}
-                onClick={() => setSort("inStage")}
-                className="pr-6 text-right"
-              />
+              <TableHead className="pr-6">Last touch</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((p) => {
               const on = selected.has(p.id);
-              const sent = p.messages.filter((m) => m.direction === "out").length;
-              const got = p.messages.length - sent;
-              const since = stageSince(p);
-              const days = since ? daysBetween(new Date(since), now) : null;
+              const next = leadNext(p, staleDays, now);
               return (
                 <TableRow
                   key={p.id}
@@ -514,9 +439,13 @@ export function PeopleView({
                     <div className="flex items-center gap-3">
                       <PersonAvatar person={p} className="size-8" />
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           <span className="text-md font-semibold">{p.name}</span>
-                          <LinkedInButton person={p} className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" />
+                          {!RING_STAGES.has(p.stage) && (
+                            <span className="rounded-md bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground">
+                              {stageLabel(stages, p.stage)}
+                            </span>
+                          )}
                         </div>
                         <div className="max-w-72 truncate text-xs text-muted-foreground">
                           {[p.jobTitle || p.headline, p.company].filter(Boolean).join(" · ")}
@@ -524,11 +453,11 @@ export function PeopleView({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <span className="rounded-md bg-foreground/[0.06] px-2 py-0.5 text-xs font-medium">{stageLabel(stages, p.stage)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <WarmUp person={p} needed={account.alerts.touchesToConnect} />
+                  <TableCell
+                    className={cn("text-md", next?.due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground/80")}
+                    suppressHydrationWarning
+                  >
+                    {next?.text}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1.5">
@@ -539,16 +468,8 @@ export function PeopleView({
                         ))}
                     </div>
                   </TableCell>
-                  <TableCell className={cn("text-xs text-muted-foreground", isStale(p) && "font-semibold text-amber-700")} suppressHydrationWarning>
-                    {p.invite?.status === "sent" && p.stage === "requested"
-                      ? `Waiting ${waitingDays(p.invite.sentAt, now)} days${isStale(p) ? " · withdraw?" : ""}`
-                      : lastTouch(p).text}
-                  </TableCell>
-                  <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
-                    {sent} / {got}
-                  </TableCell>
-                  <TableCell className="pr-6 text-right text-xs text-muted-foreground tabular-nums" suppressHydrationWarning>
-                    {days === null ? "" : days === 0 ? "today" : `${days}d`}
+                  <TableCell className="pr-6 text-xs text-muted-foreground" suppressHydrationWarning>
+                    {lastTouch(p).text}
                   </TableCell>
                 </TableRow>
               );
