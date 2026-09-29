@@ -45,7 +45,6 @@ import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
 import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf } from "./connect";
-import { LinkedInMark } from "@/components/linkedin-bits";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
@@ -252,14 +251,6 @@ export function ConversationPane({
                 <Info />
                 {detailsOpen ? "Hide info" : "View info"}
               </DropdownMenuItem>
-              {person.linkedinUrl && (
-                <DropdownMenuItem asChild>
-                  <a href={person.linkedinUrl} target="_blank" rel="noreferrer">
-                    <LinkedInMark />
-                    Visit LinkedIn profile
-                  </a>
-                </DropdownMenuItem>
-              )}
               {isLead && (
                 <DropdownMenuItem onSelect={() => run(() => toggleStar(person.id), "")}>
                   {person.starred ? <StarOff /> : <Star />}
