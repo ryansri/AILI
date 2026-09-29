@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "./db";
-import { OPEN_STATUSES, planNetwork, type NetworkReport } from "./invites";
+import { isLinkedInImage } from "./helper-sync";
+import { memberIdOf, OPEN_STATUSES, planNetwork, type NetworkReport } from "./invites";
 
 /*
  * Connection requests on the server: what happens when the helper reports a
@@ -72,7 +73,18 @@ export async function applyNetwork(workspaceId: string, report: NetworkReport, n
   const [people, invites] = await Promise.all([
     db.person.findMany({
       where: { workspaceId, archivedAt: null, OR: [{ linkedinUrn: { not: null } }, { publicId: { not: null } }] },
-      select: { id: true, lead: true, linkedinUrn: true, publicId: true, connection: true, name: true, headline: true, jobTitle: true, company: true },
+      select: {
+        id: true,
+        lead: true,
+        linkedinUrn: true,
+        publicId: true,
+        connection: true,
+        name: true,
+        headline: true,
+        jobTitle: true,
+        company: true,
+        pictureUrl: true,
+      },
     }),
     db.invite.findMany({ where: { workspaceId, status: { in: OPEN_STATUSES } }, orderBy: { createdAt: "asc" } }),
   ]);
@@ -132,6 +144,18 @@ export async function applyNetwork(workspaceId: string, report: NetworkReport, n
     }
   }
 
+  // The lists carry profile photos: keep the latest link for anyone in AILI (the links expire).
+  const byMember = new Map(people.map((p) => [memberIdOf(p.linkedinUrn), p]).filter(([id]) => id) as [string, (typeof people)[number]][]);
+  const byPublic = new Map(people.filter((p) => p.publicId).map((p) => [p.publicId!.toLowerCase(), p]));
+  for (const seen of [...(report.connections ?? []), ...(report.sent ?? [])]) {
+    if (!seen.pictureUrl) continue;
+    const p = byMember.get(seen.memberId) ?? (seen.publicId ? byPublic.get(seen.publicId.toLowerCase()) : undefined);
+    if (p && p.pictureUrl !== seen.pictureUrl) {
+      await db.person.update({ where: { id: p.id }, data: { pictureUrl: seen.pictureUrl } });
+      p.pictureUrl = seen.pictureUrl;
+    }
+  }
+
   await db.workspace.update({ where: { id: workspaceId }, data: { networkCheckedAt: now } });
   return accepted;
 }
@@ -151,10 +175,16 @@ export function readNetworkReport(body: unknown): NetworkReport {
       sharedSecret: typeof s?.sharedSecret === "string" ? s.sharedSecret.slice(0, 200) : undefined,
       sentAt: time(s?.sentAt),
       message: cleanText(s?.message, 400) || undefined,
+      pictureUrl: isLinkedInImage(s?.pictureUrl) ? s.pictureUrl : undefined,
     }))
     .filter((s) => s.memberId || s.publicId);
   const connections = list(b.connections)
-    ?.map((c: Record<string, unknown>) => ({ memberId: id(c?.memberId), publicId: pub(c?.publicId), connectedAt: time(c?.connectedAt) }))
+    ?.map((c: Record<string, unknown>) => ({
+      memberId: id(c?.memberId),
+      publicId: pub(c?.publicId),
+      connectedAt: time(c?.connectedAt),
+      pictureUrl: isLinkedInImage(c?.pictureUrl) ? c.pictureUrl : undefined,
+    }))
     .filter((c) => c.memberId || c.publicId);
   return { sent, sentComplete: b.sentComplete === true, connections };
 }

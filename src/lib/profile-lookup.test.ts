@@ -20,6 +20,7 @@ function person(id: string, messages: Person["messages"]): Person {
     notes: "",
     pending: [],
     messages,
+    pictureUrl: "https://media.licdn.com/dms/image/x",
   };
 }
 
@@ -40,6 +41,22 @@ describe("pickLookups", () => {
       10,
     );
     expect(picked.map((p) => p.id)).toEqual(["replied", "older", "new"]);
+  });
+
+  it("gets to everyone still without a photo, after those", () => {
+    const quiet = { ...person("quiet", []), pictureUrl: undefined };
+    const replied = person("replied", [{ id: "1", direction: "in", body: "hi", sentAt: ago(1).toISOString() }]);
+    const newOne = person("new", []);
+    const picked = pickLookups(
+      [
+        { person: quiet, createdAt: ago(90) },
+        { person: newOne, createdAt: ago(2) },
+        { person: replied, createdAt: ago(60) },
+      ],
+      now,
+      10,
+    );
+    expect(picked.map((p) => p.id)).toEqual(["replied", "new", "quiet"]);
   });
 
   it("hands out at most the limit", () => {

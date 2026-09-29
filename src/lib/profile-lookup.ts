@@ -16,8 +16,9 @@ export interface LookupCandidate {
 
 /**
  * Who to look up next, most useful first: people who need you, newest
- * activity first, then people added in the last NEW_PERSON_DAYS. Everyone
- * else is left alone to keep LinkedIn requests low.
+ * activity first, then people added in the last NEW_PERSON_DAYS, then anyone
+ * still without a photo (each person is looked up once). Everyone else is left
+ * alone to keep LinkedIn requests low.
  */
 export function pickLookups(candidates: LookupCandidate[], now: Date = new Date(), limit = LOOKUPS_PER_REQUEST): Person[] {
   const scored = candidates
@@ -26,10 +27,12 @@ export function pickLookups(candidates: LookupCandidate[], now: Date = new Date(
       const urgent = needsYou(step.kind);
       const recent = now.getTime() - c.createdAt.getTime() < NEW_PERSON_DAYS * DAY;
       const last = c.person.messages[c.person.messages.length - 1];
-      return { person: c.person, urgent, recent, at: last ? new Date(last.sentAt).getTime() : c.createdAt.getTime() };
+      const noPhoto = !c.person.pictureUrl;
+      return { person: c.person, urgent, recent, noPhoto, at: last ? new Date(last.sentAt).getTime() : c.createdAt.getTime() };
     })
-    .filter((c) => c.urgent || c.recent);
-  scored.sort((a, b) => Number(b.urgent) - Number(a.urgent) || b.at - a.at);
+    .filter((c) => c.urgent || c.recent || c.noPhoto);
+  const tier = (c: (typeof scored)[number]) => (c.urgent ? 2 : c.recent ? 1 : 0);
+  scored.sort((a, b) => tier(b) - tier(a) || b.at - a.at);
   return scored.slice(0, limit).map((c) => c.person);
 }
 

@@ -49,6 +49,8 @@ export interface SentSeen {
   /** Epoch ms. */
   sentAt?: number;
   message?: string;
+  /** Their profile photo link on LinkedIn, when the list had one. */
+  pictureUrl?: string;
 }
 
 export interface ConnectionSeen {
@@ -56,6 +58,7 @@ export interface ConnectionSeen {
   publicId?: string;
   /** Epoch ms. */
   connectedAt?: number;
+  pictureUrl?: string;
 }
 
 export interface NetworkReport {

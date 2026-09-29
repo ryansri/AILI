@@ -145,9 +145,9 @@ export interface AcceptedToNotify {
 export async function reportNetwork(
   pairing: Pairing,
   body: {
-    sent?: { memberId: string; publicId?: string; invitationId?: string; sharedSecret?: string; sentAt?: number; message?: string }[];
+    sent?: { memberId: string; publicId?: string; invitationId?: string; sharedSecret?: string; sentAt?: number; message?: string; pictureUrl?: string }[];
     sentComplete?: boolean;
-    connections?: { memberId: string; publicId?: string; connectedAt?: number }[];
+    connections?: { memberId: string; publicId?: string; connectedAt?: number; pictureUrl?: string }[];
   },
 ): Promise<AcceptedToNotify[]> {
   const data = await call<{ accepted?: AcceptedToNotify[] }>(pairing, "/api/helper/network", { method: "POST", body: JSON.stringify(body) });

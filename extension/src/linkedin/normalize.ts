@@ -364,12 +364,16 @@ function entitiesOf(raw: unknown): Loose[] {
   return out;
 }
 
-/** /in/ addresses by member id, from the profiles in a response. */
-function publicIds(entities: Loose[]): Map<string, string> {
-  const map = new Map<string, string>();
+/** /in/ addresses and photos by member id, from the profiles in a response. */
+function profilesOf(entities: Loose[]): Map<string, { publicId?: string; pictureUrl?: string }> {
+  const map = new Map<string, { publicId?: string; pictureUrl?: string }>();
   for (const e of entities) {
     const id = profileIdOf(e.entityUrn);
-    if (id && typeof e.publicIdentifier === "string") map.set(id, e.publicIdentifier);
+    if (!id || (typeof e.publicIdentifier !== "string" && !e.profilePicture && !e.picture)) continue;
+    map.set(id, {
+      publicId: typeof e.publicIdentifier === "string" ? e.publicIdentifier : undefined,
+      pictureUrl: pictureFrom(e.profilePicture ?? e.picture) || undefined,
+    });
   }
   return map;
 }
@@ -397,6 +401,7 @@ export interface SentInvitation {
   sharedSecret?: string;
   sentAt?: number;
   message?: string;
+  pictureUrl?: string;
 }
 
 /** The numeric id at the end of an invitation urn (fs_relInvitation, fsd_invitation, invitation). */
@@ -407,7 +412,7 @@ export function invitationIdOf(value: unknown): string {
 /** Your sent connection requests, from LinkedIn's sent invitations list. */
 export function parseSentInvitations(raw: unknown, myId: string): SentInvitation[] {
   const entities = entitiesOf(raw);
-  const publics = publicIds(entities);
+  const profiles = profilesOf(entities);
   const out: SentInvitation[] = [];
   const seen = new Set<string>();
   for (const e of entities) {
@@ -420,11 +425,12 @@ export function parseSentInvitations(raw: unknown, myId: string): SentInvitation
     const message = typeof e.message === "string" ? e.message : typeof e.customMessage === "string" ? e.customMessage : undefined;
     out.push({
       memberId,
-      publicId: publics.get(memberId),
+      publicId: profiles.get(memberId)?.publicId,
       invitationId,
       sharedSecret: typeof e.sharedSecret === "string" ? e.sharedSecret : undefined,
       sentAt,
       message: message?.trim() || undefined,
+      pictureUrl: profiles.get(memberId)?.pictureUrl,
     });
   }
   return out;
@@ -434,12 +440,13 @@ export interface RecentConnection {
   memberId: string;
   publicId?: string;
   connectedAt?: number;
+  pictureUrl?: string;
 }
 
 /** Your newest connections, from LinkedIn's connections list sorted by recently added. */
 export function parseConnections(raw: unknown, myId: string): RecentConnection[] {
   const entities = entitiesOf(raw);
-  const publics = publicIds(entities);
+  const profiles = profilesOf(entities);
   const out: RecentConnection[] = [];
   const seen = new Set<string>();
   for (const e of entities) {
@@ -454,7 +461,12 @@ export function parseConnections(raw: unknown, myId: string): RecentConnection[]
       profileIdOf(e.miniProfile);
     if (!memberId || memberId === myId || seen.has(memberId)) continue;
     seen.add(memberId);
-    out.push({ memberId, publicId: publics.get(memberId), connectedAt: Number(e.createdAt ?? 0) || undefined });
+    out.push({
+      memberId,
+      publicId: profiles.get(memberId)?.publicId,
+      connectedAt: Number(e.createdAt ?? 0) || undefined,
+      pictureUrl: profiles.get(memberId)?.pictureUrl,
+    });
   }
   return out;
 }
