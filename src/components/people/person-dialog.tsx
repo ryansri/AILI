@@ -32,6 +32,7 @@ export function PersonDialog({
   onOpenChange,
   tags,
   person,
+  company,
   onSaved,
 }: {
   open: boolean;
@@ -39,6 +40,8 @@ export function PersonDialog({
   tags: Tag[];
   stages: StageDef[];
   person?: Person;
+  /** Adding someone from a company: its name, filled in. */
+  company?: string;
   onSaved?: (id: string) => void;
 }) {
   const [pending, start] = useTransition();
@@ -102,7 +105,7 @@ export function PersonDialog({
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="p-company">Company</Label>
-                <Input id="p-company" name="company" defaultValue={person?.company} placeholder="Ledger & Co" />
+                <Input id="p-company" name="company" defaultValue={person?.company ?? company} placeholder="Ledger & Co" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

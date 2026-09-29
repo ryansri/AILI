@@ -7,6 +7,7 @@ import { unwrap } from "./action-result";
 import * as actions from "./actions";
 import * as posts from "./post-actions";
 import * as plan from "./plan-actions";
+import * as companies from "./company-actions";
 
 export type { ImportRow, PersonInput } from "./actions";
 
@@ -76,3 +77,6 @@ export const deleteEntries = unwrap(plan.deleteEntries);
 export const fillFromRhythm = unwrap(plan.fillFromRhythm);
 export const setTimeZone = unwrap(plan.setTimeZone);
 export const setPlanWarning = unwrap(plan.setPlanWarning);
+
+export const nameCompany = unwrap(companies.nameCompany);
+export const keepCompaniesApart = unwrap(companies.keepCompaniesApart);

@@ -65,6 +65,7 @@ model Workspace {
 
   people Person[]
   tags   Tag[]
+  companyNames CompanyName[]
   stages Stage[]
   templates Template[]
   outbox Outbox[]
@@ -163,6 +164,20 @@ model Template {
   body        String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+/// Leads by company: a company name as LinkedIn gave it (lower case), and the
+/// name AILI groups it under, when the user renamed, merged or split it.
+model CompanyName {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  raw         String
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, raw])
 }
 
 model Tag {

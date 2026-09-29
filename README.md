@@ -266,6 +266,16 @@ are in `extension/README.md`.
   desktop notice (Add to Leads or Not a lead), and the conversation shows
   **Lead?** in Other until you answer. Settings, Account, Move everyone to
   Other starts Leads over. Reply notices and profile lookups are for leads only.
+- **Leads by company.** People | Companies above the Leads table. Companies
+  shows one row per company: who you know there (decision makers dark), the
+  furthest step anyone reached, whether anyone is talking, the last touch and
+  one line on what next (once someone is talking, hold the others). The arrow
+  shows the people; the name opens the company with its whole timeline. The
+  funnel then counts companies, each at its furthest person. Names are matched
+  without taglines and endings ("Emotive | Creative Agency" and "Emotive
+  Productions" are Emotive); a yellow line asks when AILI put spellings
+  together. Rename, Keep apart, or give two companies the same name to put
+  them together. AILI remembers People or Companies on this computer.
 - **Tags and stages.** Add a tag (name and colour) or a stage from the plus in
   the sidebar. Hover a tag for its ••• menu to rename, recolour or delete it;
   deleting takes it off everyone and keeps the people. Stages have the same
@@ -379,6 +389,7 @@ src/
     auth.ts             passwords and session cookies
     helper-sync.ts      applies what the helper saw to the database
     funnel.ts           who reached each stage, rates, the biggest drop
+    companies.ts        Leads by company: matching names, roles, what next
     leads.ts            who starts as a lead and who starts in Other
     csv.ts              reads CSV imports, including LinkedIn's Connections export
     templates.ts        fills {first_name} and the other fields for a person

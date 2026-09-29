@@ -6,6 +6,7 @@ import { db } from "./db";
 import { currentWorkspaceId, newHelperToken } from "./auth";
 import { helperOutdated } from "./helper-version";
 import { startsAsLead } from "./leads";
+import type { CompanyRule } from "./companies";
 import type { Template } from "./templates";
 import { DEFAULT_STAGES, isTagColor, type Account, type Person, type StageDef, type Tag } from "./types";
 
@@ -251,4 +252,10 @@ export const loadWorkspaceData = cache(async () => {
   const people = everyone.filter((p) => p.lead !== false);
   const others = everyone.filter((p) => p.lead === false);
   return { workspace, people, others, tags, stages, templates, account };
+});
+
+/** Leads by company: the company names the user renamed, put together or kept apart. */
+export const getCompanyRules = cache(async (): Promise<CompanyRule[]> => {
+  const id = await requireWorkspaceId();
+  return db.companyName.findMany({ where: { workspaceId: id }, select: { raw: true, name: true } });
 });

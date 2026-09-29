@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArrowDown, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, X } from "lucide-react";
+import { Archive, ArrowDown, Building2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther } from "@/lib/client-actions";
+import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
 import { buildFunnel, notMessaged } from "@/lib/funnel";
 import { daysBetween, relativeTime } from "@/lib/next-step";
 import type { Template } from "@/lib/templates";
@@ -27,6 +28,7 @@ import { PersonAvatar } from "@/components/inbox/people-list";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 import { FunnelRow, type Pick } from "./funnel";
 import { ImportDialog } from "./import-dialog";
+import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./company-view";
 import { PersonDialog } from "./person-dialog";
 
 const ALL = "all";
@@ -38,6 +40,38 @@ const RANGES = [
 ];
 
 type Sort = "recent" | "inStage";
+type View = "people" | "companies";
+
+/* People or Companies: remembered on this computer. */
+const VIEW_KEY = "aili-leads-view";
+const viewListeners = new Set<() => void>();
+
+function readView(): string {
+  try {
+    return localStorage.getItem(VIEW_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeView(view: View) {
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {}
+  viewListeners.forEach((l) => l());
+}
+
+function useView(): View {
+  const raw = useSyncExternalStore(
+    (l) => {
+      viewListeners.add(l);
+      return () => viewListeners.delete(l);
+    },
+    readView,
+    () => "",
+  );
+  return raw === "companies" ? "companies" : "people";
+}
 
 const ago = (iso: string) => {
   const t = relativeTime(iso);
@@ -82,12 +116,15 @@ export function PeopleView({
   stages,
   templates,
   account,
+  companyRules = [],
 }: {
   people: Person[];
   tags: Tag[];
   stages: StageDef[];
   templates: Template[];
   account: Account;
+  /** Company names the user renamed, put together or kept apart. */
+  companyRules?: CompanyRule[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -96,7 +133,10 @@ export function PeopleView({
   const [pick, setPick] = useState<Pick>(null);
   const [sort, setSort] = useState<Sort>("recent");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<{ company: string } | null>(null);
+  const view = useView();
+  const [openCompany, setOpenCompany] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [messaging, setMessaging] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -114,8 +154,31 @@ export function PeopleView({
     );
   }, [people, tagId, range, openedAt]);
 
-  const funnel = useMemo(() => buildFunnel(scope, stages), [scope, stages]);
-  const unmessaged = useMemo(() => scope.filter(notMessaged).length, [scope]);
+  const companies = useMemo(() => groupByCompany(scope, stages, companyRules), [scope, stages, companyRules]);
+  const byCompany = view === "companies";
+  // By company, each company counts once, as its furthest person.
+  const funnel = useMemo(
+    () => buildFunnel(byCompany ? companyStandIns(companies) : scope, stages),
+    [byCompany, companies, scope, stages],
+  );
+  const unmessaged = useMemo(
+    () => (byCompany ? companies.filter((g) => g.people.some(notMessaged)).length : scope.filter(notMessaged).length),
+    [byCompany, companies, scope],
+  );
+
+  const companyRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return companies.filter((g) => {
+      if (pick?.kind === "stage" && g.stage !== pick.key) return false;
+      if (pick?.kind === "notMessaged" && !g.people.some(notMessaged)) return false;
+      if (q && !`${g.name} ${g.people.map((p) => `${p.name} ${p.jobTitle} ${p.company} ${p.headline}`).join(" ")}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [companies, pick, query]);
+  const guessed = companyRows.filter((g) => g.guessed).slice(0, 3);
+  const opened = openCompany === null ? null : (companies.find((g) => g.key === openCompany) ?? null);
+  const renamed = renaming === null ? null : (companies.find((g) => g.key === renaming) ?? null);
+  const companyNames = useMemo(() => companies.filter((g) => g.key).map((g) => g.name), [companies]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -173,6 +236,13 @@ export function PeopleView({
   }
 
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
+  const unitOf = (n: number) => (byCompany ? (n === 1 ? "company" : "companies") : n === 1 ? "person" : "people");
+
+  function switchView(next: View) {
+    writeView(next);
+    setSelected(new Set());
+    setConfirmArchive(false);
+  }
   const weakest = funnel.weakest;
   const now = new Date();
 
@@ -206,7 +276,7 @@ export function PeopleView({
               <Upload />
               Import
             </Button>
-            <HeaderAction icon={Plus} label="Add person" onClick={() => setAdding(true)} />
+            <HeaderAction icon={Plus} label="Add person" onClick={() => setAdding({ company: "" })} />
           </>
         }
       />
@@ -215,7 +285,9 @@ export function PeopleView({
         <section aria-label="Your funnel" className="border-b px-6 pt-5 pb-4">
           <div className="mb-3.5 flex flex-wrap items-center gap-2">
             <h2 className="text-md font-semibold">Your funnel</h2>
-            <span className="text-xs text-muted-foreground">Everyone who reached each step</span>
+            <span className="text-xs text-muted-foreground">
+              {byCompany ? "Companies that reached each step, at their furthest person" : "Everyone who reached each step"}
+            </span>
             <div className="ml-auto flex items-center gap-2">
               <Select value={tagId} onValueChange={setTagId}>
                 <SelectTrigger size="sm" aria-label="Tag" className="min-w-32">
@@ -255,9 +327,10 @@ export function PeopleView({
                 <span className="font-semibold">
                   Biggest drop: {weakest.from.label} to {weakest.to.label}.
                 </span>{" "}
-                {weakest.stuck} of {weakest.from.reached} have not moved on
+                {weakest.stuck} of {weakest.from.reached} {byCompany ? unitOf(weakest.from.reached) + " " : ""}
+                {weakest.stuck === 1 ? "has" : "have"} not moved on
                 {weakest.from.key === "connected" && unmessaged > 0
-                  ? `, and ${unmessaged} of them have not had a message from you yet.`
+                  ? `, and ${unmessaged} of them ${byCompany ? "have someone who has" : "have"} not had a message from you yet.`
                   : "."}
               </span>
               {weakest.from.key === "connected" && unmessaged > 0 ? (
@@ -282,7 +355,29 @@ export function PeopleView({
 
         <div className="flex items-center gap-2 px-6 pt-4 pb-2">
           <h2 className="text-md font-semibold">{title ? (pick?.kind === "stage" ? `In ${title} now` : title) : "Everyone"}</h2>
-          <CountBadge count={rows.length} variant="outline" className="text-muted-foreground" />
+          <CountBadge count={byCompany ? companyRows.length : rows.length} variant="outline" className="text-muted-foreground" />
+          <div role="group" aria-label="Show" className="ml-1 flex rounded-lg bg-muted p-0.5">
+            {(
+              [
+                ["people", "People", User],
+                ["companies", "Companies", Building2],
+              ] as const
+            ).map(([key, label, Icon]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={view === key}
+                onClick={() => switchView(key)}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground",
+                  view === key && "bg-background font-semibold text-foreground shadow-sm",
+                )}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
           {pick && (
             <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => choose(null)}>
               <X />
@@ -291,6 +386,27 @@ export function PeopleView({
           )}
         </div>
 
+        {byCompany && (
+          <>
+            {guessed.map((g) => (
+              <GuessBar key={g.key} group={g} onRename={() => setRenaming(g.key)} />
+            ))}
+            <CompanyTable
+              groups={companyRows}
+              stages={stages}
+              tags={tags}
+              onOpen={setOpenCompany}
+              onAddPerson={(company) => setAdding({ company })}
+            />
+            {companyRows.length === 0 && (
+              <div className="p-10 text-center text-sm text-muted-foreground">
+                {people.length === 0 ? "No one yet. Import a list or add your first person." : "No companies here."}
+              </div>
+            )}
+          </>
+        )}
+
+        {!byCompany && (
         <Table>
           <TableHeader>
             <TableRow>
@@ -368,7 +484,8 @@ export function PeopleView({
             })}
           </TableBody>
         </Table>
-        {rows.length === 0 && (
+        )}
+        {!byCompany && rows.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">
             {people.length === 0 ? "No one yet. Import a list or add your first person." : "No one here."}
           </div>
@@ -474,7 +591,26 @@ export function PeopleView({
         </div>
       )}
 
-      <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} stages={stages} />
+      <PersonDialog
+        key={adding?.company ?? ""}
+        open={adding !== null}
+        onOpenChange={(open) => !open && setAdding(null)}
+        tags={tags}
+        stages={stages}
+        company={adding?.company}
+      />
+      <CompanyPanel
+        group={opened}
+        stages={stages}
+        onOpenChange={(open) => !open && setOpenCompany(null)}
+        onRename={() => opened && setRenaming(opened.key)}
+        onAddPerson={(company) => setAdding({ company })}
+      />
+      <CompanyNameDialog
+        group={renamed}
+        others={companyNames.filter((n) => n !== renamed?.name)}
+        onOpenChange={(open) => !open && setRenaming(null)}
+      />
       <ImportDialog open={importing} onOpenChange={setImporting} stages={stages} tags={tags} />
       <MessageAllDialog
         open={messaging}
