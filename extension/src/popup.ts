@@ -203,6 +203,8 @@ function renderPerson(name: string, mode: "add" | "added" | "already" | "you", s
   pOpen.onclick = () =>
     current && aili(current.pairing, personId ? `/inbox?person=${encodeURIComponent(personId)}` : "/inbox");
   show(pError, false);
+  // Post alerts: while you are on their profile, the bell is one tap away.
+  show($("p-bell"), mode === "added" || mode === "already");
 }
 
 pTag.addEventListener("change", () => {

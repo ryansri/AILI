@@ -26,6 +26,7 @@
   .badge.warn { background: #fffbeb; color: #b45309; }
   .name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
   .sub { font-size: 12.5px; color: #78716c; max-width: 260px; }
+  .bellhint { font-size: 12px; line-height: 1.45; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 8px 10px; max-width: 280px; text-align: left; }
   .err { font-size: 12px; color: #b91c1c; margin-top: 6px; }
 
   .btn { width: 100%; height: 36px; margin-top: 14px; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13.5px; font-weight: 500; }
@@ -97,6 +98,7 @@
       <span id="p-add-label">Add to AILI</span>
     </button>
     <button id="p-open" class="btn hidden"><span id="p-open-label">Open in AILI</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/></svg></button>
+    <div id="p-bell" class="bellhint hidden">Tip: tap the bell on this profile. AILI notices and turns on post alerts, so LinkedIn tells you when they post.</div>
     <div id="p-error" class="err hidden"></div>
   </div>
   <div class="foot"><span id="f-dot" class="dot"></span><span id="f-text"></span></div>

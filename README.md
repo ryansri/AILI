@@ -286,6 +286,17 @@ are in `extension/README.md`.
   connected** when the next step is Connect. The inbox list shows the short
   form. The photo in a conversation's header opens their LinkedIn profile, and
   an "in" button appears when you hover a row in the inbox or Leads.
+- **Post alerts and warm-up.** The bell on a lead's LinkedIn profile makes
+  LinkedIn tell you when they post, so you can comment early. At 9 am (your
+  time) a desktop notice lists a few leads to tap the bell for (Settings,
+  Sending: 3, 5 or 10 a day). **Post alerts** on Leads opens the list; Open
+  profile opens their page, and the helper notices when you tap the bell and
+  ticks them off (it only reads LinkedIn's own request as it goes by). If it
+  cannot, the row asks "Is the bell on?". In a conversation with someone you
+  are not connected to, **I commented** counts your comments on their posts;
+  after 3 (Settings) AILI says it is a good time to connect. AILI never taps
+  the bell or comments for you. Spotting the bell tap follows LinkedIn's web
+  client and is not yet checked against a live account.
 - **Leads by company.** People | Companies above the Leads table. Companies
   shows one row per company: who you know there (decision makers dark), the
   furthest step anyone reached, whether anyone is talking, the last touch and
@@ -411,6 +422,7 @@ src/
     funnel.ts           who reached each stage, rates, the biggest drop
     companies.ts        Leads by company: matching names, roles, what next
     invites.ts          connection requests: who needs one, what the helper saw, stats
+    alerts.ts           post alerts: who to ask next, the morning reminder, warm-up
     leads.ts            who starts as a lead and who starts in Other
     csv.ts              reads CSV imports, including LinkedIn's Connections export
     templates.ts        fills {first_name} and the other fields for a person

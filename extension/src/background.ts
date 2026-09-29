@@ -12,11 +12,15 @@
  *      push anything with new activity,
  *   5. once history is in, look up at most two profiles for a current job
  *      title, company and photo (people who need you first, each person once),
- *   6. tell AILI it is alive.
+ *   6. tell AILI it is alive, and after 9 am once a day, remind you to turn
+ *      on post alerts (the bell) for a few leads.
  *
  * When a check after the history import finds a new reply, or someone accepts
  * your request, it shows a desktop notification (if you have them on in AILI
  * Settings). Clicking one opens that conversation in AILI.
+ *
+ * It also notices, without changing anything, when you tap the bell on
+ * someone's LinkedIn profile, so AILI can tick off their post alerts.
  *
  * It never sends anything on its own. The queues only hold what a human
  * clicked (Send, Connect, Withdraw), and AILI caps them per day.
@@ -28,12 +32,15 @@ import {
   linkPerson,
   postSync,
   reportLookups,
+  reportAlertsOpened,
+  reportBellTap,
   reportInvite,
   reportNetwork,
   reportOutbox,
   reportSeen,
   reportStatus,
   takeLookups,
+  takeAlertsNudge,
   takeInvites,
   takeOutbox,
   takeSeenChecks,
@@ -57,7 +64,7 @@ import {
   withdrawInvitation,
   type InboxCategory,
 } from "./linkedin/api";
-import type { ConversationSummary, PlainMessage } from "./linkedin/normalize";
+import { bellTapFrom, type ConversationSummary, type PlainMessage } from "./linkedin/normalize";
 import { getBackfill, getPairing, getStatus, getSyncedAt, setBackfill, setStatus, setSyncedAt, type Pairing } from "./storage";
 import { AILI_TAB_PATTERNS } from "./config";
 
@@ -90,6 +97,48 @@ chrome.notifications.onClicked.addListener((id) => {
 chrome.notifications.onButtonClicked.addListener((id, button) => {
   void answerFromNotification(id, button);
 });
+
+/*
+ * Post alerts: when LinkedIn's own page (not the helper) sends a request that
+ * turns on the bell for someone, tell AILI. The helper only reads the request
+ * as it goes by; it never changes or blocks it.
+ */
+function bodyText(body: chrome.webRequest.OnBeforeRequestDetails["requestBody"] | null | undefined): string {
+  if (!body) return "";
+  if (body.raw?.length) return body.raw.map((part) => (part.bytes ? new TextDecoder().decode(part.bytes) : "")).join("");
+  return body.formData ? JSON.stringify(body.formData) : "";
+}
+
+chrome.webRequest.onBeforeRequest.addListener(
+  (details) => {
+    // Requests from a LinkedIn tab only: the helper's own calls have no tab.
+    if (details.tabId < 0) return undefined;
+    const memberId = bellTapFrom(details.url, details.method, bodyText(details.requestBody));
+    if (memberId) void onBellTap(memberId);
+    return undefined;
+  },
+  { urls: ["https://www.linkedin.com/voyager/api/*"] },
+  ["requestBody"],
+);
+
+const lastTap = new Map<string, number>();
+
+async function onBellTap(memberId: string): Promise<void> {
+  if (Date.now() - (lastTap.get(memberId) ?? 0) < 15_000) return;
+  lastTap.set(memberId, Date.now());
+  const [pairing, status] = await Promise.all([getPairing(), getStatus()]);
+  if (!pairing || status.memberUrn?.endsWith(`:${memberId}`)) return;
+  const person = await reportBellTap(pairing, memberId).catch(() => null);
+  if (!person?.fresh) return;
+  const base = pairing.serverUrl.replace(/\/$/, "");
+  chrome.notifications.create(`aili|${base}/inbox?person=${encodeURIComponent(person.id)}|bell`, {
+    type: "basic",
+    iconUrl: "icon-128.png",
+    title: `Post alerts on for ${person.name}`,
+    message: "AILI ticked it off. LinkedIn will tell you when they post.",
+    priority: 0,
+  });
+}
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type === "sync-now") {
     void cycle({ force: true }).then(() => reply({ ok: true }));
@@ -160,6 +209,8 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
       await lookupProfiles(pairing);
       await checkSeen(pairing, me.memberUrn);
     }
+    // The morning reminder: AILI decides when; asking every 5 minutes is plenty.
+    if (tick % 5 === 1) await remindAlerts(pairing).catch(() => {});
 
     await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName, publicId: me.publicId });
   } catch (err) {
@@ -570,6 +621,48 @@ async function askAboutLeads(pairing: Pairing, people: LeadToAsk[]): Promise<voi
   });
 }
 
+/**
+ * "Turn on post alerts for 5 leads": Start opens the list in AILI. For one
+ * person, Open profile goes straight to their LinkedIn profile.
+ */
+async function remindAlerts(pairing: Pairing): Promise<void> {
+  const nudge = await takeAlertsNudge(pairing);
+  if (!nudge) return;
+  const base = pairing.serverUrl.replace(/\/$/, "");
+  const options: chrome.notifications.NotificationCreateOptions =
+    nudge.count === 1
+      ? {
+          type: "basic",
+          iconUrl: "icon-128.png",
+          title: `${nudge.first.name}: turn on post alerts`,
+          message: "Opens their LinkedIn profile. Tap the bell there and AILI ticks it off.",
+          buttons: [{ title: "Open profile" }, { title: "Tomorrow" }],
+          priority: 1,
+        }
+      : {
+          type: "basic",
+          iconUrl: "icon-128.png",
+          title: `Turn on post alerts for ${nudge.count} leads`,
+          message: "So LinkedIn tells you when they post. About a minute.",
+          buttons: [{ title: "Start" }, { title: "Tomorrow" }],
+          priority: 1,
+        };
+  const id = nudge.count === 1 ? `alertone|${nudge.first.url}|${nudge.first.personId}` : `alerts|${base}/people?alerts=1`;
+  await new Promise<void>((resolve) => chrome.notifications.create(id, options, () => resolve()));
+}
+
+/** Opens the page a post alerts notice points to; for one person, AILI hears that you opened it. */
+async function openAlerts(id: string): Promise<void> {
+  const [prefix, url, personId] = id.split("|");
+  chrome.notifications.clear(id);
+  if (!url) return;
+  await chrome.tabs.create({ url });
+  if (prefix === "alertone" && personId) {
+    const pairing = await getPairing();
+    if (pairing) await reportAlertsOpened(pairing, personId).catch(() => {});
+  }
+}
+
 /** "Jaimes accepted your request": Say hello opens the conversation in AILI. */
 async function showAccepted(pairing: Pairing, people: AcceptedToNotify[]): Promise<void> {
   const base = pairing.serverUrl.replace(/\/$/, "");
@@ -594,6 +687,11 @@ async function showAccepted(pairing: Pairing, people: AcceptedToNotify[]): Promi
 /** The buttons on an "Add to Leads?" or "accepted" notice. */
 async function answerFromNotification(id: string, button: number): Promise<void> {
   const [prefix, url, personId] = id.split("|");
+  if (prefix === "alerts" || prefix === "alertone") {
+    if (button === 0) await openAlerts(id);
+    else chrome.notifications.clear(id);
+    return;
+  }
   if (prefix === "hello") {
     chrome.notifications.clear(id);
     if (button === 0 && url) await chrome.tabs.create({ url });
@@ -607,6 +705,7 @@ async function answerFromNotification(id: string, button: number): Promise<void>
 
 async function openFromNotification(id: string): Promise<void> {
   const [prefix, url] = id.split("|");
+  if (prefix === "alerts" || prefix === "alertone") return openAlerts(id);
   if ((prefix !== "aili" && prefix !== "ask" && prefix !== "hello") || !url) return;
   await chrome.tabs.create({ url });
   chrome.notifications.clear(id);

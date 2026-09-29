@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Clock3, ExternalLink, RotateCcw, Undo2, UserPlus, X } from "lucide-react";
+import { Bell, Check, Clock3, ExternalLink, MessageSquare, RotateCcw, Undo2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { queueInvite, withdrawInvites } from "@/lib/client-actions";
+import { addTouch, openedForAlerts, queueInvite, removeTouch, withdrawInvites } from "@/lib/client-actions";
 import { needsConnect, NOTE_FREE_MAX, NOTE_MAX } from "@/lib/invites";
 import { shortDate } from "@/lib/next-step";
 import type { Account, Person } from "@/lib/types";
@@ -275,14 +275,71 @@ export function ConnectPanel({
     invite?.status === "withdrawn" && invite.withdrawnAt ? new Date(new Date(invite.withdrawnAt).getTime() + 21 * 86400000) : null;
   const tooSoon = reaskFrom !== null && reaskFrom.getTime() > now;
 
+  const needed = account.alerts.touchesToConnect;
+  const touches = person.touches?.length ?? 0;
+  const warm = touches >= needed;
+
   return (
     <div className="flex flex-col items-center gap-3 px-2 pt-2 pb-1">
       <Steps at={state === "connect" ? "warming" : "requested"} />
+      {state === "connect" && (
+        <div className="flex w-full max-w-xl flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border px-4 py-2.5 text-sm">
+          {person.alerts === "on" ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+              <Bell className="size-3" />
+              Post alerts on
+            </span>
+          ) : person.alerts !== "impossible" && person.linkedinUrl ? (
+            <a
+              href={person.linkedinUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => act(() => openedForAlerts(person.id), "")}
+              title="Opens their profile: tap the bell there"
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Bell className="size-3" />
+              Turn on post alerts
+            </a>
+          ) : null}
+          <span className="flex gap-1" aria-label={`${touches} of ${needed} comments`}>
+            {Array.from({ length: needed }, (_, i) => (
+              <span key={i} className={cn("size-2 rounded-full", i < touches ? "bg-foreground" : "bg-border")} />
+            ))}
+          </span>
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            {warm ? (
+              <span className="font-semibold text-foreground">Warmed up: a good time to connect.</span>
+            ) : (
+              <>
+                <span className="font-semibold text-foreground">
+                  {touches} of {needed} comments.
+                </span>{" "}
+                Comment on {first}&rsquo;s posts, then connect.
+              </>
+            )}
+          </span>
+          <span className="flex items-center gap-2">
+            {touches > 0 && (
+              <button type="button" disabled={pending} onClick={() => act(() => removeTouch(person.id), "")} className="text-xs text-muted-foreground hover:text-foreground">
+                Undo
+              </button>
+            )}
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => addTouch(person.id), "Comment counted.")}>
+              <MessageSquare />
+              I commented
+            </Button>
+          </span>
+        </div>
+      )}
       <div className="flex w-full max-w-xl flex-col gap-2.5 rounded-2xl border px-5 py-4">
         {state === "connect" && (
           <>
             <h3 className="text-md font-semibold">You&rsquo;re not connected with {first} yet</h3>
             <p className="text-sm text-muted-foreground">
+              {warm
+                ? `You've commented ${touches} times, so ${first} is more likely to accept now. `
+                : ""}
               LinkedIn only lets you message people you&rsquo;re connected with. Send a request first; when {first} accepts, AILI tells you and the
               message box opens.
             </p>

@@ -14,6 +14,7 @@ export default async function SendingPage() {
       firstCommentDelay={workspace.firstCommentDelay}
       runwayAlertDays={workspace.runwayAlertDays}
       invites={account.invites}
+      alerts={account.alerts}
     />
   );
 }

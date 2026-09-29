@@ -222,3 +222,28 @@ export async function takeSeenChecks(pairing: Pairing): Promise<{ items: SeenChe
 export function reportSeen(pairing: Pairing, results: { personId: string; seenAt: number | null }[]) {
   return call(pairing, "/api/helper/seen", { method: "POST", body: JSON.stringify({ results }) });
 }
+
+/** The morning reminder, when it is due: how many leads to tap the bell for, and the first. */
+export interface AlertsNudge {
+  count: number;
+  first: { personId: string; name: string; url: string };
+}
+
+export async function takeAlertsNudge(pairing: Pairing): Promise<AlertsNudge | null> {
+  const data = await call<{ nudge?: AlertsNudge | null }>(pairing, "/api/helper/alerts");
+  return data?.nudge ?? null;
+}
+
+/** You tapped the bell on someone's profile. AILI says who, if they are in AILI. */
+export async function reportBellTap(pairing: Pairing, memberId: string): Promise<{ id: string; name: string; fresh: boolean } | null> {
+  const data = await call<{ person?: { id: string; name: string; fresh: boolean } | null }>(pairing, "/api/helper/alerts", {
+    method: "POST",
+    body: JSON.stringify({ memberId }),
+  });
+  return data?.person ?? null;
+}
+
+/** You opened a profile from the reminder. */
+export function reportAlertsOpened(pairing: Pairing, personId: string) {
+  return call(pairing, "/api/helper/alerts", { method: "POST", body: JSON.stringify({ opened: personId }) });
+}

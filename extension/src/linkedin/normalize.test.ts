@@ -5,6 +5,7 @@ import {
   extractPicture,
   extractProfile,
   extractSentMessage,
+  bellTapFrom,
   findInvitationId,
   findSeenAt,
   normalizeConversations,
@@ -318,5 +319,22 @@ describe("profile photos", () => {
     expect(extractPicture(raw, "jaimesleggett")).toBe("https://media.licdn.com/dms/image/abc_100");
     expect(extractPicture(raw, "ACoAAJaimes1")).toBe("https://media.licdn.com/dms/image/abc_100");
     expect(extractPicture(raw, "other")).toBe("");
+  });
+});
+
+describe("the bell on a profile", () => {
+  it("spots you turning on post alerts for someone, and nothing else", () => {
+    expect(
+      bellTapFrom(
+        "https://www.linkedin.com/voyager/api/voyagerFeedDashFollowingStates/urn%3Ali%3Afsd_followingState%3Aurn%3Ali%3Afsd_profile%3AACoAAJaimes1",
+        "POST",
+        '{"patch":{"$set":{"subscribed":true}}}',
+      ),
+    ).toBe("ACoAAJaimes1");
+    expect(bellTapFrom("https://www.linkedin.com/voyager/api/feed/subscriptions", "POST", '{"entity":"urn:li:fsd_profile:ACoAALaura22","type":"ALL"}')).toBe("ACoAALaura22");
+    // Turning it off, reading, or anything unrelated.
+    expect(bellTapFrom("https://www.linkedin.com/voyager/api/feed/subscriptions", "POST", '{"entity":"urn:li:fsd_profile:ACoAALaura22","subscribed":false}')).toBe("");
+    expect(bellTapFrom("https://www.linkedin.com/voyager/api/voyagerFeedDashFollowingStates/urn:li:fsd_profile:ACoAAJaimes1", "GET", "")).toBe("");
+    expect(bellTapFrom("https://www.linkedin.com/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage", "POST", '{"recipients":["urn:li:fsd_profile:ACoAAJaimes1"]}')).toBe("");
   });
 });

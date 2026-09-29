@@ -35,6 +35,7 @@ const personInclude = {
   outbox: { where: { status: { in: ["queued", "sending", "failed"] } }, orderBy: { createdAt: "asc" as const } },
   // The latest connection request is all the screens need.
   invites: { orderBy: { createdAt: "desc" as const }, take: 1 },
+  touches: { orderBy: { createdAt: "desc" as const }, take: 20, select: { createdAt: true } },
 } satisfies Prisma.PersonInclude;
 
 type PersonRow = Prisma.PersonGetPayload<{ include: typeof personInclude }>;
@@ -72,6 +73,11 @@ function toPerson(row: PersonRow): Person {
     seenAt: row.seenAt?.toISOString(),
     connection: row.connection === "yes" || row.connection === "no" ? row.connection : "",
     invite: row.invites[0] ? toInviteView(row.invites[0]) : undefined,
+    alerts: row.alerts === "on" || row.alerts === "impossible" ? row.alerts : "",
+    alertsAt: row.alertsAt?.toISOString(),
+    alertsOpenedAt: row.alertsOpenedAt?.toISOString(),
+    alertsLaterAt: row.alertsLaterAt?.toISOString(),
+    touches: row.touches.map((t) => t.createdAt.toISOString()),
     tagIds: row.tags.map((t) => t.tagId),
     notes: row.notes,
     starred: row.starred,
@@ -212,6 +218,11 @@ function accountOf(workspace: Workspace, used: Usage): Account {
       week: used.invitesWeek,
       notifyAccepts: workspace.notifyAccepts,
       staleDays: workspace.inviteStaleDays,
+    },
+    alerts: {
+      nudge: workspace.alertsNudge,
+      perDay: workspace.alertsPerDay,
+      touchesToConnect: workspace.touchesToConnect,
     },
     helper: {
       connected: online && workspace.helperState === "ok",

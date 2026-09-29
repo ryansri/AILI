@@ -55,6 +55,12 @@ model Workspace {
   inviteCap        Int       @default(20)
   notifyAccepts    Boolean   @default(true)
   inviteStaleDays  Int       @default(21)
+  /// Post alerts: a morning reminder to tap the bell for this many leads, and comments before connecting.
+  alertsNudge      Boolean   @default(true)
+  alertsPerDay     Int       @default(5)
+  touchesToConnect Int       @default(3)
+  /// The day (in the account's time zone) the last reminder went out.
+  alertsNudgedOn   String?
   /// When the helper last read your sent requests and newest connections from LinkedIn.
   networkCheckedAt DateTime?
   /// LinkedIn's official connection for publishing posts (separate from the helper).
@@ -73,6 +79,7 @@ model Workspace {
   tags   Tag[]
   companyNames CompanyName[]
   invites      Invite[]
+  touches      Touch[]
   stages Stage[]
   templates Template[]
   outbox Outbox[]
@@ -114,6 +121,13 @@ model Person {
   seenCheckedAt DateTime?
   /// Connected on LinkedIn (1st degree): "yes", "no", or "" when AILI does not know.
   connection  String    @default("")
+  /// Post alerts (the bell on their LinkedIn profile): "" not yet, "on", or "impossible" (no bell for you).
+  alerts         String    @default("")
+  /// When the bell went on, or was found impossible.
+  alertsAt       DateTime?
+  /// When you opened their profile from AILI to tap the bell; Later puts it off until the next day.
+  alertsOpenedAt DateTime?
+  alertsLaterAt  DateTime?
   /// When the person last moved stage. Drives "days in stage" on the People page.
   /// Empty for people from before it was recorded; the page estimates from other dates.
   stageChangedAt DateTime?
@@ -145,6 +159,7 @@ model Person {
   messages Message[]
   outbox   Outbox[]
   invites  Invite[]
+  touches  Touch[]
 
   @@unique([workspaceId, linkedinUrn])
   @@index([workspaceId, stage])
@@ -278,6 +293,20 @@ model Invite {
   updatedAt    DateTime  @updatedAt
 
   @@index([workspaceId, status])
+  @@index([personId])
+}
+
+/// A warm-up touch: you commented on one of their posts on LinkedIn and said so in AILI.
+model Touch {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  personId    String
+  person      Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  /// "comment" for now.
+  kind        String    @default("comment")
+  createdAt   DateTime  @default(now())
+
   @@index([personId])
 }
 

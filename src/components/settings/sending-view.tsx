@@ -4,8 +4,9 @@ import { useRef, useState, useTransition } from "react";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PLAN_WARNING_DAYS } from "@/lib/plan";
-import { setInviteSettings, setPlanWarning, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies } from "@/lib/client-actions";
+import { setAlertSettings, setInviteSettings, setPlanWarning, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies } from "@/lib/client-actions";
 import { INVITE_CAPS, STALE_DAYS } from "@/lib/invites";
+import { ALERTS_PER_DAY, TOUCHES_TO_CONNECT } from "@/lib/alerts";
 import type { Account } from "@/lib/types";
 import { delayLabel, FIRST_COMMENT_DELAYS } from "@/lib/linkedin-text";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -27,6 +28,7 @@ export function SendingView({
   firstCommentDelay,
   runwayAlertDays,
   invites,
+  alerts,
 }: {
   dailyCap: number;
   sentToday: number;
@@ -34,6 +36,7 @@ export function SendingView({
   firstCommentDelay: number;
   runwayAlertDays: number;
   invites: Account["invites"];
+  alerts: Account["alerts"];
 }) {
   const [cap, setCap] = useState(dailyCap);
   const [notify, setNotify] = useState(notifyReplies);
@@ -42,6 +45,21 @@ export function SendingView({
   const [inviteCap, setInviteCap] = useState(String(invites.cap));
   const [accepts, setAccepts] = useState(invites.notifyAccepts);
   const [staleDays, setStaleDays] = useState(String(invites.staleDays));
+  const [nudge, setNudge] = useState(alerts.nudge);
+  const [perDay, setPerDay] = useState(String(alerts.perDay));
+  const [needed, setNeeded] = useState(String(alerts.touchesToConnect));
+
+  function saveAlerts(input: Parameters<typeof setAlertSettings>[0], done: string, undo: () => void) {
+    start(async () => {
+      try {
+        await setAlertSettings(input);
+        toast.success(done);
+      } catch (e) {
+        undo();
+        toast.error(e instanceof Error ? e.message : "That did not save.");
+      }
+    });
+  }
 
   function saveInvites(input: Parameters<typeof setInviteSettings>[0], done: string, undo: () => void) {
     start(async () => {
@@ -171,6 +189,64 @@ export function SendingView({
       </Group>
       <p className="text-xs leading-relaxed text-muted-foreground">
         LinkedIn allows roughly 100 requests a week. Each one is your click in AILI, sent from your Chrome.
+      </p>
+      <h2 className="-mb-1 mt-4 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Post alerts</h2>
+      <Group>
+        <Row title="Morning reminder" status="At 9 am, a desktop notice with leads to tap the bell for on LinkedIn.">
+          <Switch
+            aria-label="Morning reminder"
+            checked={nudge}
+            onCheckedChange={(next) => {
+              setNudge(next);
+              saveAlerts({ nudge: next }, next ? "Morning reminder on." : "Morning reminder off.", () => setNudge(!next));
+            }}
+          />
+        </Row>
+        <Row title="How many a day" status="A few a day looks like ordinary use of LinkedIn.">
+          <Select
+            value={perDay}
+            onValueChange={(value) => {
+              const previous = perDay;
+              setPerDay(value);
+              saveAlerts({ perDay: Number(value) }, `${value} leads a day.`, () => setPerDay(previous));
+            }}
+          >
+            <SelectTrigger aria-label="How many a day" className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {ALERTS_PER_DAY.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} a day
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+        <Row title="Comments before connecting" status="After this many comments on their posts, AILI says it's a good time to connect.">
+          <Select
+            value={needed}
+            onValueChange={(value) => {
+              const previous = needed;
+              setNeeded(value);
+              saveAlerts({ touchesToConnect: Number(value) }, `${value} comments before connecting.`, () => setNeeded(previous));
+            }}
+          >
+            <SelectTrigger aria-label="Comments before connecting" className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {TOUCHES_TO_CONNECT.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} comments
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+      </Group>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        AILI never taps the bell or comments for you. It reminds you, and the Chrome helper notices when you tap the bell.
       </p>
       <h2 className="-mb-1 mt-4 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Posts</h2>
       <Group>

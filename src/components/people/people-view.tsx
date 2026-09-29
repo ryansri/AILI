@@ -2,13 +2,13 @@
 
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArrowDown, Building2, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
+import { Archive, ArrowDown, Bell, BellOff, Building2, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } from "@/lib/client-actions";
 import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
 import { buildFunnel, notMessaged } from "@/lib/funnel";
-import { waitingDays, type InviteFacts } from "@/lib/invites";
+import { connectionOf, waitingDays, type InviteFacts } from "@/lib/invites";
 import { daysBetween, relativeTime } from "@/lib/next-step";
 import type { Template } from "@/lib/templates";
 import { stageLabel, type Account, type Person, type StageDef, type Tag } from "@/lib/types";
@@ -33,6 +33,7 @@ import { ImportDialog } from "./import-dialog";
 import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./company-view";
 import { PersonDialog } from "./person-dialog";
 import { RequestsStrip } from "./requests-strip";
+import { PostAlertsPanel, usePostAlerts } from "./post-alerts";
 
 const ALL = "all";
 const RANGES = [
@@ -98,6 +99,31 @@ const stageSince = (p: Person) =>
   (p.stage === "requested" ? p.requestedAt : p.stage === "warming" ? undefined : p.connectedAt) ??
   p.createdAt;
 
+/** Post alerts (the bell) and warm-up comments, in one small cell. */
+function WarmUp({ person, needed }: { person: Person; needed: number }) {
+  const count = person.touches?.length ?? 0;
+  const BellIcon = person.alerts === "impossible" ? BellOff : Bell;
+  return (
+    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+      <BellIcon
+        aria-label={person.alerts === "on" ? "Post alerts on" : person.alerts === "impossible" ? "No bell" : "Post alerts not on yet"}
+        className={cn("size-3.5", person.alerts === "on" ? "text-emerald-600" : "opacity-40")}
+      />
+      {/* Comments only count before you connect. */}
+      {connectionOf(person) !== "connected" && (
+        <>
+          <span className="flex gap-0.5" title={`${count} of ${needed} comments`}>
+            {Array.from({ length: needed }, (_, i) => (
+              <span key={i} className={cn("size-1.5 rounded-full", i < count ? "bg-foreground" : "bg-border")} />
+            ))}
+          </span>
+          {count >= needed && <span className="font-medium text-foreground">Ready</span>}
+        </>
+      )}
+    </span>
+  );
+}
+
 function SortHead({ label, on, onClick, className }: { label: string; on: boolean; onClick: () => void; className?: string }) {
   return (
     <TableHead className={className}>
@@ -121,6 +147,8 @@ export function PeopleView({
   account,
   companyRules = [],
   inviteFacts = [],
+  timeZone = "Australia/Sydney",
+  openAlerts = false,
 }: {
   people: Person[];
   tags: Tag[];
@@ -131,6 +159,10 @@ export function PeopleView({
   companyRules?: CompanyRule[];
   /** Connection requests, for the stats under Request sent. */
   inviteFacts?: InviteFacts[];
+  /** The account's time zone, for the post alerts day. */
+  timeZone?: string;
+  /** Opened from the morning reminder: show Post alerts straight away. */
+  openAlerts?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -143,6 +175,8 @@ export function PeopleView({
   const view = useView();
   const [openCompany, setOpenCompany] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [alertsOpen, setAlertsOpen] = useState(openAlerts);
+  const alertsToday = usePostAlerts(people, account.alerts.perDay, timeZone).next.length;
   const [importing, setImporting] = useState(false);
   const [messaging, setMessaging] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -282,6 +316,15 @@ export function PeopleView({
         actions={
           <>
             <HeaderSearch value={query} onChange={setQuery} open={false} onOpenChange={search.setOpen} />
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("ml-1", alertsToday > 0 && "border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40")}
+              onClick={() => setAlertsOpen(true)}
+            >
+              <Bell />
+              Post alerts{alertsToday > 0 ? ` · ${alertsToday} today` : ""}
+            </Button>
             <Button variant="outline" size="sm" className="mx-1" onClick={() => setImporting(true)}>
               <Upload />
               Import
@@ -438,6 +481,7 @@ export function PeopleView({
               </TableHead>
               <TableHead>Person</TableHead>
               <TableHead>Stage</TableHead>
+              <TableHead>Warm-up</TableHead>
               <TableHead>Tags</TableHead>
               <SortHead label="Last touch" on={sort === "recent"} onClick={() => setSort("recent")} />
               <TableHead className="text-right">Sent / got</TableHead>
@@ -483,6 +527,9 @@ export function PeopleView({
                   </TableCell>
                   <TableCell>
                     <span className="rounded-md bg-foreground/[0.06] px-2 py-0.5 text-xs font-medium">{stageLabel(stages, p.stage)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <WarmUp person={p} needed={account.alerts.touchesToConnect} />
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1.5">
@@ -640,6 +687,13 @@ export function PeopleView({
         tags={tags}
         stages={stages}
         company={adding?.company}
+      />
+      <PostAlertsPanel
+        open={alertsOpen}
+        onOpenChange={setAlertsOpen}
+        people={people}
+        perDay={account.alerts.perDay}
+        timeZone={timeZone}
       />
       <CompanyPanel
         group={opened}

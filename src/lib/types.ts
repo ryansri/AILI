@@ -120,6 +120,15 @@ export interface Person {
   connection?: "yes" | "no" | "";
   /** The latest connection request to them. */
   invite?: InviteView;
+  /** Post alerts (the bell on their LinkedIn profile): "" not yet, "on", or "impossible". */
+  alerts?: "" | "on" | "impossible";
+  alertsAt?: string; // ISO
+  /** When you opened their profile from AILI to tap the bell. */
+  alertsOpenedAt?: string; // ISO
+  /** Later: not asked again until the next day. */
+  alertsLaterAt?: string; // ISO
+  /** Warm-up touches: when you said you commented on their posts, latest first. */
+  touches?: string[];
   /** When the person was added to AILI. */
   createdAt?: string; // ISO
   /** When the person last moved stage. */
@@ -172,6 +181,12 @@ export interface Account {
     week: number;
     notifyAccepts: boolean;
     staleDays: number;
+  };
+  /** Post alerts: the morning reminder, how many a day, comments before connecting. */
+  alerts: {
+    nudge: boolean;
+    perDay: number;
+    touchesToConnect: number;
   };
   helper: HelperStatus;
 }

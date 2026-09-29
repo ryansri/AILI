@@ -487,3 +487,28 @@ export function findInvitationId(raw: unknown): string {
   })(raw, 0);
   return found;
 }
+
+/* ---------------------------------------------------------- post alerts */
+
+const ALERT_WORDS = /subscri|followingstate|notif|follow/i;
+/** Turning something off, not on: unfollow, unsubscribe, a false or NONE setting. */
+const OFF_WORDS = /unfollow|unsubscri|"(?:subscribed|following|value|enabled)"\s*:\s*false|"NONE"|"OFF"|NO_POSTS/i;
+const PROFILE_IN = /(?:fsd_profile|fs_miniProfile|fs_profile|fsd_followingState:urn:li:fsd_profile)(?::|%3A)([\w-]{6,})/;
+
+/**
+ * Whether a request LinkedIn's own page just sent (seen, not changed, by the
+ * helper) looks like you turning on the bell for someone: a follow or
+ * subscription change that names a profile and does not turn it off. Returns
+ * their member id, or "" when it is anything else.
+ */
+export function bellTapFrom(url: string, method: string, body: string): string {
+  if (!/^(POST|PUT|PATCH)$/i.test(method)) return "";
+  let path = url;
+  try {
+    path = decodeURIComponent(url);
+  } catch {}
+  const text = `${path} ${body}`;
+  if (!ALERT_WORDS.test(path) && !ALERT_WORDS.test(body)) return "";
+  if (OFF_WORDS.test(text)) return "";
+  return PROFILE_IN.exec(text)?.[1] ?? "";
+}

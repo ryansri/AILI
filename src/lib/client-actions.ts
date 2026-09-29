@@ -9,6 +9,7 @@ import * as posts from "./post-actions";
 import * as plan from "./plan-actions";
 import * as companies from "./company-actions";
 import * as invites from "./invite-actions";
+import * as alerts from "./alert-actions";
 
 export type { ImportRow, PersonInput } from "./actions";
 
@@ -84,3 +85,8 @@ export const keepCompaniesApart = unwrap(companies.keepCompaniesApart);
 export const queueInvite = unwrap(invites.queueInvite);
 export const withdrawInvites = unwrap(invites.withdrawInvites);
 export const setInviteSettings = unwrap(invites.setInviteSettings);
+export const openedForAlerts = unwrap(alerts.openedForAlerts);
+export const setAlerts = unwrap(alerts.setAlerts);
+export const addTouch = unwrap(alerts.addTouch);
+export const removeTouch = unwrap(alerts.removeTouch);
+export const setAlertSettings = unwrap(alerts.setAlertSettings);
