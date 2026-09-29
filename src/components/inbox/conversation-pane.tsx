@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertCircle,
   Archive,
@@ -43,7 +44,6 @@ import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
-import { DraftWithAi } from "./draft-with-ai";
 import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf } from "./connect";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
@@ -84,6 +84,32 @@ function MyAvatar({ account }: { account: Account }) {
       {account.pictureUrl && <AvatarImage src={account.pictureUrl} alt="" />}
       <AvatarFallback className="bg-foreground text-2xs font-semibold text-background">{account.initials}</AvatarFallback>
     </Avatar>
+  );
+}
+
+/**
+ * How to get an AI draft: ask Claude or ChatGPT, connected to AILI, and the
+ * draft lands in the message box. Before any is connected, how to connect.
+ */
+function AiTip({ apps, first }: { apps: string[]; first: string }) {
+  const names = apps.filter((a) => a === "Claude" || a === "ChatGPT");
+  return (
+    <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+      <Sparkles className="size-3 shrink-0" />
+      {names.length > 0 ? (
+        <span className="min-w-0 truncate">
+          Want help writing? Ask {names.join(" or ")}: &ldquo;Draft a reply to {first} in AILI.&rdquo; The draft appears here, for you to
+          check and send.
+        </span>
+      ) : (
+        <span className="min-w-0 truncate">
+          Want help writing? Connect Claude or ChatGPT to AILI, then ask it to draft a reply to {first}. The draft appears here.{" "}
+          <Link href="/settings/connections" className="font-medium text-foreground underline underline-offset-2">
+            Connect
+          </Link>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -495,7 +521,6 @@ export function ConversationPane({
                 requestAnimationFrame(() => document.getElementById("reply")?.focus());
               }}
             />
-            {isLead && <DraftWithAi personName={person.name} apps={account.aiApps} />}
             <div className="relative flex-1">
               <label htmlFor="reply" className="sr-only">
                 Your message
@@ -530,6 +555,7 @@ export function ConversationPane({
               <ArrowUp />
             </Button>
           </div>
+          {!draft.trim() && <AiTip apps={account.aiApps} first={first} />}
           {/* A line under the box only when sending works differently from usual. */}
           {(capReached || !viaHelper || !account.helper.connected || draft.trim()) && (
             <div className="flex justify-between text-2xs text-muted-foreground">
