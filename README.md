@@ -252,6 +252,14 @@ are in `extension/README.md`.
   LinkedIn's read-receipt query id is known, set LINKEDIN_SEEN_QUERY_ID and
   the helper uses it. A message LinkedIn refused stays in the conversation
   as **Not sent**, with the reason, Try again and Remove.
+- **The inbox, simply.** Each person has one status, a coloured pill that is
+  the same everywhere: Not connected, Request sent, Connected, Talking, Call
+  booked, Pilot, Client, Not a fit (your stages; rename or add your own). A
+  row shows the name, one line, when, and the status. A conversation shows
+  the status in its header (click to change it), the thread, and one **Next**
+  box in plain words (Send a connection request, Wait for them to accept,
+  Reply). The sidebar has Needs you, Waiting on them, Everyone and Other;
+  starred, tags and stages sit under More. Tags are in the details panel.
 - **Leads and Other.** Only leads count: they are in All, Now, Waiting,
   Leads, the funnel, the Inbox badge and every number. Everyone else synced
   from LinkedIn sits in **Other** at the bottom of the views. Their whole

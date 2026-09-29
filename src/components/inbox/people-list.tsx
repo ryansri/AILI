@@ -5,8 +5,8 @@ import { Check, CheckCheck, ChevronDown, ChevronRight, PanelLeft, Plus, Send, St
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/client-actions";
-import { dueLabel, relativeTime, syncedLabel } from "@/lib/next-step";
-import { bucketOf, isGroupedView, type Condition, type Group, type Row, type View } from "@/lib/rows";
+import { relativeTime } from "@/lib/next-step";
+import { bucketOf, type Condition, type Group, type Row, type View } from "@/lib/rows";
 import type { HelperStatus, Person, StageDef, Tag } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,9 @@ import { CountBadge } from "@/components/count-badge";
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
-import { ConnectionBadge, LinkedInButton } from "@/components/linkedin-bits";
+import { LinkedInButton } from "@/components/linkedin-bits";
+import { StatusPill } from "@/components/status-pill";
+import { needsConnect } from "@/lib/invites";
 import { SyncLineBar } from "./sync-line";
 
 export function initials(name: string): string {
@@ -49,9 +51,9 @@ function lastLine(row: Row): string {
     switch (row.person.invite?.status) {
       case "queued":
       case "sending":
-        return "Connection request going out";
+        return "Sending your connection request…";
       case "sent":
-        return "Request sent · waiting to accept";
+        return "Waiting for them to accept";
       case "withdrawing":
         return "Withdrawing the request";
       case "failed":
@@ -59,7 +61,7 @@ function lastLine(row: Row): string {
       case "accepted":
         return "Accepted your request · say hello";
     }
-    return "No messages yet";
+    return needsConnect(row.person) ? "Next: send a connection request" : "Next: say hello";
   }
   return last.direction === "out" ? `You: ${last.body}` : last.body;
 }
@@ -73,12 +75,10 @@ function lastTime(row: Row): string {
 }
 
 /**
- * The one chip a row may carry. Replies get a blue dot instead. In grouped
- * views the band already says "New connections" or "Last try", so those chips
- * only show in flat lists. Follow-up numbers and waiting dates always show.
+ * A chip only when something asks for you: a draft to check, or "Lead?" in
+ * Other. Where a person stands is the status pill; what to do is the Next box.
  */
-function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
-  const { step } = row;
+function Chip({ row }: { row: Row }) {
   // A reply from Claude or ChatGPT waiting to be checked and sent comes first.
   if (row.person.draft) {
     return (
@@ -92,45 +92,6 @@ function Chip({ row, grouped }: { row: Row; grouped: boolean }) {
     return (
       <Badge variant="secondary" className="bg-blue-50 text-blue-700">
         Lead?
-      </Badge>
-    );
-  }
-  const bucket = bucketOf(row);
-  if (bucket === "new" && !grouped) {
-    return (
-      <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
-        New
-      </Badge>
-    );
-  }
-  if (bucket === "chase") {
-    return (
-      <Badge variant="secondary" className="bg-amber-50 text-amber-700">
-        {step.step}
-      </Badge>
-    );
-  }
-  if (bucket === "quiet" && !grouped) {
-    return (
-      <Badge variant="secondary" className="bg-violet-50 text-violet-700">
-        Last try
-      </Badge>
-    );
-  }
-  if (bucket === "waiting") {
-    const day = dueLabel(step.dueAt);
-    const followUp = step.detail.match(/^follow-up (\d)/)?.[1];
-    const text =
-      step.step === "Done"
-        ? "Done"
-        : step.detail === "snoozed"
-          ? `Snoozed to ${day}`
-          : followUp
-            ? `Follow-up ${followUp} ${day}`
-            : `Decide ${day}`;
-    return (
-      <Badge variant="secondary" className="text-muted-foreground" suppressHydrationWarning>
-        {text}
       </Badge>
     );
   }
@@ -176,6 +137,7 @@ export function PeopleList({
   query,
   conditions,
   helper,
+  stages,
   onMessageAll,
 }: {
   view: View;
@@ -188,13 +150,13 @@ export function PeopleList({
   query: string;
   conditions: Condition[];
   helper: HelperStatus;
+  stages: StageDef[];
   /** Tag and stage views: write one message for everyone shown. */
   onMessageAll?: () => void;
 }) {
   const [, start] = useTransition();
   const narrowed = query.trim().length > 0 || conditions.some((c) => c.value);
   const visible = groups.reduce((n, g) => n + g.rows.length, 0);
-  const grouped = isGroupedView(view);
 
   function done(row: Row) {
     start(async () => {
@@ -277,16 +239,15 @@ export function PeopleList({
                               {row.person.starred && (
                                 <Star aria-label="Starred" className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
                               )}
-                              <ConnectionBadge person={row.person} compact />
-                              <Chip row={row} grouped={grouped} />
+                              <Chip row={row} />
                             </div>
                             <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
                           </div>
-                          <span
-                            className="w-9 shrink-0 self-center text-right text-xs text-muted-foreground"
-                            suppressHydrationWarning
-                          >
-                            {lastTime(row)}
+                          <span className="flex shrink-0 flex-col items-end gap-1.5 self-center">
+                            <span className="text-xs text-muted-foreground" suppressHydrationWarning>
+                              {lastTime(row)}
+                            </span>
+                            {row.person.lead !== false && <StatusPill stages={stages} stage={row.person.stage} />}
                           </span>
                         </button>
                         {/* LinkedIn for everyone; done and snooze are for leads, as Other has no next step. */}

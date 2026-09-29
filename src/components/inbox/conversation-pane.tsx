@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowUp, Check, CheckCheck, ChevronDown, Clock3, MoreHorizontal, RotateCcw, Sparkles, Star, X } from "lucide-react";
+import { AlertCircle, ArrowUp, Check, CheckCheck, Clock3, MoreHorizontal, RotateCcw, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/client-actions";
-import { stageLabel, type Account, type StageDef, type Tag } from "@/lib/types";
+import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { relativeTime, shortDate, shortTime, type NextStep } from "@/lib/next-step";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,9 +15,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -26,16 +23,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NextStepHint } from "./next-step-hint";
 import { HeaderAction } from "@/components/page-header";
-import { TagChip } from "@/components/tag-chip";
-import { TagPicker } from "@/components/people/tag-picker";
 import { PersonAvatar } from "./people-list";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
-import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf } from "./connect";
-import { ConnectionBadge, LinkedInMark } from "@/components/linkedin-bits";
+import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf, NextBox } from "./connect";
+import { LinkedInMark } from "@/components/linkedin-bits";
+import { StatusMenu } from "@/components/status-pill";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
@@ -75,43 +71,6 @@ function MyAvatar({ account }: { account: Account }) {
       {account.pictureUrl && <AvatarImage src={account.pictureUrl} alt="" />}
       <AvatarFallback className="bg-foreground text-2xs font-semibold text-background">{account.initials}</AvatarFallback>
     </Avatar>
-  );
-}
-
-/** The person's stage as a clear control: "Stage  In conversation ▾". Picking one saves it. */
-function StageMenu({
-  stages,
-  value,
-  onChange,
-}: {
-  stages: StageDef[];
-  value: string;
-  onChange: (key: string) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Stage: ${stageLabel(stages, value)}. Change stage`}
-          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs shadow-xs transition-colors hover:bg-muted"
-        >
-          <span className="text-muted-foreground">Stage</span>
-          <span className="font-semibold text-foreground">{stageLabel(stages, value)}</span>
-          <ChevronDown className="size-3.5 text-muted-foreground" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Move to stage</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
-          {stages.map((s) => (
-            <DropdownMenuRadioItem key={s.key} value={s.key}>
-              {s.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -204,7 +163,6 @@ export function ConversationPane({
   const actionable = step.kind === "reply" || step.kind === "chase" || step.kind === "quiet";
   const isDone = step.kind === "waiting" && step.step === "Done";
   const subtitle = [person.jobTitle || person.headline, person.company].filter(Boolean).join(" · ");
-  const personTags = tags.filter((t) => person.tagIds.includes(t.id));
 
   function run(fn: () => Promise<unknown>, done: string) {
     start(async () => {
@@ -265,10 +223,7 @@ export function ConversationPane({
               className="flex min-w-0 shrink items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted"
             >
               <span className="min-w-0">
-                <span className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-semibold leading-tight">{person.name}</span>
-                  <ConnectionBadge person={person} />
-                </span>
+                <span className="block truncate text-sm font-semibold leading-tight">{person.name}</span>
                 <span className="block max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
                   {subtitle || "No headline yet"}
                 </span>
@@ -280,6 +235,9 @@ export function ConversationPane({
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {isLead && (
             <>
+            <span className="mr-2">
+              <StatusMenu stages={stages} stage={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
+            </span>
             {isDone ? (
               <HeaderAction icon={RotateCcw} label="Reopen" onClick={() => run(() => reopen(person.id), "Reopened.")} />
             ) : (
@@ -297,20 +255,6 @@ export function ConversationPane({
               open={snoozeOpen}
               onOpenChange={onSnoozeOpenChange}
             />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={person.starred ? "Unstar" : "Star"}
-                  aria-pressed={person.starred}
-                  onClick={() => run(() => toggleStar(person.id), "")}
-                >
-                  <Star className={cn(person.starred && "fill-amber-400 text-amber-400")} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{person.starred ? "Unstar" : "Star"}</TooltipContent>
-            </Tooltip>
             </>
           )}
           <DropdownMenu>
@@ -325,7 +269,10 @@ export function ConversationPane({
               <TooltipContent side="bottom">More</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onToggleDetails}>{detailsOpen ? "Hide details" : "Show details"}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onToggleDetails}>{detailsOpen ? "Hide details" : "Details and tags"}</DropdownMenuItem>
+              {isLead && (
+                <DropdownMenuItem onSelect={() => run(() => toggleStar(person.id), "")}>{person.starred ? "Unstar" : "Star"}</DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               {!viaHelper && (
                 <>
@@ -349,16 +296,7 @@ export function ConversationPane({
         </div>
       </header>
 
-      {isLead ? (
-        <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b px-5 py-2">
-          <StageMenu stages={stages} value={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
-          <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
-          {personTags.map((t) => (
-            <TagChip key={t.id} tag={t} />
-          ))}
-          <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
-        </div>
-      ) : (
+      {!isLead && (
         <NotLeadBar personId={person.id} firstName={first} currentStage={person.stage} stages={stages} tags={tags} ask={person.askLead} />
       )}
 
@@ -536,26 +474,21 @@ export function ConversationPane({
       ) : (
         <footer className="flex flex-col gap-3 px-6 pt-1 pb-4">
           {isLead && step.kind !== "stale" && (
-            <div className="flex items-center gap-3 rounded-xl bg-muted/70 px-3.5 py-2.5">
-              <span
-                className={cn(
-                  "size-2 shrink-0 rounded-full",
-                  step.kind === "reply" ? "bg-blue-500" : step.kind === "chase" ? "bg-amber-500" : step.kind === "quiet" ? "bg-violet-500" : "bg-stone-400",
-                )}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="text-md font-semibold">{cardTitle(step, first)}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  <NextStepHint row={row} />
-                </div>
-              </div>
-              {actionable && (
-                <>
-                  <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} label="Not now" />
-                  <DraftWithAi personName={person.name} />
-                </>
-              )}
-            </div>
+            <NextBox
+              title={cardTitle(step, first)}
+              action={
+                actionable && (
+                  <>
+                    <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} label="Not now" />
+                    <DraftWithAi personName={person.name} />
+                  </>
+                )
+              }
+            >
+              <span className="min-w-0 truncate">
+                <NextStepHint row={row} />
+              </span>
+            </NextBox>
           )}
 
           {aiDraft && (
@@ -624,20 +557,23 @@ export function ConversationPane({
               <ArrowUp />
             </Button>
           </div>
-          <div className="flex justify-between text-2xs text-muted-foreground">
-            <span>
-              {capReached
-                ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`
-                : viaHelper && !account.helper.connected
-                  ? "Sends when Chrome is open. It waits in the queue."
-                  : viaHelper
-                  ? "Delivered on LinkedIn by the Chrome helper, from your account."
-                  : account.helper.connected
-                    ? "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."
-                    : "Copies the message and logs it once you confirm you sent it on LinkedIn."}
-            </span>
-            <span>{draft.trim() ? `${draft.trim().split(/\s+/).length} words` : ""}</span>
-          </div>
+          {/* A line under the box only when sending works differently from usual. */}
+          {(capReached || !viaHelper || !account.helper.connected || draft.trim()) && (
+            <div className="flex justify-between text-2xs text-muted-foreground">
+              <span>
+                {capReached
+                  ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`
+                  : viaHelper && !account.helper.connected
+                    ? "Sends when Chrome is open. It waits in the queue."
+                    : viaHelper
+                      ? ""
+                      : account.helper.connected
+                        ? "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."
+                        : "Copies the message and logs it once you confirm you sent it on LinkedIn."}
+              </span>
+              <span>{draft.trim() ? `${draft.trim().split(/\s+/).length} words` : ""}</span>
+            </div>
+          )}
         </footer>
       )}
 

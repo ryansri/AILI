@@ -38,9 +38,9 @@ function typing(target: EventTarget | null): boolean {
 function viewTitle(view: View, tags: Tag[], stages: StageDef[]): string {
   switch (view.kind) {
     case "now":
-      return "Now";
+      return "Needs you";
     case "waiting":
-      return "Waiting";
+      return "Waiting on them";
     case "starred":
       return "Starred";
     case "tag":
@@ -50,7 +50,7 @@ function viewTitle(view: View, tags: Tag[], stages: StageDef[]): string {
     case "other":
       return "Other";
     default:
-      return "All";
+      return "Everyone";
   }
 }
 
@@ -245,8 +245,6 @@ export function InboxView({
               counts={counts}
               tags={tags}
               stages={stages}
-              account={account}
-              people={people}
             />
           )}
           <PeopleList
@@ -260,6 +258,7 @@ export function InboxView({
             query={query}
             conditions={conditions}
             helper={account.helper}
+            stages={stages}
             onMessageAll={view.kind === "tag" || view.kind === "stage" ? () => setMessageAll(true) : undefined}
           />
         </div>

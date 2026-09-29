@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Bell, Check, Clock3, ExternalLink, MessageSquare, RotateCcw, Undo2, UserPlus, X } from "lucide-react";
+import { Bell, Check, ExternalLink, MessageSquare, RotateCcw, Undo2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { addTouch, openedForAlerts, queueInvite, removeTouch, withdrawInvites } from "@/lib/client-actions";
@@ -39,37 +39,6 @@ const firstOf = (p: Person) => p.name.trim().split(/\s+/)[0] || p.name;
 /** Asks the Chrome helper to look now rather than at its next minute. */
 function nudgeHelper() {
   window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
-}
-
-function Steps({ at }: { at: "warming" | "requested" | "accepted" }) {
-  const steps = [
-    { label: "Warming up", done: true },
-    { label: "Request sent", done: at !== "warming", now: at === "warming" },
-    { label: "Accepted", done: at === "accepted", now: at === "requested", ok: at === "accepted" },
-    { label: "First message", now: at === "accepted" },
-  ];
-  return (
-    <ol className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
-      {steps.map((s, i) => (
-        <li key={s.label} className="flex items-center gap-2">
-          {i > 0 && <span aria-hidden="true" className="h-px w-4 bg-border" />}
-          <span
-            className={cn(
-              "flex size-4.5 items-center justify-center rounded-full border-[1.5px]",
-              s.done && !s.ok && "border-foreground bg-foreground text-background",
-              s.ok && "border-emerald-500 bg-emerald-500 text-white",
-              s.now && "border-2 border-blue-500",
-            )}
-          >
-            {s.done && <Check className="size-2.5" strokeWidth={3.5} />}
-          </span>
-          <span className={cn((s.done || s.now) && "text-foreground", s.now && "font-semibold", s.ok && "font-semibold text-emerald-700 dark:text-emerald-400")}>
-            {s.label}
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
 }
 
 /** Connect: a note or none, sent from your Chrome when you click. */
@@ -239,10 +208,34 @@ function ConnectForm({
   );
 }
 
+/** The one box above the message area: "Next", one plain sentence, the button for it. */
+export function NextBox({
+  title,
+  action,
+  children,
+  tone,
+}: {
+  title: React.ReactNode;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+  tone?: "bad";
+}) {
+  return (
+    <div className={cn("flex flex-col gap-2.5 rounded-2xl border px-4 py-3.5 shadow-xs", tone === "bad" && "border-red-200 dark:border-red-900")}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">Next</span>
+        <span className={cn("min-w-0 flex-1 text-md font-semibold", tone === "bad" && "text-red-700 dark:text-red-400")}>{title}</span>
+        {action && <span className="flex shrink-0 flex-wrap items-center gap-2">{action}</span>}
+      </div>
+      {children && <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-2.5 text-xs text-muted-foreground">{children}</div>}
+    </div>
+  );
+}
+
 /**
- * In place of the message box while you are not connected: Connect, then the
- * request's progress. "Already connected?" opens the message box anyway when
- * AILI is only guessing.
+ * While you are not connected, the Next box in place of the message box:
+ * send a request (with the warm-up tip), then wait for it, or fix it.
+ * "Already connected?" opens the message box when AILI is only guessing.
  */
 export function ConnectPanel({
   person,
@@ -278,169 +271,136 @@ export function ConnectPanel({
   const needed = account.alerts.touchesToConnect;
   const touches = person.touches?.length ?? 0;
   const warm = touches >= needed;
+  const link = "underline-offset-2 hover:text-foreground hover:underline";
 
-  return (
-    <div className="flex flex-col items-center gap-3 px-2 pt-2 pb-1">
-      <Steps at={state === "connect" ? "warming" : "requested"} />
-      {state === "connect" && (
-        <div className="flex w-full max-w-xl flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border px-4 py-2.5 text-sm">
-          {person.alerts === "on" ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-              <Bell className="size-3" />
-              Post alerts on
+  if (state === "connect") {
+    return (
+      <NextBox
+        title={`Send ${first} a connection request`}
+        action={
+          <Button size="sm" onClick={() => onConnect()} disabled={tooSoon}>
+            <UserPlus />
+            Connect
+          </Button>
+        }
+      >
+        {tooSoon ? (
+          <span className="flex-1 text-amber-700" suppressHydrationWarning>
+            You withdrew one on {shortDate(new Date(invite!.withdrawnAt!))}. LinkedIn lets you ask again from {shortDate(reaskFrom!)}.
+          </span>
+        ) : warm ? (
+          <span className="flex-1">
+            <span className="font-semibold text-foreground">You&rsquo;ve commented {touches} times.</span> A good time to connect.
+          </span>
+        ) : (
+          <span className="flex-1">
+            Tip: comment on {needed} of {first}&rsquo;s posts first, so they know your name.{" "}
+            <span className="font-semibold text-foreground">
+              {touches} of {needed} done.
             </span>
-          ) : person.alerts !== "impossible" && person.linkedinUrl ? (
-            <a
-              href={person.linkedinUrl}
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => act(() => openedForAlerts(person.id), "")}
-              title="Opens their profile: tap the bell there"
-              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <Bell className="size-3" />
-              Turn on post alerts
-            </a>
-          ) : null}
-          <span className="flex gap-1" aria-label={`${touches} of ${needed} comments`}>
-            {Array.from({ length: needed }, (_, i) => (
-              <span key={i} className={cn("size-2 rounded-full", i < touches ? "bg-foreground" : "bg-border")} />
-            ))}
           </span>
-          <span className="min-w-0 flex-1 text-muted-foreground">
-            {warm ? (
-              <span className="font-semibold text-foreground">Warmed up: a good time to connect.</span>
-            ) : (
-              <>
-                <span className="font-semibold text-foreground">
-                  {touches} of {needed} comments.
-                </span>{" "}
-                Comment on {first}&rsquo;s posts, then connect.
-              </>
-            )}
-          </span>
-          <span className="flex items-center gap-2">
+        )}
+        {!warm && (
+          <>
             {touches > 0 && (
-              <button type="button" disabled={pending} onClick={() => act(() => removeTouch(person.id), "")} className="text-xs text-muted-foreground hover:text-foreground">
+              <button type="button" disabled={pending} onClick={() => act(() => removeTouch(person.id), "")} className={link}>
                 Undo
               </button>
             )}
-            <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => addTouch(person.id), "Comment counted.")}>
+            <Button size="xs" variant="outline" disabled={pending} onClick={() => act(() => addTouch(person.id), "Comment counted.")}>
               <MessageSquare />
               I commented
             </Button>
-          </span>
-        </div>
-      )}
-      <div className="flex w-full max-w-xl flex-col gap-2.5 rounded-2xl border px-5 py-4">
-        {state === "connect" && (
-          <>
-            <h3 className="text-md font-semibold">You&rsquo;re not connected with {first} yet</h3>
-            <p className="text-sm text-muted-foreground">
-              {warm
-                ? `You've commented ${touches} times, so ${first} is more likely to accept now. `
-                : ""}
-              LinkedIn only lets you message people you&rsquo;re connected with. Send a request first; when {first} accepts, AILI tells you and the
-              message box opens.
-            </p>
-            {tooSoon && (
-              <p className="text-xs text-amber-700" suppressHydrationWarning>
-                You withdrew a request on {shortDate(new Date(invite!.withdrawnAt!))}. LinkedIn lets you ask again from {shortDate(reaskFrom!)}.
-              </p>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={() => onConnect()} disabled={tooSoon}>
-                <UserPlus />
-                Connect with {first}
-              </Button>
-              {person.linkedinUrl && (
-                <Button size="sm" variant="outline" asChild>
-                  <a href={person.linkedinUrl} target="_blank" rel="noreferrer">
-                    View profile
-                    <ExternalLink />
-                  </a>
-                </Button>
-              )}
-              {onWriteAnyway && person.connection !== "no" && (
-                <button type="button" onClick={onWriteAnyway} className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-                  Already connected? Write a message
-                </button>
-              )}
-            </div>
           </>
         )}
+        {person.alerts !== "on" && person.alerts !== "impossible" && person.linkedinUrl && (
+          <a
+            href={person.linkedinUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => act(() => openedForAlerts(person.id), "")}
+            title="Opens their profile: tap the bell there, and LinkedIn tells you when they post"
+            className={cn("inline-flex items-center gap-1", link)}
+          >
+            <Bell className="size-3" />
+            Turn on post alerts
+          </a>
+        )}
+        {onWriteAnyway && person.connection !== "no" && (
+          <button type="button" onClick={onWriteAnyway} className={cn("ml-auto", link)}>
+            Already connected? Write a message
+          </button>
+        )}
+      </NextBox>
+    );
+  }
 
-        {state === "queued" && (
-          <>
-            <h3 className="flex items-center gap-2 text-md font-semibold">
-              <Clock3 className="size-4 text-muted-foreground" />
-              {account.helper.connected ? "Sending your request…" : "Your request waits for Chrome"}
-            </h3>
-            {invite?.note && <p className="rounded-lg bg-muted/70 px-3 py-2 text-sm">&ldquo;{invite.note}&rdquo;</p>}
-            <p className="text-sm text-muted-foreground">
-              {account.helper.connected ? "The Chrome helper sends it in a few seconds." : "It goes out from your Chrome the next time Chrome is open."}
-            </p>
-            <div>
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), "Request taken back.")}>
-                <X />
-                Cancel
-              </Button>
-            </div>
-          </>
-        )}
+  if (state === "queued") {
+    return (
+      <NextBox
+        title={account.helper.connected ? `Sending your request to ${first}…` : `Your request to ${first} goes out when Chrome is open`}
+        action={
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), "Request taken back.")}>
+            <X />
+            Cancel
+          </Button>
+        }
+      />
+    );
+  }
 
-        {(state === "sent" || state === "withdrawing") && invite && (
-          <>
-            <h3 className="flex items-center gap-2 text-md font-semibold" suppressHydrationWarning>
-              <Clock3 className="size-4 text-muted-foreground" />
-              Request sent {invite.sentAt ? shortDate(new Date(invite.sentAt)) : ""}
-              {invite.source === "linkedin" && <span className="text-xs font-normal text-muted-foreground">on LinkedIn</span>}
-            </h3>
-            {invite.note && <p className="rounded-lg bg-muted/70 px-3 py-2 text-sm">&ldquo;{invite.note}&rdquo;</p>}
-            <p className="text-sm text-muted-foreground">
-              {state === "withdrawing"
-                ? "Withdrawing it on LinkedIn…"
-                : `Delivered on LinkedIn. Waiting for ${first} to accept; AILI checks every 15 minutes while Chrome is open.`}
-            </p>
-            {invite.error && <p className="text-xs text-amber-700">{invite.error}</p>}
-            {state === "sent" && (
-              <div>
-                <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), `Withdrawing your request to ${first}.`)}>
-                  <Undo2 />
-                  Withdraw
-                </Button>
-              </div>
-            )}
-          </>
-        )}
+  if ((state === "sent" || state === "withdrawing") && invite) {
+    return (
+      <NextBox
+        title={state === "withdrawing" ? "Withdrawing your request…" : `Wait for ${first} to accept`}
+        action={
+          state === "sent" && (
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), `Withdrawing your request to ${first}.`)}>
+              <Undo2 />
+              Withdraw
+            </Button>
+          )
+        }
+      >
+        <span suppressHydrationWarning>
+          Request sent {invite.sentAt ? shortDate(new Date(invite.sentAt)) : ""}
+          {invite.source === "linkedin" ? " on LinkedIn" : ""}. AILI tells you when {first} accepts.
+        </span>
+        {invite.error && <span className="text-amber-700">{invite.error}</span>}
+      </NextBox>
+    );
+  }
 
-        {state === "failed" && invite && (
+  if (state === "failed" && invite) {
+    return (
+      <NextBox
+        tone="bad"
+        title={`Your request to ${first} didn't go through`}
+        action={
           <>
-            <h3 className="text-md font-semibold text-red-700">Your request didn&rsquo;t go through</h3>
-            <p className="text-sm text-muted-foreground">{invite.error}</p>
-            {invite.note && <p className="rounded-lg bg-muted/70 px-3 py-2 text-sm">&ldquo;{invite.note}&rdquo;</p>}
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" disabled={pending} onClick={() => act(() => queueInvite(person.id, invite.note), "Trying again.")}>
-                <RotateCcw />
-                Try again
-              </Button>
-              {invite.note && (
-                <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => queueInvite(person.id, ""), "Sending it without a note.")}>
-                  Send without a note
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={() => onConnect(invite.note)}>
-                Edit
-              </Button>
-              <Button size="sm" variant="ghost" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), "Removed.")}>
-                Remove
-              </Button>
-            </div>
+            <Button size="sm" disabled={pending} onClick={() => act(() => queueInvite(person.id, invite.note), "Trying again.")}>
+              <RotateCcw />
+              Try again
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onConnect(invite.note)}>
+              Edit
+            </Button>
           </>
+        }
+      >
+        <span className="flex-1">{invite.error}</span>
+        {invite.note && (
+          <button type="button" disabled={pending} onClick={() => act(() => queueInvite(person.id, ""), "Sending it without a note.")} className={link}>
+            Send without a note
+          </button>
         )}
-      </div>
-    </div>
-  );
+        <button type="button" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), "Removed.")} className={link}>
+          Remove
+        </button>
+      </NextBox>
+    );
+  }
+  return null;
 }
 
 /** "Jaimes accepted your request": above the first message, until you have written. */
@@ -454,7 +414,6 @@ export function AcceptedLine({ person }: { person: Person }) {
   const sentDays = invite.sentAt ? Math.max(0, Math.round((at - new Date(invite.sentAt).getTime()) / 86400000)) : null;
   return (
     <li className="mb-4 flex flex-col items-center gap-2">
-      <Steps at="accepted" />
       <div className="flex max-w-xl items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
         <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
           <Check className="size-3" strokeWidth={3.5} />

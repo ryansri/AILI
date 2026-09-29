@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Timer, X } from "lucide-react";
 
 const KEY = "aili-plan-bar-dismissed";
@@ -17,11 +18,14 @@ function dismissedToday(): boolean {
 
 /**
  * The note across the app when planned posts are coming up and not ready
- * (Settings, Sending, Plan warning). Hidden for the rest of the day once closed.
+ * (Settings, Sending, Plan warning). Hidden for the rest of the day once closed,
+ * and never in the inbox.
  */
 export function PlanBar({ toWrite, toSchedule, firstDay }: { toWrite: number; toSchedule: number; firstDay: string }) {
   const hidden = useSyncExternalStore(noop, dismissedToday, () => true);
-  if (hidden) return null;
+  // The inbox is for conversations; the plan's reminder shows on the other pages.
+  const inbox = usePathname()?.startsWith("/inbox");
+  if (hidden || inbox) return null;
   const parts = [
     toWrite ? `${toWrite} planned ${toWrite === 1 ? "post needs" : "posts need"} writing` : "",
     toSchedule ? `${toSchedule} ${toSchedule === 1 ? "is" : "are"} written but not scheduled` : "",

@@ -1,16 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { GripVertical, Hourglass, Inbox, List, MessageSquare, MoreHorizontal, Plus, Star } from "lucide-react";
+import { ChevronRight, GripVertical, Hourglass, Inbox, List, MessageSquare, MoreHorizontal, Plus, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { createStage, createTag, deleteStage, deleteTag, renameStage, reorderStages, updateTag } from "@/lib/client-actions";
 import { PROTECTED_STAGE_KEYS } from "@/lib/stage-rules";
 import { sameView, type View } from "@/lib/rows";
-import { TAG_COLORS, type Account, type Person, type StageDef, type Tag, type TagColor } from "@/lib/types";
-import { averageReplyMs, shortDuration } from "@/lib/stats";
-import { Progress } from "@/components/ui/progress";
+import { TAG_COLORS, type StageDef, type Tag, type TagColor } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -571,57 +569,28 @@ function StageList({
  * How today is going: messages sent against the daily cap, and how fast you
  * answer on average over the last 30 days.
  */
-function YourDay({ account, people }: { account: Account; people: Person[] }) {
-  const sent = Math.min(account.sentToday, account.dailyCap);
-  const pct = account.dailyCap ? Math.round((sent / account.dailyCap) * 100) : 0;
-  const avg = averageReplyMs(people);
-  return (
-    <div className="shrink-0 border-t px-4 pt-3 pb-4">
-      <div className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">Your day</div>
-      <Progress value={pct} aria-label="Messages sent today" className="mt-2 h-1.5 bg-foreground/10" />
-      <div className="mt-2 flex flex-col gap-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
-        <span>
-          <span className="font-medium text-foreground">{account.sentToday}</span> of {account.dailyCap} messages sent
-        </span>
-        <span>{avg === null ? "No replies to time yet" : `Avg reply time ${shortDuration(avg)}`}</span>
-      </div>
-    </div>
-  );
-}
-
 export function InboxSidebar({
   view,
   onView,
   counts,
   tags,
   stages,
-  account,
-  people,
 }: {
   view: View;
   onView: (v: View) => void;
   counts: SidebarCounts;
   tags: Tag[];
   stages: StageDef[];
-  account: Account;
-  people: Person[];
 }) {
   const [addingStage, setAddingStage] = useState(false);
+  const [more, setMore] = useState(view.kind === "starred" || view.kind === "tag" || view.kind === "stage");
 
   return (
     <nav aria-label="Inbox views" className="flex w-[220px] shrink-0 flex-col border-r bg-sidebar/50">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3">
-        <div className="flex h-6 items-center px-2 text-xs font-medium text-muted-foreground">Views</div>
-        <Item
-          icon={List}
-          label="All"
-          count={counts.all}
-          active={sameView(view, { kind: "all" })}
-          onClick={() => onView({ kind: "all" })}
-        />
         <Item
           icon={Inbox}
-          label="Now"
+          label="Needs you"
           count={counts.now}
           strong
           active={sameView(view, { kind: "now" })}
@@ -629,17 +598,17 @@ export function InboxSidebar({
         />
         <Item
           icon={Hourglass}
-          label="Waiting"
+          label="Waiting on them"
           count={counts.waiting}
           active={sameView(view, { kind: "waiting" })}
           onClick={() => onView({ kind: "waiting" })}
         />
         <Item
-          icon={Star}
-          label="Starred"
-          count={counts.starred}
-          active={sameView(view, { kind: "starred" })}
-          onClick={() => onView({ kind: "starred" })}
+          icon={List}
+          label="Everyone"
+          count={counts.all}
+          active={sameView(view, { kind: "all" })}
+          onClick={() => onView({ kind: "all" })}
         />
 
         <div aria-hidden="true" className="mx-2 my-2 h-px bg-border" />
@@ -651,6 +620,25 @@ export function InboxSidebar({
           onClick={() => onView({ kind: "other" })}
         />
 
+        {/* Starred, tags and stages: one click away, closed until wanted. */}
+        <button
+          type="button"
+          aria-expanded={more}
+          onClick={() => setMore((m) => !m)}
+          className="mt-3 flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-xs font-medium text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+        >
+          <ChevronRight className={cn("size-3.5 transition-transform", more && "rotate-90")} />
+          More: starred, tags, stages
+        </button>
+        {more && (
+          <>
+        <Item
+          icon={Star}
+          label="Starred"
+          count={counts.starred}
+          active={sameView(view, { kind: "starred" })}
+          onClick={() => onView({ kind: "starred" })}
+        />
         <SectionHeader title="Tags" action={<AddTag />} />
         {tags.map((t) => (
           <div key={t.id} className="group/tag relative">
@@ -688,8 +676,9 @@ export function InboxSidebar({
         />
         <StageList stages={stages} counts={counts.stages} view={view} onView={onView} />
         {addingStage && <AddStageField onClose={() => setAddingStage(false)} />}
+          </>
+        )}
       </div>
-      <YourDay account={account} people={people} />
     </nav>
   );
 }

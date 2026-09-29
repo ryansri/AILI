@@ -5,6 +5,8 @@ import { ExternalLink, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import { updateNotes } from "@/lib/client-actions";
 import type { StageDef, Tag } from "@/lib/types";
+import { TagChip } from "@/components/tag-chip";
+import { TagPicker } from "@/components/people/tag-picker";
 import { shortDate, shortTime } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -113,6 +115,19 @@ export function DetailsPanel({
       {person.headline && (
         <Field label="LinkedIn headline">
           <p className="text-xs leading-relaxed text-muted-foreground">{person.headline}</p>
+        </Field>
+      )}
+
+      {person.lead !== false && (
+        <Field label="Tags">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {tags
+              .filter((t) => person.tagIds.includes(t.id))
+              .map((t) => (
+                <TagChip key={t.id} tag={t} />
+              ))}
+            <TagPicker personId={person.id} tags={tags} selected={person.tagIds} />
+          </div>
         </Field>
       )}
 

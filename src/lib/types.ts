@@ -12,15 +12,16 @@ export interface StageDef {
 
 /** The stages every workspace starts with, in order. */
 export const DEFAULT_STAGES: StageDef[] = [
-  { key: "warming", label: "Warming up" },
+  { key: "warming", label: "Not connected" },
   { key: "requested", label: "Request sent" },
   { key: "connected", label: "Connected" },
-  { key: "conversation", label: "In conversation" },
-  { key: "call", label: "Call earned" },
+  { key: "conversation", label: "Talking" },
+  { key: "call", label: "Call booked" },
   { key: "pilot", label: "Pilot" },
-  { key: "won", label: "Won" },
-  { key: "lost", label: "Lost" },
+  { key: "won", label: "Client" },
+  { key: "lost", label: "Not a fit" },
 ];
+
 
 export function stageLabel(stages: StageDef[], key: string): string {
   return stages.find((s) => s.key === key)?.label ?? DEFAULT_STAGES.find((s) => s.key === key)?.label ?? key;
