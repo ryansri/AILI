@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, toggleStar } from "@/lib/client-actions";
 import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
-import { relativeTime, shortDate, shortTime } from "@/lib/next-step";
+import { followUpNote, relativeTime, shortDate, shortTime } from "@/lib/next-step";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,6 +85,17 @@ function MyAvatar({ account }: { account: Account }) {
       {account.pictureUrl && <AvatarImage src={account.pictureUrl} alt="" />}
       <AvatarFallback className="bg-foreground text-2xs font-semibold text-background">{account.initials}</AvatarFallback>
     </Avatar>
+  );
+}
+
+/** Under the last message, while they haven't answered: when to follow up. */
+function FollowUpLine({ row }: { row: Row }) {
+  const note = followUpNote(row.step);
+  if (!note) return null;
+  return (
+    <li className={cn("mt-4 text-center text-2xs", note.due ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>
+      {note.long}
+    </li>
   );
 }
 
@@ -480,6 +491,7 @@ export function ConversationPane({
               </div>
             </li>
           ))}
+          {isLead && hydrated && person.pending.length === 0 && <FollowUpLine row={row} />}
           {messages.length === 0 && person.pending.length === 0 && !showConnect && person.invite?.status !== "accepted" && (
             <li className="text-center text-xs text-muted-foreground">No messages yet. Send the first one.</li>
           )}

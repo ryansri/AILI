@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextStep, dueLabel, relativeTime } from "./next-step";
+import { nextStep, dueLabel, followUpNote, relativeTime } from "./next-step";
 import type { Person } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -213,5 +213,46 @@ describe("relativeTime", () => {
     expect(relativeTime(ago(3 * HOUR), at)).toBe("3h");
     expect(relativeTime(ago(DAY), at)).toBe("1d");
     expect(relativeTime(ago(9 * DAY), at)).toBe("9d");
+  });
+});
+
+describe("followUpNote", () => {
+  it("says when follow-up 1 is due while you wait", () => {
+    const p = person({ messages: [{ id: "1", direction: "out", sentAt: daysAgo(2), body: "hi" }] });
+    expect(followUpNote(nextStep(p, now), now)).toEqual({
+      short: "Follow up Mon",
+      long: "No reply yet. Follow-up 1 is due on Mon.",
+      due: false,
+    });
+  });
+
+  it("says it is time once follow-up 1 is due", () => {
+    const p = person({ messages: [{ id: "1", direction: "out", sentAt: daysAgo(4), body: "hi" }] });
+    expect(followUpNote(nextStep(p, now), now)).toEqual({
+      short: "Follow up today",
+      long: "No reply for 4 days. Time for follow-up 1.",
+      due: true,
+    });
+  });
+
+  it("asks to chase or drop after two follow-ups", () => {
+    const p = person({
+      messages: [
+        { id: "1", direction: "out", sentAt: daysAgo(20), body: "hi" },
+        { id: "2", direction: "out", sentAt: daysAgo(16), body: "bump", followUp: 1 },
+        { id: "3", direction: "out", sentAt: daysAgo(11), body: "last one", followUp: 2 },
+      ],
+    });
+    expect(followUpNote(nextStep(p, now), now)).toMatchObject({ short: "Chase or drop", due: true });
+  });
+
+  it("says nothing when they wrote last", () => {
+    const p = person({
+      messages: [
+        { id: "1", direction: "out", sentAt: daysAgo(3), body: "hi" },
+        { id: "2", direction: "in", sentAt: daysAgo(1), body: "hello" },
+      ],
+    });
+    expect(followUpNote(nextStep(p, now), now)).toBeNull();
   });
 });

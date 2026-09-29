@@ -5,7 +5,7 @@ import { Check, CheckCheck, ChevronDown, ChevronRight, PanelLeft, Plus, Send, St
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/client-actions";
-import { relativeTime } from "@/lib/next-step";
+import { followUpNote, relativeTime } from "@/lib/next-step";
 import { bucketOf, type Condition, type Group, type Row, type View } from "@/lib/rows";
 import type { HelperStatus, StageDef, Tag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,20 @@ function lastTime(row: Row): string {
  * A chip only when something asks for you: a draft to check, or "Lead?" in
  * Other. Where a person stands is the status pill; what to do is the Next box.
  */
+/** When to follow up, while they haven't answered: amber once it's due. */
+function FollowUp({ row }: { row: Row }) {
+  const note = followUpNote(row.step);
+  if (!note) return null;
+  return (
+    <span
+      suppressHydrationWarning
+      className={cn("text-2xs whitespace-nowrap", note.due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-muted-foreground")}
+    >
+      {note.short}
+    </span>
+  );
+}
+
 function Chip({ row }: { row: Row }) {
   // A reply from Claude or ChatGPT waiting to be checked and sent comes first.
   if (row.person.draft) {
@@ -221,8 +235,11 @@ export function PeopleList({
                             </div>
                             <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
                           </div>
-                          <span className="shrink-0 self-start pt-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
-                            {lastTime(row)}
+                          <span className="flex shrink-0 flex-col items-end gap-1 self-start pt-0.5">
+                            <span className="text-xs text-muted-foreground" suppressHydrationWarning>
+                              {lastTime(row)}
+                            </span>
+                            {row.person.lead !== false && <FollowUp row={row} />}
                           </span>
                         </button>
                         <span className={cn("absolute top-3.5 left-4", stale && !active && "opacity-60")}>

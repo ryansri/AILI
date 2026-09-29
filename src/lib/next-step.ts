@@ -21,6 +21,8 @@ export interface NextStep {
   dueAt: Date;
   /** True when dueAt is today or earlier. */
   dueNow: boolean;
+  /** You wrote last and they haven't answered: which follow-up is next, or time to decide. */
+  followUp?: 1 | 2 | "decide";
 }
 
 /** Follow-up cadence from the outreach playbook, in days after the first message. */
@@ -156,6 +158,7 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
       detail: dueNow ? `no reply for ${silentDays} days` : `follow-up 1 on ${shortDate(dueAt)}`,
       dueAt,
       dueNow,
+      followUp: 1,
     };
   }
 
@@ -168,6 +171,7 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
       detail: dueNow ? `no reply for ${silentDays} days` : `follow-up 2 on ${shortDate(dueAt)}`,
       dueAt,
       dueNow,
+      followUp: 2,
     };
   }
 
@@ -180,6 +184,7 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
     detail: dueNow ? "silent after 2 follow-ups" : `decide on ${shortDate(dueAt)}`,
     dueAt,
     dueNow,
+    followUp: "decide",
   };
 }
 
@@ -203,6 +208,35 @@ export function dueLabel(dueAt: Date, now: Date = new Date()): string {
   if (diff === 1) return "Tomorrow";
   if (diff < 7) return WEEKDAYS[dueAt.getDay()];
   return shortDate(dueAt);
+}
+
+export interface FollowUpNote {
+  /** For the list row: "Follow up Fri", "Follow up today", "Chase or drop". */
+  short: string;
+  /** For the chat: one plain sentence. */
+  long: string;
+  /** Due today or earlier. */
+  due: boolean;
+}
+
+/** When to follow up, in words, while they haven't answered you. Nothing otherwise. */
+export function followUpNote(step: NextStep, now: Date = new Date()): FollowUpNote | null {
+  if (!step.followUp) return null;
+  const when = dueLabel(step.dueAt, now);
+  const short = when === "Today" ? "today" : when === "Tomorrow" ? "tomorrow" : when;
+  const long = when === "Today" || when === "Tomorrow" ? short : `on ${when}`;
+  if (step.followUp === "decide") {
+    return step.dueNow
+      ? { short: "Chase or drop", long: "No reply after 2 follow-ups. Try once more, or let it go.", due: true }
+      : { short: `Decide ${short}`, long: `No reply after 2 follow-ups. If it stays quiet, decide ${long}.`, due: false };
+  }
+  const n = step.followUp;
+  if (step.dueNow) {
+    // The detail reads "no reply for 5 days", counted from your last message.
+    const quiet = step.detail.charAt(0).toUpperCase() + step.detail.slice(1);
+    return { short: "Follow up today", long: `${quiet}. Time for follow-up ${n}.`, due: true };
+  }
+  return { short: `Follow up ${short}`, long: `No reply yet. Follow-up ${n} is due ${long}.`, due: false };
 }
 
 /** Time label for the row: "now", "12m", "2h", "1d", "4d". */
