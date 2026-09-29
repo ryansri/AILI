@@ -204,3 +204,17 @@ export function requestStats(invites: InviteFacts[], staleDays: number, now = ne
 export function waitingDays(sentAt: string | undefined, now = new Date()): number {
   return sentAt ? Math.max(0, Math.floor((now.getTime() - new Date(sentAt).getTime()) / DAY)) : 0;
 }
+
+export type ConnectionState = "connected" | "pending" | "not";
+
+/**
+ * The badge by a name: pending while a request waits for them, connected
+ * (LinkedIn's "1st") when you can message them, not connected when the next
+ * step is a request. The same rule as the conversation's Connect card.
+ */
+export function connectionOf(
+  p: Pick<Person, "connection" | "conversationId" | "messages" | "connectedAt"> & { invite?: { status: string } },
+): ConnectionState {
+  if (p.invite && ["queued", "sending", "sent", "withdrawing"].includes(p.invite.status)) return "pending";
+  return needsConnect(p) ? "not" : "connected";
+}

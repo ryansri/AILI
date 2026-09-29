@@ -26,6 +26,7 @@ import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/compo
 import { CountBadge } from "@/components/count-badge";
 import { TagChip, TagDot } from "@/components/tag-chip";
 import { PersonAvatar } from "@/components/inbox/people-list";
+import { ConnectionBadge, LinkedInButton } from "@/components/linkedin-bits";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 import { FunnelRow, type Pick } from "./funnel";
 import { ImportDialog } from "./import-dialog";
@@ -459,7 +460,7 @@ export function PeopleView({
                 <TableRow
                   key={p.id}
                   data-state={on ? "selected" : undefined}
-                  className="cursor-pointer"
+                  className="group cursor-pointer"
                   onClick={() => router.push(`/inbox?person=${p.id}`)}
                 >
                   <TableCell className="pl-6" onClick={(e) => e.stopPropagation()}>
@@ -469,7 +470,11 @@ export function PeopleView({
                     <div className="flex items-center gap-3">
                       <PersonAvatar person={p} className="size-8" />
                       <div className="min-w-0">
-                        <div className="text-md font-semibold">{p.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-md font-semibold">{p.name}</span>
+                          <ConnectionBadge person={p} />
+                          <LinkedInButton person={p} className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" />
+                        </div>
                         <div className="max-w-72 truncate text-xs text-muted-foreground">
                           {[p.jobTitle || p.headline, p.company].filter(Boolean).join(" · ")}
                         </div>

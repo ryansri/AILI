@@ -17,6 +17,7 @@ import { CountBadge } from "@/components/count-badge";
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
+import { ConnectionBadge, LinkedInButton } from "@/components/linkedin-bits";
 import { SyncLineBar } from "./sync-line";
 
 export function initials(name: string): string {
@@ -276,6 +277,7 @@ export function PeopleList({
                               {row.person.starred && (
                                 <Star aria-label="Starred" className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
                               )}
+                              <ConnectionBadge person={row.person} compact />
                               <Chip row={row} grouped={grouped} />
                             </div>
                             <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
@@ -287,15 +289,16 @@ export function PeopleList({
                             {lastTime(row)}
                           </span>
                         </button>
-                        {/* Done and snooze are for leads; Other has no next step. */}
-                        {row.person.lead !== false && (
+                        {/* LinkedIn for everyone; done and snooze are for leads, as Other has no next step. */}
+                        {(row.person.lead !== false || row.person.linkedinUrl) && (
                           <div
                             className={cn(
                               "absolute top-1/2 right-3 flex -translate-y-1/2 gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
                               "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
                             )}
                           >
-                            {canDone && (
+                            <LinkedInButton person={row.person} className="size-6" />
+                            {row.person.lead !== false && canDone && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button variant="ghost" size="icon-xs" aria-label="Mark done" onClick={() => done(row)}>
@@ -305,7 +308,9 @@ export function PeopleList({
                                 <TooltipContent side="bottom">Done (E)</TooltipContent>
                               </Tooltip>
                             )}
-                            <SnoozeMenu personId={row.person.id} snoozed={Boolean(row.person.snoozedUntil)} size="icon-xs" />
+                            {row.person.lead !== false && (
+                              <SnoozeMenu personId={row.person.id} snoozed={Boolean(row.person.snoozedUntil)} size="icon-xs" />
+                            )}
                           </div>
                         )}
                       </li>

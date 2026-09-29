@@ -281,6 +281,11 @@ are in `extension/README.md`.
   to send it as the note of a request instead. Nothing is sent without your
   click. The LinkedIn calls for requests follow LinkedIn's web client and are
   not yet checked against a live account.
+- **Connected or not, at a glance.** A badge by each name: **1st** when you
+  are connected, **Pending** (amber clock) while a request waits, **Not
+  connected** when the next step is Connect. The inbox list shows the short
+  form. The photo in a conversation's header opens their LinkedIn profile, and
+  an "in" button appears when you hover a row in the inbox or Leads.
 - **Leads by company.** People | Companies above the Leads table. Companies
   shows one row per company: who you know there (decision makers dark), the
   furthest step anyone reached, whether anyone is talking, the last touch and

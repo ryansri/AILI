@@ -35,6 +35,7 @@ import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
 import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf } from "./connect";
+import { ConnectionBadge, LinkedInMark } from "@/components/linkedin-bits";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
@@ -233,7 +234,27 @@ export function ConversationPane({
 
   return (
     <section aria-label={`Conversation with ${person.name}`} className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b pr-3 pl-5">
+      <header className="flex h-14 shrink-0 items-center gap-1.5 border-b pr-3 pl-5">
+        {/* The photo opens their LinkedIn profile; the name opens the details. */}
+        {person.linkedinUrl ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href={person.linkedinUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${person.name}'s LinkedIn profile`}
+                className="relative shrink-0 rounded-full transition-opacity hover:opacity-85"
+              >
+                <PersonAvatar person={person} className="size-8" />
+                <LinkedInMark className="absolute -right-1 -bottom-1 size-3.5 text-[8px] ring-2 ring-background" />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Open LinkedIn profile</TooltipContent>
+          </Tooltip>
+        ) : (
+          <PersonAvatar person={person} className="size-8 shrink-0" />
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -241,11 +262,13 @@ export function ConversationPane({
               onClick={onToggleDetails}
               aria-expanded={detailsOpen}
               aria-label={detailsOpen ? `Hide details for ${person.name}` : `Show details for ${person.name}`}
-              className="-ml-1.5 flex min-w-0 shrink items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted"
+              className="flex min-w-0 shrink items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted"
             >
-              <PersonAvatar person={person} className="size-8" />
               <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold leading-tight">{person.name}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-semibold leading-tight">{person.name}</span>
+                  <ConnectionBadge person={person} />
+                </span>
                 <span className="block max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
                   {subtitle || "No headline yet"}
                 </span>
