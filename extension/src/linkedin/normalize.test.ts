@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { extractConversationId, extractProfileId, linkedInVariables, raw } from "./encode";
-import { extractCurrentPosition, extractProfile, extractSentMessage, findSeenAt, normalizeConversations, normalizeMessages, pictureFrom } from "./normalize";
+import {
+  extractCurrentPosition,
+  extractPicture,
+  extractProfile,
+  extractSentMessage,
+  findInvitationId,
+  findSeenAt,
+  normalizeConversations,
+  normalizeMessages,
+  parseConnections,
+  parseSentInvitations,
+  pictureFrom,
+} from "./normalize";
 
 function participant(convId: string, i: number, profileId: string, first: string, last: string, headline = "") {
   return {
@@ -248,5 +260,63 @@ describe("read receipts", () => {
   it("finds nothing in a thread without receipts", () => {
     expect(findSeenAt({ included: [me, them] }, ME)).toBeNull();
     expect(findSeenAt(null, ME)).toBeNull();
+  });
+});
+
+describe("connection requests", () => {
+  const ME = "ACoAAMe00001";
+  it("reads sent requests: who, LinkedIn's id and secret, when, and the note", () => {
+    const raw = {
+      data: { paging: { total: 2 }, elements: [] },
+      included: [
+        {
+          $type: "com.linkedin.voyager.relationships.invitation.Invitation",
+          entityUrn: "urn:li:fs_relInvitation:7101",
+          "*fromMember": `urn:li:fs_miniProfile:${ME}`,
+          "*toMember": "urn:li:fs_miniProfile:ACoAAJaimes1",
+          sharedSecret: "abc",
+          sentTime: 1790500000000,
+          message: " Hi Jaimes ",
+        },
+        { $type: "com.linkedin.voyager.identity.shared.MiniProfile", entityUrn: "urn:li:fs_miniProfile:ACoAAJaimes1", firstName: "Jaimes", publicIdentifier: "jaimesleggett" },
+        { $type: "com.linkedin.voyager.relationships.invitation.Invitation", entityUrn: "urn:li:fs_relInvitation:7102", toMemberId: "urn:li:fsd_profile:ACoAALaura22" },
+      ],
+    };
+    expect(parseSentInvitations(raw, ME)).toEqual([
+      { memberId: "ACoAAJaimes1", publicId: "jaimesleggett", invitationId: "7101", sharedSecret: "abc", sentAt: 1790500000000, message: "Hi Jaimes" },
+      { memberId: "ACoAALaura22", publicId: undefined, invitationId: "7102", sharedSecret: undefined, sentAt: undefined, message: undefined },
+    ]);
+  });
+
+  it("reads newest connections, in either of LinkedIn's shapes", () => {
+    const dash = {
+      included: [
+        { $type: "com.linkedin.voyager.dash.relationships.Connection", entityUrn: "urn:li:fsd_connection:1", connectedMember: "urn:li:fsd_profile:ACoAAJaimes1", createdAt: 1790600000000 },
+        { $type: "com.linkedin.voyager.dash.identity.profile.Profile", entityUrn: "urn:li:fsd_profile:ACoAAJaimes1", firstName: "Jaimes", publicIdentifier: "jaimesleggett" },
+      ],
+    };
+    expect(parseConnections(dash, ME)).toEqual([{ memberId: "ACoAAJaimes1", publicId: "jaimesleggett", connectedAt: 1790600000000 }]);
+    const old = { included: [{ $type: "com.linkedin.voyager.relationships.shared.connection.Connection", entityUrn: "urn:li:fs_connection:2", "*miniProfile": "urn:li:fs_miniProfile:ACoAALaura22", createdAt: 5 }] };
+    expect(parseConnections(old, ME)).toEqual([{ memberId: "ACoAALaura22", publicId: undefined, connectedAt: 5 }]);
+  });
+
+  it("finds the new request's id in LinkedIn's answer", () => {
+    expect(findInvitationId({ value: { invitationUrn: "urn:li:fsd_invitation:7200" } })).toBe("7200");
+    expect(findInvitationId({ value: {} })).toBe("");
+  });
+});
+
+describe("profile photos", () => {
+  it("takes the photo of the person looked up, by /in/ address or member id", () => {
+    const pic = { displayImageReference: { vectorImage: { rootUrl: "https://media.licdn.com/dms/image/", artifacts: [{ width: 100, fileIdentifyingUrlPathSegment: "abc_100" }] } } };
+    const raw = {
+      included: [
+        { $type: "com.linkedin.voyager.dash.identity.profile.Profile", entityUrn: "urn:li:fsd_profile:ACoAAJaimes1", firstName: "Jaimes", publicIdentifier: "jaimesleggett", profilePicture: pic },
+        { $type: "com.linkedin.voyager.dash.identity.profile.Profile", entityUrn: "urn:li:fsd_profile:ACoAAOther33", firstName: "Other", publicIdentifier: "other" },
+      ],
+    };
+    expect(extractPicture(raw, "jaimesleggett")).toBe("https://media.licdn.com/dms/image/abc_100");
+    expect(extractPicture(raw, "ACoAAJaimes1")).toBe("https://media.licdn.com/dms/image/abc_100");
+    expect(extractPicture(raw, "other")).toBe("");
   });
 });

@@ -3,20 +3,23 @@
  *
  * Once a minute, while paired and LinkedIn is logged in:
  *   1. deliver any message the user clicked Send on in AILI (one per tick),
- *   2. import history: walk the inbox one page per tick until every
+ *   2. send or withdraw at most one connection request the user clicked
+ *      Connect or Withdraw on, and every 15 minutes read your sent requests
+ *      and newest connections, so AILI knows who accepted,
+ *   3. import history: walk the inbox one page per tick until every
  *      one-to-one conversation active in the last BACKFILL_DAYS is in AILI,
- *   3. after that, every other tick, re-read the first pages of the inbox and
+ *   4. after that, every other tick, re-read the first pages of the inbox and
  *      push anything with new activity,
- *   4. once history is in, look up at most two profiles for a current job
- *      title and company (people who need you first, each person once),
- *   5. tell AILI it is alive.
+ *   5. once history is in, look up at most two profiles for a current job
+ *      title, company and photo (people who need you first, each person once),
+ *   6. tell AILI it is alive.
  *
- * When a check after the history import finds a new reply, it shows a desktop
- * notification (if you have them on in AILI Settings). Clicking one opens that
- * conversation in AILI.
+ * When a check after the history import finds a new reply, or someone accepts
+ * your request, it shows a desktop notification (if you have them on in AILI
+ * Settings). Clicking one opens that conversation in AILI.
  *
- * It never sends anything on its own. The queue only holds what a human
- * clicked, and AILI caps it per day.
+ * It never sends anything on its own. The queues only hold what a human
+ * clicked (Send, Connect, Withdraw), and AILI caps them per day.
  */
 
 import {
@@ -25,12 +28,16 @@ import {
   linkPerson,
   postSync,
   reportLookups,
+  reportInvite,
+  reportNetwork,
   reportOutbox,
   reportSeen,
   reportStatus,
   takeLookups,
+  takeInvites,
   takeOutbox,
   takeSeenChecks,
+  type AcceptedToNotify,
   type LeadToAsk,
   type ReplyToNotify,
 } from "./aili";
@@ -39,11 +46,15 @@ import {
   fetchConversationsPage,
   fetchCurrentPosition,
   fetchProfile,
+  fetchRecentConnections,
   fetchSeenAt,
+  fetchSentInvitations,
   fetchThread,
   getMe,
+  sendInvitation,
   sendToConversation,
   sendToRecipient,
+  withdrawInvitation,
   type InboxCategory,
 } from "./linkedin/api";
 import type { ConversationSummary, PlainMessage } from "./linkedin/normalize";
@@ -135,6 +146,7 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
 
     const me = await getMe();
     const delivered = await deliverOutbox(pairing, me.memberUrn);
+    await handleInvites(pairing, me.memberUrn);
 
     const backfill = await getBackfill();
     if (backfill.category !== "done") {
@@ -164,21 +176,99 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
   }
 }
 
+const memberIdOf = (urn: string | null | undefined) => (urn ?? "").split(":").pop() ?? "";
+
 /**
- * Fills in job titles and companies, two people a tick at most. Whatever was
+ * Connection requests: sends at most one the user clicked Connect on, withdraws
+ * at most one they clicked Withdraw on, and when AILI says it is time, reads
+ * your sent requests and newest connections so AILI knows who accepted.
+ */
+async function handleInvites(pairing: Pairing, memberUrn: string): Promise<void> {
+  const { send, withdraw, checkNetwork } = await takeInvites(pairing);
+  const myId = memberIdOf(memberUrn);
+
+  if (send) {
+    try {
+      await jitter(1500, 3000);
+      let memberId = memberIdOf(send.recipientUrn);
+      let recipientUrn: string | undefined;
+      if (!memberId && send.publicId) {
+        const profile = await readProfile(send.publicId);
+        memberId = memberIdOf(profile?.urn);
+        recipientUrn = profile?.urn;
+      }
+      if (!memberId) throw new Error("Could not find their LinkedIn profile. Check their LinkedIn URL in AILI.");
+      const { invitationId } = await sendInvitation(memberId, send.note);
+      await reportInvite(pairing, send.id, { status: "sent", invitationId: invitationId || undefined, sentAt: Date.now(), recipientUrn });
+    } catch (err) {
+      // Logged out: AILI hands the request out again once you are back.
+      if (err instanceof LinkedInError && err.status === 401) throw err;
+      await reportInvite(pairing, send.id, { status: "failed", error: err instanceof Error ? err.message : String(err) }).catch(() => {});
+    }
+  }
+
+  if (withdraw) {
+    try {
+      await jitter(1500, 3000);
+      let { invitationId, sharedSecret } = withdraw;
+      if (!invitationId) {
+        const memberId = memberIdOf(withdraw.recipientUrn);
+        const { sent } = await fetchSentInvitations(myId);
+        const match = sent.find(
+          (s) => (memberId && s.memberId === memberId) || (withdraw.publicId && s.publicId?.toLowerCase() === withdraw.publicId.toLowerCase()),
+        );
+        invitationId = match?.invitationId ?? null;
+        sharedSecret = match?.sharedSecret ?? null;
+      }
+      // Not in your sent requests any more: nothing left to withdraw.
+      if (invitationId) await withdrawInvitation(invitationId, sharedSecret ?? undefined);
+      await reportInvite(pairing, withdraw.id, { status: "withdrawn" });
+    } catch (err) {
+      if (err instanceof LinkedInError && err.status === 401) throw err;
+      await reportInvite(pairing, withdraw.id, { status: "withdraw-failed", error: err instanceof Error ? err.message : String(err) }).catch(() => {});
+    }
+  }
+
+  if (checkNetwork) await checkNetworkNow(pairing, myId);
+}
+
+/** Your sent requests and newest connections, to AILI; then a notice for leads who accepted. */
+async function checkNetworkNow(pairing: Pairing, myId: string): Promise<void> {
+  const body: Parameters<typeof reportNetwork>[1] = {};
+  const stop = (err: unknown) => err instanceof LinkedInError && (err.status === 401 || err.status === 429 || err.status >= 500);
+  try {
+    const { sent, complete } = await fetchSentInvitations(myId);
+    body.sent = sent;
+    body.sentComplete = complete;
+  } catch (err) {
+    if (stop(err)) throw err;
+  }
+  await jitter();
+  try {
+    body.connections = await fetchRecentConnections(myId);
+  } catch (err) {
+    if (stop(err)) throw err;
+  }
+  // Reported even when LinkedIn gave nothing, so AILI waits 15 minutes before asking again.
+  const accepted = await reportNetwork(pairing, body);
+  if (accepted.length) await showAccepted(pairing, accepted);
+}
+
+/**
+ * Fills in job titles, companies and profile photos, two people a tick at most. Whatever was
  * looked up before a pause is reported, so nobody is looked up twice.
  */
 async function lookupProfiles(pairing: Pairing): Promise<void> {
   const items = await takeLookups(pairing);
-  const results: { id: string; status: "found" | "none"; title?: string; company?: string }[] = [];
+  const results: { id: string; status: "found" | "none"; title?: string; company?: string; pictureUrl?: string }[] = [];
   try {
     for (const item of items) {
       await jitter(2000, 3000);
       const found = await fetchCurrentPosition(item.identity);
       results.push(
         found.status === "found"
-          ? { id: item.id, status: "found", title: found.position.title, company: found.position.company }
-          : { id: item.id, status: "none" },
+          ? { id: item.id, status: "found", title: found.position.title, company: found.position.company, pictureUrl: found.pictureUrl }
+          : { id: item.id, status: "none", pictureUrl: found.pictureUrl },
       );
     }
   } finally {
@@ -307,8 +397,11 @@ async function deliverOutbox(pairing: Pairing, memberUrn: string): Promise<numbe
       await setStatus({ sentToday: (status.sentToday ?? 0) + 1 });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await reportOutbox(pairing, item.id, { status: "failed", error: message }).catch(() => {});
-      if (err instanceof LinkedInError && (err.status === 401 || err.status === 403)) throw err;
+      // LinkedIn would not start a conversation with them: most often you are not connected yet.
+      const notConnected = !item.conversationId && err instanceof LinkedInError && [400, 403, 422].includes(err.status);
+      await reportOutbox(pairing, item.id, { status: "failed", error: message, notConnected }).catch(() => {});
+      // Logged out or asked to slow down: stop this tick. A refused message is only that message.
+      if (err instanceof LinkedInError && (err.status === 401 || err.status === 429 || err.status >= 500)) throw err;
     }
   }
   return delivered;
@@ -477,9 +570,35 @@ async function askAboutLeads(pairing: Pairing, people: LeadToAsk[]): Promise<voi
   });
 }
 
-/** The buttons on an "Add to Leads?" notice. */
+/** "Jaimes accepted your request": Say hello opens the conversation in AILI. */
+async function showAccepted(pairing: Pairing, people: AcceptedToNotify[]): Promise<void> {
+  const base = pairing.serverUrl.replace(/\/$/, "");
+  for (const p of people.slice(0, MAX_NOTIFICATIONS)) {
+    await new Promise<void>((resolve) =>
+      chrome.notifications.create(
+        `hello|${base}/inbox?person=${encodeURIComponent(p.personId)}|${p.personId}`,
+        {
+          type: "basic",
+          iconUrl: "icon-128.png",
+          title: `${p.name} accepted your request`,
+          message: `${p.headline ? `${p.headline}. ` : ""}Say hello?`,
+          buttons: [{ title: "Say hello" }, { title: "Later" }],
+          priority: 1,
+        },
+        () => resolve(),
+      ),
+    );
+  }
+}
+
+/** The buttons on an "Add to Leads?" or "accepted" notice. */
 async function answerFromNotification(id: string, button: number): Promise<void> {
-  const [prefix, , personId] = id.split("|");
+  const [prefix, url, personId] = id.split("|");
+  if (prefix === "hello") {
+    chrome.notifications.clear(id);
+    if (button === 0 && url) await chrome.tabs.create({ url });
+    return;
+  }
   if (prefix !== "ask" || !personId) return;
   chrome.notifications.clear(id);
   const pairing = await getPairing();
@@ -488,7 +607,7 @@ async function answerFromNotification(id: string, button: number): Promise<void>
 
 async function openFromNotification(id: string): Promise<void> {
   const [prefix, url] = id.split("|");
-  if ((prefix !== "aili" && prefix !== "ask") || !url) return;
+  if ((prefix !== "aili" && prefix !== "ask" && prefix !== "hello") || !url) return;
   await chrome.tabs.create({ url });
   chrome.notifications.clear(id);
 }

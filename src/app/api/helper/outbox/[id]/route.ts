@@ -23,6 +23,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/helper/outb
     conversationId?: string;
     error?: string;
     sentAt?: number;
+    /** LinkedIn would not start a conversation with them: most likely not connected. */
+    notConnected?: boolean;
   };
 
   if (body.status === "sent") {
@@ -43,16 +45,28 @@ export async function POST(request: Request, ctx: RouteContext<"/api/helper/outb
       });
     }
     await db.outbox.update({ where: { id }, data: { status: "sent", sentAt, externalId } });
-    const personData: { snoozedUntil: null; conversationId?: string; stage?: string; connectedAt?: Date } = { snoozedUntil: null };
+    // A message went through, so you can message them: count that as connected.
+    const personData: { snoozedUntil: null; conversationId?: string; stage?: string; connectedAt?: Date; connection: string } = {
+      snoozedUntil: null,
+      connection: "yes",
+    };
     if (typeof body.conversationId === "string") personData.conversationId = body.conversationId;
     const person = await db.person.findUniqueOrThrow({ where: { id: item.personId } });
     if (["warming", "requested", "connected"].includes(person.stage)) personData.stage = "conversation";
     if (!person.connectedAt) personData.connectedAt = sentAt;
     await db.person.update({ where: { id: item.personId }, data: personData });
   } else {
+    const person = await db.person.findUniqueOrThrow({ where: { id: item.personId } });
+    const notConnected = body.notConnected === true && !person.conversationId;
+    if (notConnected) await db.person.update({ where: { id: person.id }, data: { connection: "no" } });
     await db.outbox.update({
       where: { id },
-      data: { status: "failed", error: String(body.error ?? "Delivery failed").slice(0, 500) },
+      data: {
+        status: "failed",
+        error: notConnected
+          ? `You're not connected with ${person.name.split(" ")[0]} yet, so LinkedIn would not start a conversation.`
+          : String(body.error ?? "Delivery failed").slice(0, 500),
+      },
     });
   }
 

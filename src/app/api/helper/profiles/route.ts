@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getPeople } from "@/lib/data";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { isLinkedInImage } from "@/lib/helper-sync";
 import { pickLookups, profileIdentity } from "@/lib/profile-lookup";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +12,9 @@ export function OPTIONS(request: Request) {
 }
 
 /**
- * The helper asks who to look up on LinkedIn for a current job title and
- * company. Two at most per request; each person is looked up once.
+ * The helper asks who to look up on LinkedIn for a current job title,
+ * company and profile photo. Two at most per request; each person is looked
+ * up once.
  */
 export async function GET(request: Request) {
   const workspace = await workspaceFromRequest(request);
@@ -47,6 +49,7 @@ interface LookupResult {
   status: "found" | "none";
   title?: string;
   company?: string;
+  pictureUrl?: string;
 }
 
 function clean(value: unknown, max: number): string {
@@ -54,8 +57,9 @@ function clean(value: unknown, max: number): string {
 }
 
 /**
- * The helper reports what it found. Marks each person checked, and fills job
- * title and company unless the user has edited the person by hand.
+ * The helper reports what it found. Marks each person checked, fills job
+ * title and company unless the user has edited the person by hand, and keeps
+ * the latest profile photo (LinkedIn's photo links expire, so a fresh one wins).
  */
 export async function POST(request: Request) {
   const workspace = await workspaceFromRequest(request);
@@ -72,12 +76,14 @@ export async function POST(request: Request) {
     const title = clean(r.title, 120);
     const company = clean(r.company, 120);
     const fill = r.status === "found" && !person.profileEditedAt;
+    const picture = isLinkedInImage(r.pictureUrl) ? String(r.pictureUrl) : "";
     await db.person.update({
       where: { id: person.id },
       data: {
         profileCheckedAt: new Date(),
         ...(fill && title ? { jobTitle: title } : {}),
         ...(fill && company ? { company } : {}),
+        ...(picture ? { pictureUrl: picture } : {}),
       },
     });
     if (fill && (title || company)) updated += 1;

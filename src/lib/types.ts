@@ -68,6 +68,20 @@ export interface FailedMessage {
   createdAt: string; // ISO
 }
 
+/** A connection request, as the screens show it. */
+export interface InviteView {
+  id: string;
+  status: "queued" | "sending" | "sent" | "failed" | "withdrawing" | "withdrawn" | "accepted";
+  note: string;
+  error: string;
+  /** "aili": Connect in AILI. "linkedin": sent on LinkedIn, found by the helper. */
+  source: "aili" | "linkedin";
+  createdAt: string;
+  sentAt?: string;
+  acceptedAt?: string;
+  withdrawnAt?: string;
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -102,6 +116,10 @@ export interface Person {
   askLead?: boolean;
   /** When they last read the conversation on LinkedIn (their read receipt), ISO. */
   seenAt?: string;
+  /** Connected on LinkedIn: "yes", "no", or "" when AILI does not know. */
+  connection?: "yes" | "no" | "";
+  /** The latest connection request to them. */
+  invite?: InviteView;
   /** When the person was added to AILI. */
   createdAt?: string; // ISO
   /** When the person last moved stage. */
@@ -147,5 +165,13 @@ export interface Account {
   notifyReplies: boolean;
   /** Sent today plus anything still queued for the helper. */
   sentToday: number;
+  /** Connection requests: the daily limit and how many went today and this week. */
+  invites: {
+    cap: number;
+    today: number;
+    week: number;
+    notifyAccepts: boolean;
+    staleDays: number;
+  };
   helper: HelperStatus;
 }

@@ -51,6 +51,12 @@ model Workspace {
   timeZoneAuto     Boolean   @default(true)
   /// Remind the user when the content plan is covered for fewer days than this.
   runwayAlertDays  Int       @default(3)
+  /// Connection requests: the most a day, a notice when someone accepts, and when a request counts as old.
+  inviteCap        Int       @default(20)
+  notifyAccepts    Boolean   @default(true)
+  inviteStaleDays  Int       @default(21)
+  /// When the helper last read your sent requests and newest connections from LinkedIn.
+  networkCheckedAt DateTime?
   /// LinkedIn's official connection for publishing posts (separate from the helper).
   /// The access token is encrypted with the server secret.
   linkedinPostToken   String?
@@ -66,6 +72,7 @@ model Workspace {
   people Person[]
   tags   Tag[]
   companyNames CompanyName[]
+  invites      Invite[]
   stages Stage[]
   templates Template[]
   outbox Outbox[]
@@ -105,6 +112,8 @@ model Person {
   seenAt      DateTime?
   /// When the helper last looked for a read receipt, so it checks each conversation now and then, not every minute.
   seenCheckedAt DateTime?
+  /// Connected on LinkedIn (1st degree): "yes", "no", or "" when AILI does not know.
+  connection  String    @default("")
   /// When the person last moved stage. Drives "days in stage" on the People page.
   /// Empty for people from before it was recorded; the page estimates from other dates.
   stageChangedAt DateTime?
@@ -135,6 +144,7 @@ model Person {
   tags     PersonTag[]
   messages Message[]
   outbox   Outbox[]
+  invites  Invite[]
 
   @@unique([workspaceId, linkedinUrn])
   @@index([workspaceId, stage])
@@ -240,6 +250,35 @@ model Outbox {
   sentAt      DateTime?
 
   @@index([workspaceId, status])
+}
+
+/// A connection request. From Connect in AILI it waits here until the helper
+/// sends it (one a tick, capped per day); requests sent on LinkedIn itself are
+/// found by the helper and kept here too, so acceptance is tracked for both.
+model Invite {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  personId     String
+  person       Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  note         String    @default("")
+  /// queued | sending | sent | failed | withdrawing | withdrawn | accepted
+  status       String    @default("queued")
+  error        String    @default("")
+  /// "aili": Connect in AILI. "linkedin": sent on LinkedIn, found by the helper.
+  source       String    @default("aili")
+  /// LinkedIn's id for the request and its secret, needed to withdraw it.
+  invitationId String?
+  sharedSecret String?
+  claimedAt    DateTime?
+  sentAt       DateTime?
+  acceptedAt   DateTime?
+  withdrawnAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([personId])
 }
 
 /// A LinkedIn post or article. Posts publish through LinkedIn's official API,

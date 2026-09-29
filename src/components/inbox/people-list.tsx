@@ -43,7 +43,23 @@ function lastLine(row: Row): string {
   if (pending) return `You: ${pending.body}`;
   const msgs = row.person.messages;
   const last = msgs[msgs.length - 1];
-  if (!last) return "No messages yet";
+  if (!last) {
+    // No messages yet: say where the connection request is, if there is one.
+    switch (row.person.invite?.status) {
+      case "queued":
+      case "sending":
+        return "Connection request going out";
+      case "sent":
+        return "Request sent · waiting to accept";
+      case "withdrawing":
+        return "Withdrawing the request";
+      case "failed":
+        return "Request didn't go through";
+      case "accepted":
+        return "Accepted your request · say hello";
+    }
+    return "No messages yet";
+  }
   return last.direction === "out" ? `You: ${last.body}` : last.body;
 }
 

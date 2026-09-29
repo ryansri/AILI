@@ -266,6 +266,21 @@ are in `extension/README.md`.
   desktop notice (Add to Leads or Not a lead), and the conversation shows
   **Lead?** in Other until you answer. Settings, Account, Move everyone to
   Other starts Leads over. Reply notices and profile lookups are for leads only.
+- **Connection requests.** LinkedIn only lets you message people you are
+  connected with, so for anyone else the message box gives way to **Connect**
+  (with a note or none, templates too; free accounts get 200 characters). The
+  helper sends it from your Chrome on its next check, within Settings, Sending,
+  Requests a day (20 to start; LinkedIn allows about 100 a week). The person
+  moves to Request sent with the date. Every 15 minutes the helper reads your
+  sent requests and newest connections: when someone accepts they move to
+  Connected, a desktop notice offers Say hello, and the conversation opens with
+  "accepted your request". Requests you send on LinkedIn itself are picked up
+  the same way. Click Request sent on the funnel for your acceptance rate,
+  notes against no notes, and requests waiting over 3 weeks, with Withdraw.
+  A message LinkedIn refuses because you are not connected says so, and offers
+  to send it as the note of a request instead. Nothing is sent without your
+  click. The LinkedIn calls for requests follow LinkedIn's web client and are
+  not yet checked against a live account.
 - **Leads by company.** People | Companies above the Leads table. Companies
   shows one row per company: who you know there (decision makers dark), the
   furthest step anyone reached, whether anyone is talking, the last touch and
@@ -390,6 +405,7 @@ src/
     helper-sync.ts      applies what the helper saw to the database
     funnel.ts           who reached each stage, rates, the biggest drop
     companies.ts        Leads by company: matching names, roles, what next
+    invites.ts          connection requests: who needs one, what the helper saw, stats
     leads.ts            who starts as a lead and who starts in Other
     csv.ts              reads CSV imports, including LinkedIn's Connections export
     templates.ts        fills {first_name} and the other fields for a person

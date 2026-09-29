@@ -10,9 +10,15 @@ import { LinkedInError, jitter, voyagerFetch } from "./client";
 import { encodeUrnChars, extractConversationId, linkedInVariables, raw } from "./encode";
 import {
   extractCurrentPosition,
+  extractPicture,
   extractProfile,
   extractSentMessage,
+  findInvitationId,
   findSeenAt,
+  parseConnections,
+  parseSentInvitations,
+  type RecentConnection,
+  type SentInvitation,
   normalizeConversations,
   pictureFrom,
   normalizeMessages,
@@ -209,7 +215,8 @@ const PROFILE_PATHS = [
 ];
 let preferredPath = 0;
 
-export type PositionLookup = { status: "found"; position: CurrentPosition } | { status: "none" };
+/** What a lookup found: the current role, and the profile photo when there is one. */
+export type PositionLookup = ({ status: "found"; position: CurrentPosition } | { status: "none" }) & { pictureUrl?: string };
 
 /**
  * Looks up one person's current position. Throws LinkedInError on 401 (logged
@@ -219,21 +226,24 @@ export type PositionLookup = { status: "found"; position: CurrentPosition } | { 
  */
 export async function fetchCurrentPosition(identity: string): Promise<PositionLookup> {
   const order = [preferredPath, ...PROFILE_PATHS.keys()].filter((v, i, a) => a.indexOf(v) === i);
+  let pictureUrl = "";
   for (const index of order) {
     const res = await voyagerFetch(PROFILE_PATHS[index](identity));
     if (res.status === 401 || res.status === 429 || res.status >= 500) {
       throw new LinkedInError(`Profile lookup returned ${res.status}`, res.status);
     }
     if (res.ok) {
-      const position = extractCurrentPosition(await res.json().catch(() => null));
+      const data = await res.json().catch(() => null);
+      pictureUrl ||= extractPicture(data, identity);
+      const position = extractCurrentPosition(data);
       if (position) {
         preferredPath = index;
-        return { status: "found", position };
+        return { status: "found", position, pictureUrl: pictureUrl || undefined };
       }
     }
     await jitter(600, 900);
   }
-  return { status: "none" };
+  return { status: "none", pictureUrl: pictureUrl || undefined };
 }
 
 /**
@@ -254,4 +264,110 @@ export async function fetchProfile(publicId: string): Promise<(ProfileBasics & {
     if (basics) return { ...basics, position: extractCurrentPosition(data) };
   }
   return null;
+}
+
+/*
+ * Connection requests. Like the rest of this file, these use the calls
+ * LinkedIn's own web client made when this was written; each has a second
+ * form to try when the first is gone. Only ever called for a request the user
+ * clicked Connect or Withdraw on, and one read of the lists every 15 minutes.
+ */
+
+/** Why a request did not go: LinkedIn's words, or a plainer line for the common cases. */
+async function refusal(res: Response, what: string): Promise<LinkedInError> {
+  const text = await res.text().catch(() => "");
+  let said = "";
+  try {
+    const body = JSON.parse(text);
+    said = String(body?.message ?? body?.data?.message ?? "");
+  } catch {}
+  const all = `${said} ${text}`;
+  let message = said || `LinkedIn refused the ${what} (${res.status}).`;
+  if (res.status === 429 || /quota|limit/i.test(all)) message = "LinkedIn says you have reached its limit for requests this week. Try again in a few days.";
+  else if (/CANT_RESEND_YET|resend/i.test(all)) message = "LinkedIn will not take another request to this person yet (3 weeks after a withdrawn one).";
+  else if (/already.*connect|ALREADY_CONNECTED/i.test(all)) message = "You're already connected on LinkedIn.";
+  else if (/message|note|custom/i.test(said) && res.status === 400) message = `LinkedIn would not take the note: ${said}`;
+  return new LinkedInError(message, res.status);
+}
+
+/** Sends a connection request, with a note or none. Returns LinkedIn's id for it when it gives one. */
+export async function sendInvitation(memberId: string, note: string): Promise<{ invitationId: string }> {
+  const custom = note.trim();
+  const res = await voyagerFetch(
+    "/voyagerRelationshipsDashMemberRelationships?action=verifyQuotaAndCreateV2&decorationId=com.linkedin.voyager.dash.deco.relationships.InvitationCreationResultWithInvitee-2",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ invitee: { inviteeUnion: { memberProfile: `urn:li:fsd_profile:${memberId}` } }, ...(custom ? { customMessage: custom } : {}) }),
+    },
+  );
+  if (res.ok) return { invitationId: findInvitationId(await res.json().catch(() => null)) };
+  if (res.status !== 404 && res.status !== 410) throw await refusal(res, "request");
+
+  // The older form.
+  const old = await voyagerFetch("/growth/normInvitations", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      invitee: { "com.linkedin.voyager.growth.invitation.InviteeProfile": { profileId: memberId } },
+      trackingId: btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))),
+      ...(custom ? { message: custom } : {}),
+      invitations: [],
+      excludeInvitations: [],
+    }),
+  });
+  if (!old.ok) throw await refusal(old, "request");
+  return { invitationId: findInvitationId(await old.json().catch(() => null)) };
+}
+
+const SENT_PAGE = 100;
+
+/** Your sent connection requests still waiting. Complete when LinkedIn gave fewer than a full page. */
+export async function fetchSentInvitations(myId: string): Promise<{ sent: SentInvitation[]; complete: boolean }> {
+  const paths = [
+    `/relationships/sentInvitationViewsV2?count=${SENT_PAGE}&invitationType=CONNECTION&q=invitationType&start=0`,
+    `/voyagerRelationshipsDashSentInvitationViews?count=${SENT_PAGE}&invitationType=CONNECTION&q=invitationType&start=0`,
+  ];
+  for (const path of paths) {
+    const res = await voyagerFetch(path);
+    if (res.status === 401 || res.status === 429 || res.status >= 500) throw new LinkedInError(`Sent requests returned ${res.status}`, res.status);
+    if (!res.ok) continue;
+    const raw = (await res.json().catch(() => null)) as VoyagerResponse & { data?: Loose };
+    const sent = parseSentInvitations(raw, myId);
+    const total = Number(raw?.data?.paging?.total ?? NaN);
+    const elements = Array.isArray(raw?.data?.elements) ? raw.data.elements.length : sent.length;
+    return { sent, complete: Number.isFinite(total) ? total <= SENT_PAGE : elements < SENT_PAGE };
+  }
+  throw new LinkedInError("LinkedIn did not give the sent requests list", 404);
+}
+
+/** Your newest connections, latest first. */
+export async function fetchRecentConnections(myId: string): Promise<RecentConnection[]> {
+  const paths = [
+    "/relationships/dash/connections?decorationId=com.linkedin.voyager.dash.deco.web.mynetwork.ConnectionListWithProfile-16&count=40&q=search&sortType=RECENTLY_ADDED",
+    "/relationships/connections?count=40&sortType=RECENTLY_ADDED&start=0",
+  ];
+  for (const path of paths) {
+    const res = await voyagerFetch(path);
+    if (res.status === 401 || res.status === 429 || res.status >= 500) throw new LinkedInError(`Connections returned ${res.status}`, res.status);
+    if (!res.ok) continue;
+    return parseConnections(await res.json().catch(() => null), myId);
+  }
+  throw new LinkedInError("LinkedIn did not give the connections list", 404);
+}
+
+/** Withdraws a waiting request. */
+export async function withdrawInvitation(invitationId: string, sharedSecret?: string): Promise<void> {
+  const res = await voyagerFetch(`/relationships/invitations/${encodeURIComponent(invitationId)}?action=withdraw`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ invitationId, invitationSharedSecret: sharedSecret, isGenericInvitation: false }),
+  });
+  if (res.ok) return;
+  if (res.status !== 404 && res.status !== 410 && res.status !== 400) throw await refusal(res, "withdraw");
+  const dash = await voyagerFetch(
+    `/voyagerRelationshipsDashInvitations/${encodeURIComponent(`urn:li:fsd_invitation:${invitationId}`)}?action=withdraw`,
+    { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({}) },
+  );
+  if (!dash.ok) throw await refusal(dash, "withdraw");
 }

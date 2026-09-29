@@ -8,6 +8,7 @@ import * as actions from "./actions";
 import * as posts from "./post-actions";
 import * as plan from "./plan-actions";
 import * as companies from "./company-actions";
+import * as invites from "./invite-actions";
 
 export type { ImportRow, PersonInput } from "./actions";
 
@@ -80,3 +81,6 @@ export const setPlanWarning = unwrap(plan.setPlanWarning);
 
 export const nameCompany = unwrap(companies.nameCompany);
 export const keepCompaniesApart = unwrap(companies.keepCompaniesApart);
+export const queueInvite = unwrap(invites.queueInvite);
+export const withdrawInvites = unwrap(invites.withdrawInvites);
+export const setInviteSettings = unwrap(invites.setInviteSettings);

@@ -294,6 +294,23 @@ export function extractCurrentPosition(response: unknown): CurrentPosition | nul
   return { title: current[0].title.slice(0, 120), company: current[0].company.slice(0, 120) };
 }
 
+/**
+ * The profile photo in a profile response, for the person looked up (by /in/
+ * address or member id). Empty when there is none.
+ */
+export function extractPicture(response: unknown, identity: string): string {
+  const included = ((response as VoyagerResponse)?.included ?? []) as Loose[];
+  const candidates = included.filter(
+    (e) => typeof e.firstName === "string" && /Profile$/.test(String(e.$type)) && typeof e.entityUrn === "string",
+  );
+  const wanted = identity.toLowerCase();
+  const entity =
+    candidates.find(
+      (e) => String(e.publicIdentifier ?? "").toLowerCase() === wanted || String(e.entityUrn).toLowerCase().endsWith(`:${wanted}`),
+    ) ?? (candidates.length === 1 ? candidates[0] : undefined);
+  return entity ? pictureFrom(entity.profilePicture ?? entity.picture) : "";
+}
+
 export interface ProfileBasics {
   urn: string;
   name: string;
@@ -324,4 +341,137 @@ export function extractProfile(response: unknown, publicId: string): ProfileBasi
     headline: String(entity.headline ?? entity.occupation ?? "").slice(0, 200),
     pictureUrl: pictureFrom(entity.profilePicture ?? entity.picture),
   };
+}
+
+/* ------------------------------------------------- connection requests */
+
+const PROFILE_URN = /^urn:li:(?:fsd_profile|fs_miniProfile|fs_profile|member):([\w-]{6,})$/;
+/** Keys that point at you, not the other person, in an invitation. */
+const SELF_KEYS = /^\*?(fromMember|inviter|fromMemberId|sender)/i;
+
+function profileIdOf(value: unknown): string {
+  return typeof value === "string" ? (PROFILE_URN.exec(value)?.[1] ?? "") : "";
+}
+
+/** Every entity in a response: the included list, and anything under data. */
+function entitiesOf(raw: unknown): Loose[] {
+  const out: Loose[] = [];
+  const r = (raw ?? {}) as Loose;
+  if (Array.isArray(r.included)) out.push(...r.included);
+  const data = r.data as Loose | undefined;
+  if (Array.isArray(data?.elements)) out.push(...data.elements.filter((e: unknown) => e && typeof e === "object"));
+  if (Array.isArray(r.elements)) out.push(...r.elements.filter((e: unknown) => e && typeof e === "object"));
+  return out;
+}
+
+/** /in/ addresses by member id, from the profiles in a response. */
+function publicIds(entities: Loose[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const e of entities) {
+    const id = profileIdOf(e.entityUrn);
+    if (id && typeof e.publicIdentifier === "string") map.set(id, e.publicIdentifier);
+  }
+  return map;
+}
+
+/** The first profile id among an entity's fields, leaving out your own. */
+function otherProfileId(e: Loose, myId: string, keys?: RegExp): string {
+  for (const [key, value] of Object.entries(e)) {
+    if (SELF_KEYS.test(key) || (keys && !keys.test(key))) continue;
+    const direct = profileIdOf(value);
+    if (direct && direct !== myId) return direct;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const inner of Object.values(value as Loose)) {
+        const id = profileIdOf(inner);
+        if (id && id !== myId) return id;
+      }
+    }
+  }
+  return "";
+}
+
+export interface SentInvitation {
+  memberId: string;
+  publicId?: string;
+  invitationId?: string;
+  sharedSecret?: string;
+  sentAt?: number;
+  message?: string;
+}
+
+/** The numeric id at the end of an invitation urn (fs_relInvitation, fsd_invitation, invitation). */
+export function invitationIdOf(value: unknown): string {
+  return typeof value === "string" ? (/^urn:li:(?:fs_relInvitation|fsd_invitation|invitation):(\d+)$/.exec(value)?.[1] ?? "") : "";
+}
+
+/** Your sent connection requests, from LinkedIn's sent invitations list. */
+export function parseSentInvitations(raw: unknown, myId: string): SentInvitation[] {
+  const entities = entitiesOf(raw);
+  const publics = publicIds(entities);
+  const out: SentInvitation[] = [];
+  const seen = new Set<string>();
+  for (const e of entities) {
+    const invitationId = invitationIdOf(e.entityUrn) || invitationIdOf(e.invitationUrn) || invitationIdOf(e["*invitation"]);
+    if (!invitationId || seen.has(invitationId)) continue;
+    const memberId = otherProfileId(e, myId, /^\*?(toMember|invitee|toMemberId|genericInvitee|inviteeMember)/i) || otherProfileId(e, myId);
+    if (!memberId) continue;
+    seen.add(invitationId);
+    const sentAt = Number(e.sentTime ?? e.sentAt ?? 0) || undefined;
+    const message = typeof e.message === "string" ? e.message : typeof e.customMessage === "string" ? e.customMessage : undefined;
+    out.push({
+      memberId,
+      publicId: publics.get(memberId),
+      invitationId,
+      sharedSecret: typeof e.sharedSecret === "string" ? e.sharedSecret : undefined,
+      sentAt,
+      message: message?.trim() || undefined,
+    });
+  }
+  return out;
+}
+
+export interface RecentConnection {
+  memberId: string;
+  publicId?: string;
+  connectedAt?: number;
+}
+
+/** Your newest connections, from LinkedIn's connections list sorted by recently added. */
+export function parseConnections(raw: unknown, myId: string): RecentConnection[] {
+  const entities = entitiesOf(raw);
+  const publics = publicIds(entities);
+  const out: RecentConnection[] = [];
+  const seen = new Set<string>();
+  for (const e of entities) {
+    if (!/Connection$/.test(String(e.$type ?? "")) && !e.connectedMember && !e["*connectedMember"] && !e.miniProfile && !e["*miniProfile"]) continue;
+    const memberId =
+      profileIdOf(e.connectedMember) ||
+      profileIdOf(e["*connectedMember"]) ||
+      profileIdOf(e.connectedMemberResolutionResult?.entityUrn) ||
+      profileIdOf(e["*connectedMemberResolutionResult"]) ||
+      profileIdOf(e.miniProfile?.entityUrn) ||
+      profileIdOf(e["*miniProfile"]) ||
+      profileIdOf(e.miniProfile);
+    if (!memberId || memberId === myId || seen.has(memberId)) continue;
+    seen.add(memberId);
+    out.push({ memberId, publicId: publics.get(memberId), connectedAt: Number(e.createdAt ?? 0) || undefined });
+  }
+  return out;
+}
+
+/** The new request's id in LinkedIn's answer to sending one, when it gives it. */
+export function findInvitationId(raw: unknown): string {
+  let found = "";
+  const seen = new Set<unknown>();
+  (function walk(node: unknown, depth: number) {
+    if (found || !node || depth > 8 || seen.has(node)) return;
+    if (typeof node === "string") {
+      found = invitationIdOf(node);
+      return;
+    }
+    if (typeof node !== "object") return;
+    seen.add(node);
+    for (const value of Object.values(node as Loose)) walk(value, depth + 1);
+  })(raw, 0);
+  return found;
 }

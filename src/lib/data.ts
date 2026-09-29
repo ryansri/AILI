@@ -1,14 +1,15 @@
 import "server-only";
 import { cache } from "react";
-import { Prisma, type Workspace } from "@prisma/client";
+import { Prisma, type Invite, type Workspace } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId, newHelperToken } from "./auth";
 import { helperOutdated } from "./helper-version";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
+import type { InviteFacts } from "./invites";
 import type { Template } from "./templates";
-import { DEFAULT_STAGES, isTagColor, type Account, type Person, type StageDef, type Tag } from "./types";
+import { DEFAULT_STAGES, isTagColor, type Account, type InviteView, type Person, type StageDef, type Tag } from "./types";
 
 /** The logged-in workspace's id, from the session cookie (no database trip). Anyone else goes to /login. */
 async function requireWorkspaceId(): Promise<string> {
@@ -32,9 +33,25 @@ const personInclude = {
   tags: { select: { tagId: true } },
   messages: { orderBy: { sentAt: "asc" as const } },
   outbox: { where: { status: { in: ["queued", "sending", "failed"] } }, orderBy: { createdAt: "asc" as const } },
+  // The latest connection request is all the screens need.
+  invites: { orderBy: { createdAt: "desc" as const }, take: 1 },
 } satisfies Prisma.PersonInclude;
 
 type PersonRow = Prisma.PersonGetPayload<{ include: typeof personInclude }>;
+
+function toInviteView(i: Invite): InviteView {
+  return {
+    id: i.id,
+    status: i.status as InviteView["status"],
+    note: i.note,
+    error: i.error,
+    source: i.source === "linkedin" ? "linkedin" : "aili",
+    createdAt: i.createdAt.toISOString(),
+    sentAt: i.sentAt?.toISOString(),
+    acceptedAt: i.acceptedAt?.toISOString(),
+    withdrawnAt: i.withdrawnAt?.toISOString(),
+  };
+}
 
 function toPerson(row: PersonRow): Person {
   return {
@@ -53,6 +70,8 @@ function toPerson(row: PersonRow): Person {
     lead: row.lead,
     askLead: row.askLead || undefined,
     seenAt: row.seenAt?.toISOString(),
+    connection: row.connection === "yes" || row.connection === "no" ? row.connection : "",
+    invite: row.invites[0] ? toInviteView(row.invites[0]) : undefined,
     tagIds: row.tags.map((t) => t.tagId),
     notes: row.notes,
     starred: row.starred,
@@ -140,16 +159,32 @@ export async function helperTokenFor(workspace: { id: string; helperToken: strin
 export const HELPER_ONLINE_MS = 5 * 60 * 1000;
 
 /** Sent today plus anything still queued for the helper, which counts against the daily cap. */
-async function usedToday(workspaceId: string): Promise<number> {
+interface Usage {
+  /** Messages sent today plus queued. */
+  messages: number;
+  /** Connection requests from AILI today (queued or sent), and all sent in the last 7 days. */
+  invitesToday: number;
+  invitesWeek: number;
+}
+
+async function usedToday(workspaceId: string): Promise<Usage> {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const [sentToday, queued] = await Promise.all([
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [sentToday, queued, invitesToday, invitesWeek] = await Promise.all([
     db.message.count({
       where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId } },
     }),
     db.outbox.count({ where: { workspaceId, status: { in: ["queued", "sending"] } } }),
+    invitesSince(workspaceId, startOfToday),
+    db.invite.count({ where: { workspaceId, OR: [{ sentAt: { gte: weekAgo } }, { status: { in: ["queued", "sending"] } }] } }),
   ]);
-  return sentToday + queued;
+  return { messages: sentToday + queued, invitesToday, invitesWeek };
+}
+
+/** Requests from Connect in AILI since a time, for the daily limit. Ones LinkedIn refused do not count. */
+export function invitesSince(workspaceId: string, since: Date): Promise<number> {
+  return db.invite.count({ where: { workspaceId, source: "aili", createdAt: { gte: since }, status: { not: "failed" } } });
 }
 
 /** The account, from the workspace row when the caller already has it (saves a trip to the database). */
@@ -161,7 +196,7 @@ export async function getAccount(workspaceId: string, known?: Workspace): Promis
   return accountOf(workspace, used);
 }
 
-function accountOf(workspace: Workspace, used: number): Account {
+function accountOf(workspace: Workspace, used: Usage): Account {
   const seen = workspace.helperLastSeenAt?.getTime() ?? 0;
   const online = Date.now() - seen < HELPER_ONLINE_MS;
   return {
@@ -170,7 +205,14 @@ function accountOf(workspace: Workspace, used: number): Account {
     pictureUrl: workspace.helperPictureUrl ?? undefined,
     dailyCap: workspace.dailyCap,
     notifyReplies: workspace.notifyReplies,
-    sentToday: used,
+    sentToday: used.messages,
+    invites: {
+      cap: workspace.inviteCap,
+      today: used.invitesToday,
+      week: used.invitesWeek,
+      notifyAccepts: workspace.notifyAccepts,
+      staleDays: workspace.inviteStaleDays,
+    },
     helper: {
       connected: online && workspace.helperState === "ok",
       state: workspace.helperState ?? "never",
@@ -258,4 +300,15 @@ export const loadWorkspaceData = cache(async () => {
 export const getCompanyRules = cache(async (): Promise<CompanyRule[]> => {
   const id = await requireWorkspaceId();
   return db.companyName.findMany({ where: { workspaceId: id }, select: { raw: true, name: true } });
+});
+
+/** Connection requests for the stats under Request sent: the last 45 days, and any still waiting. */
+export const getInviteFacts = cache(async (): Promise<InviteFacts[]> => {
+  const id = await requireWorkspaceId();
+  const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+  const rows = await db.invite.findMany({
+    where: { workspaceId: id, OR: [{ sentAt: { gte: since } }, { status: { in: ["sent", "withdrawing"] } }] },
+    select: { status: true, note: true, sentAt: true },
+  });
+  return rows.map((r) => ({ status: r.status, note: r.note, sentAt: r.sentAt?.toISOString() }));
 });

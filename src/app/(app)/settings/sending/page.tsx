@@ -13,6 +13,7 @@ export default async function SendingPage() {
       notifyReplies={account.notifyReplies}
       firstCommentDelay={workspace.firstCommentDelay}
       runwayAlertDays={workspace.runwayAlertDays}
+      invites={account.invites}
     />
   );
 }

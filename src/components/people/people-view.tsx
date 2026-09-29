@@ -2,12 +2,13 @@
 
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArrowDown, Building2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
+import { Archive, ArrowDown, Building2, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther } from "@/lib/client-actions";
+import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } from "@/lib/client-actions";
 import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
 import { buildFunnel, notMessaged } from "@/lib/funnel";
+import { waitingDays, type InviteFacts } from "@/lib/invites";
 import { daysBetween, relativeTime } from "@/lib/next-step";
 import type { Template } from "@/lib/templates";
 import { stageLabel, type Account, type Person, type StageDef, type Tag } from "@/lib/types";
@@ -30,6 +31,7 @@ import { FunnelRow, type Pick } from "./funnel";
 import { ImportDialog } from "./import-dialog";
 import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./company-view";
 import { PersonDialog } from "./person-dialog";
+import { RequestsStrip } from "./requests-strip";
 
 const ALL = "all";
 const RANGES = [
@@ -117,6 +119,7 @@ export function PeopleView({
   templates,
   account,
   companyRules = [],
+  inviteFacts = [],
 }: {
   people: Person[];
   tags: Tag[];
@@ -125,6 +128,8 @@ export function PeopleView({
   account: Account;
   /** Company names the user renamed, put together or kept apart. */
   companyRules?: CompanyRule[];
+  /** Connection requests, for the stats under Request sent. */
+  inviteFacts?: InviteFacts[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -236,6 +241,10 @@ export function PeopleView({
   }
 
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
+  const staleDays = account.invites.staleDays;
+  const isStale = (p: Person) => p.invite?.status === "sent" && waitingDays(p.invite.sentAt, now) > staleDays;
+  const withdrawable = chosenPeople.filter((p) => ["queued", "sending", "sent", "failed"].includes(p.invite?.status ?? ""));
+  const showRequests = !byCompany && pick?.kind === "stage" && pick.key === "requested";
   const unitOf = (n: number) => (byCompany ? (n === 1 ? "company" : "companies") : n === 1 ? "person" : "people");
 
   function switchView(next: View) {
@@ -386,6 +395,15 @@ export function PeopleView({
           )}
         </div>
 
+        {showRequests && (
+          <RequestsStrip
+            invites={inviteFacts}
+            staleDays={staleDays}
+            week={account.invites.week}
+            onPickStale={() => setSelected(new Set(rows.filter(isStale).map((p) => p.id)))}
+          />
+        )}
+
         {byCompany && (
           <>
             {guessed.map((g) => (
@@ -470,8 +488,10 @@ export function PeopleView({
                         ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground" suppressHydrationWarning>
-                    {lastTouch(p).text}
+                  <TableCell className={cn("text-xs text-muted-foreground", isStale(p) && "font-semibold text-amber-700")} suppressHydrationWarning>
+                    {p.invite?.status === "sent" && p.stage === "requested"
+                      ? `Waiting ${waitingDays(p.invite.sentAt, now)} days${isStale(p) ? " · withdraw?" : ""}`
+                      : lastTouch(p).text}
                   </TableCell>
                   <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                     {sent} / {got}
@@ -544,6 +564,23 @@ export function PeopleView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {withdrawable.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="hover:bg-primary-foreground/10 hover:text-primary-foreground"
+              disabled={pending}
+              onClick={() =>
+                bulk(
+                  () => withdrawInvites(withdrawable.map((p) => p.id)),
+                  (n) => `Withdrawing ${n === 1 ? "1 request" : `${n} requests`}. The helper does it on LinkedIn in the next minute or so.`,
+                )
+              }
+            >
+              <Undo2 />
+              Withdraw {withdrawable.length === 1 ? "request" : `${withdrawable.length} requests`}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"

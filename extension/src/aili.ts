@@ -103,9 +103,55 @@ export async function takeOutbox(pairing: Pairing): Promise<OutboxItem[]> {
 export function reportOutbox(
   pairing: Pairing,
   id: string,
-  body: { status: "sent" | "failed"; externalId?: string; conversationId?: string; sentAt?: number; error?: string },
+  body: { status: "sent" | "failed"; externalId?: string; conversationId?: string; sentAt?: number; error?: string; notConnected?: boolean },
 ) {
   return call(pairing, `/api/helper/outbox/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(body) });
+}
+
+/** A connection request to send or withdraw: the user clicked Connect or Withdraw in AILI. */
+export interface InviteItem {
+  id: string;
+  name: string;
+  recipientUrn: string | null;
+  publicId: string | null;
+  note: string;
+  invitationId: string | null;
+  sharedSecret: string | null;
+}
+
+export async function takeInvites(pairing: Pairing): Promise<{ send: InviteItem | null; withdraw: InviteItem | null; checkNetwork: boolean }> {
+  const data = await call<{ send?: InviteItem | null; withdraw?: InviteItem | null; checkNetwork?: boolean }>(pairing, "/api/helper/invites");
+  return { send: data?.send ?? null, withdraw: data?.withdraw ?? null, checkNetwork: data?.checkNetwork === true };
+}
+
+export function reportInvite(
+  pairing: Pairing,
+  id: string,
+  body:
+    | { status: "sent"; invitationId?: string; sentAt?: number; recipientUrn?: string }
+    | { status: "failed" | "withdraw-failed"; error: string }
+    | { status: "withdrawn" },
+) {
+  return call(pairing, `/api/helper/invites/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(body) });
+}
+
+/** Someone who just accepted your request, for a desktop notice. */
+export interface AcceptedToNotify {
+  personId: string;
+  name: string;
+  headline: string;
+}
+
+export async function reportNetwork(
+  pairing: Pairing,
+  body: {
+    sent?: { memberId: string; publicId?: string; invitationId?: string; sharedSecret?: string; sentAt?: number; message?: string }[];
+    sentComplete?: boolean;
+    connections?: { memberId: string; publicId?: string; connectedAt?: number }[];
+  },
+): Promise<AcceptedToNotify[]> {
+  const data = await call<{ accepted?: AcceptedToNotify[] }>(pairing, "/api/helper/network", { method: "POST", body: JSON.stringify(body) });
+  return Array.isArray(data?.accepted) ? data.accepted : [];
 }
 
 export interface LookupItem {
@@ -121,7 +167,7 @@ export async function takeLookups(pairing: Pairing): Promise<LookupItem[]> {
 
 export function reportLookups(
   pairing: Pairing,
-  results: { id: string; status: "found" | "none"; title?: string; company?: string }[],
+  results: { id: string; status: "found" | "none"; title?: string; company?: string; pictureUrl?: string }[],
 ) {
   return call(pairing, "/api/helper/profiles", { method: "POST", body: JSON.stringify({ results }) });
 }

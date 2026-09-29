@@ -34,6 +34,7 @@ import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
+import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf } from "./connect";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
@@ -168,7 +169,13 @@ export function ConversationPane({
   const [logging, setLogging] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
-  const waiting = person.pending.length;
+  // A message or a connection request on its way.
+  const waiting = person.pending.length + (["queued", "sending", "withdrawing"].includes(person.invite?.status ?? "") ? 1 : 0);
+  const connect = connectStateOf(person);
+  const [writeAnyway, setWriteAnyway] = useState(false);
+  /** The Connect dialog, with the note to start from; null when closed. */
+  const [connecting, setConnecting] = useState<{ note: string; replaces?: string } | null>(null);
+  const showConnect = connect !== null && !(connect === "connect" && writeAnyway);
 
   // While a message is on its way, look again every few seconds so its tick
   // shows as soon as LinkedIn has it (for two minutes at most).
@@ -339,6 +346,7 @@ export function ConversationPane({
               {hydrated ? `Connected ${shortDate(new Date(person.connectedAt))}` : "\u00a0"}
             </li>
           )}
+          {hydrated && <AcceptedLine person={person} />}
           {messages.map((m, i) => {
             const mine = m.direction === "out";
             // Like Messages: the latest message you sent says it arrived.
@@ -458,6 +466,15 @@ export function ConversationPane({
                   Not sent. {f.error}
                 </span>
                 <span className="flex gap-3">
+                  {person.connection === "no" && !person.conversationId && !["queued", "sending", "sent", "withdrawing"].includes(person.invite?.status ?? "") && (
+                    <button
+                      type="button"
+                      className="font-semibold text-foreground underline underline-offset-2"
+                      onClick={() => setConnecting({ note: f.body, replaces: f.id })}
+                    >
+                      Connect, and use this as the note
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="font-semibold text-red-700 underline underline-offset-2 hover:text-red-900"
@@ -477,117 +494,142 @@ export function ConversationPane({
               </div>
             </li>
           ))}
-          {messages.length === 0 && person.pending.length === 0 && (
+          {messages.length === 0 && person.pending.length === 0 && !showConnect && person.invite?.status !== "accepted" && (
             <li className="text-center text-xs text-muted-foreground">No messages yet. Send the first one.</li>
           )}
         </ol>
       </div>
 
-      <footer className="flex flex-col gap-3 px-6 pt-1 pb-4">
-        {isLead && step.kind !== "stale" && (
-          <div className="flex items-center gap-3 rounded-xl bg-muted/70 px-3.5 py-2.5">
-            <span
-              className={cn(
-                "size-2 shrink-0 rounded-full",
-                step.kind === "reply" ? "bg-blue-500" : step.kind === "chase" ? "bg-amber-500" : step.kind === "quiet" ? "bg-violet-500" : "bg-stone-400",
-              )}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="text-md font-semibold">{cardTitle(step, first)}</div>
-              <div className="truncate text-xs text-muted-foreground">
-                <NextStepHint row={row} />
-              </div>
-            </div>
-            {actionable && (
-              <>
-                <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} label="Not now" />
-                <DraftWithAi personName={person.name} />
-              </>
-            )}
-          </div>
-        )}
-
-        {aiDraft && (
-          <div className="-mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
-            <span className="inline-flex h-5 items-center gap-1 rounded-full bg-sky-50 px-2 font-medium text-sky-700">
-              <Sparkles className="size-3" />
-              Draft from {aiDraft.source}
-            </span>
-            <span suppressHydrationWarning>{relativeTime(aiDraft.at)}</span>
-            <span>· Check it, then send</span>
-            <button
-              type="button"
-              className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground"
-              onClick={() =>
-                run(async () => {
-                  await discardDraft(person.id);
-                  setDraft("");
-                }, "Draft discarded.")
-              }
-            >
-              <X className="size-3" />
-              Discard
-            </button>
-          </div>
-        )}
-        <div className="flex items-end gap-2.5">
-          <TemplatePicker
-            templates={templates}
+      {showConnect ? (
+        <footer className="flex flex-col gap-3 px-6 pt-1 pb-4">
+          <ConnectPanel
             person={person}
-            onPick={(text) => {
-              setDraft(text);
-              requestAnimationFrame(() => document.getElementById("reply")?.focus());
-            }}
+            account={account}
+            state={connect}
+            onConnect={(note) => setConnecting({ note: note ?? "" })}
+            onWriteAnyway={connect === "connect" ? () => setWriteAnyway(true) : undefined}
           />
-          <div className="relative flex-1">
-            <label htmlFor="reply" className="sr-only">
-              Your message
-            </label>
-            <Textarea
-              id="reply"
-              rows={1}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  send();
+        </footer>
+      ) : (
+        <footer className="flex flex-col gap-3 px-6 pt-1 pb-4">
+          {isLead && step.kind !== "stale" && (
+            <div className="flex items-center gap-3 rounded-xl bg-muted/70 px-3.5 py-2.5">
+              <span
+                className={cn(
+                  "size-2 shrink-0 rounded-full",
+                  step.kind === "reply" ? "bg-blue-500" : step.kind === "chase" ? "bg-amber-500" : step.kind === "quiet" ? "bg-violet-500" : "bg-stone-400",
+                )}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-md font-semibold">{cardTitle(step, first)}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  <NextStepHint row={row} />
+                </div>
+              </div>
+              {actionable && (
+                <>
+                  <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} label="Not now" />
+                  <DraftWithAi personName={person.name} />
+                </>
+              )}
+            </div>
+          )}
+
+          {aiDraft && (
+            <div className="-mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+              <span className="inline-flex h-5 items-center gap-1 rounded-full bg-sky-50 px-2 font-medium text-sky-700">
+                <Sparkles className="size-3" />
+                Draft from {aiDraft.source}
+              </span>
+              <span suppressHydrationWarning>{relativeTime(aiDraft.at)}</span>
+              <span>· Check it, then send</span>
+              <button
+                type="button"
+                className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground"
+                onClick={() =>
+                  run(async () => {
+                    await discardDraft(person.id);
+                    setDraft("");
+                  }, "Draft discarded.")
                 }
+              >
+                <X className="size-3" />
+                Discard
+              </button>
+            </div>
+          )}
+          <div className="flex items-end gap-2.5">
+            <TemplatePicker
+              templates={templates}
+              person={person}
+              onPick={(text) => {
+                setDraft(text);
+                requestAnimationFrame(() => document.getElementById("reply")?.focus());
               }}
-              placeholder={followUp ? `Follow-up ${followUp} to ${first}` : `Write to ${first}`}
-              className="min-h-10 resize-none rounded-2xl px-4 py-2.5 pr-24 text-md"
             />
-            <span className="pointer-events-none absolute right-3.5 bottom-2.5 hidden items-center gap-1 text-2xs text-muted-foreground sm:flex">
-              <Kbd>⌘</Kbd>
-              <Kbd>↵</Kbd>
-              send
-            </span>
+            <div className="relative flex-1">
+              <label htmlFor="reply" className="sr-only">
+                Your message
+              </label>
+              <Textarea
+                id="reply"
+                rows={1}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder={followUp ? `Follow-up ${followUp} to ${first}` : `Write to ${first}`}
+                className="min-h-10 resize-none rounded-2xl px-4 py-2.5 pr-24 text-md"
+              />
+              <span className="pointer-events-none absolute right-3.5 bottom-2.5 hidden items-center gap-1 text-2xs text-muted-foreground sm:flex">
+                <Kbd>⌘</Kbd>
+                <Kbd>↵</Kbd>
+                send
+              </span>
+            </div>
+            <Button
+              size="icon"
+              aria-label="Send"
+              className="size-10 rounded-full"
+              disabled={!draft.trim() || capReached || pending}
+              onClick={send}
+            >
+              <ArrowUp />
+            </Button>
           </div>
-          <Button
-            size="icon"
-            aria-label="Send"
-            className="size-10 rounded-full"
-            disabled={!draft.trim() || capReached || pending}
-            onClick={send}
-          >
-            <ArrowUp />
-          </Button>
-        </div>
-        <div className="flex justify-between text-2xs text-muted-foreground">
-          <span>
-            {capReached
-              ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`
-              : viaHelper && !account.helper.connected
-                ? "Sends when Chrome is open. It waits in the queue."
-                : viaHelper
-                ? "Delivered on LinkedIn by the Chrome helper, from your account."
-                : account.helper.connected
-                  ? "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."
-                  : "Copies the message and logs it once you confirm you sent it on LinkedIn."}
-          </span>
-          <span>{draft.trim() ? `${draft.trim().split(/\s+/).length} words` : ""}</span>
-        </div>
-      </footer>
+          <div className="flex justify-between text-2xs text-muted-foreground">
+            <span>
+              {capReached
+                ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`
+                : viaHelper && !account.helper.connected
+                  ? "Sends when Chrome is open. It waits in the queue."
+                  : viaHelper
+                  ? "Delivered on LinkedIn by the Chrome helper, from your account."
+                  : account.helper.connected
+                    ? "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."
+                    : "Copies the message and logs it once you confirm you sent it on LinkedIn."}
+            </span>
+            <span>{draft.trim() ? `${draft.trim().split(/\s+/).length} words` : ""}</span>
+          </div>
+        </footer>
+      )}
+
+      <ConnectDialog
+        open={connecting !== null}
+        onOpenChange={(open) => !open && setConnecting(null)}
+        person={person}
+        account={account}
+        templates={templates}
+        initialNote={connecting?.note}
+        onSent={() => {
+          // The message that could not go becomes the note, so it is not left behind as failed.
+          if (connecting?.replaces) void cancelQueued(connecting.replaces).catch(() => {});
+        }}
+      />
 
       <SendDialog
         open={sending}
