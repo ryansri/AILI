@@ -117,6 +117,13 @@ function weekTitle(monday: string, today: string): string {
 
 const short = (day: string) => dayLabel(day).split(" ").slice(1).join(" ");
 
+/** "8 planned · 3 ready": ready is scheduled or published (or a written article). */
+function readyLine(rows: EntryView[]): string {
+  const live = rows.filter((e) => e.status !== "skipped");
+  const ready = live.filter((e) => e.status === "scheduled" || e.status === "posted" || (e.status === "written" && e.kind === "article")).length;
+  return `${live.length} planned · ${ready} ready`;
+}
+
 /** The table: a group per week, soonest first. Earlier weeks open with a button. */
 export function ContentList({
   entries,
@@ -168,13 +175,21 @@ export function ContentList({
       {shown.length === 0 && <p className="px-2 py-8 text-center text-md text-muted-foreground">{empty}</p>}
       {keys.map((key) => (
         <section key={key || "none"} className="flex flex-col">
-          <h3 className="flex items-baseline gap-2 px-2 pt-5 pb-1.5 text-md font-semibold">
+          <h3
+            className={cn(
+              "mt-5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-lg font-bold tracking-tight",
+              key === mondayOf(today) ? "bg-foreground text-background" : "bg-muted",
+            )}
+          >
             {key ? weekTitle(key, today) : "No day yet"}
             {key && (
-              <span className="text-xs font-normal text-muted-foreground">
+              <span className={cn("text-md font-normal", key === mondayOf(today) ? "text-background/70" : "text-muted-foreground")}>
                 {short(key)} – {short(addDays(key, 6))}
               </span>
             )}
+            <span className={cn("ml-auto text-md font-medium", key === mondayOf(today) ? "text-background/80" : "text-muted-foreground")}>
+              {readyLine(groups.get(key)!)}
+            </span>
           </h3>
           {groups.get(key)!.map((e) => {
             const s = STATUS[e.status];
