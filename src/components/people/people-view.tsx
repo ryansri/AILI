@@ -415,7 +415,7 @@ export function PeopleView({
                   onCheckedChange={(on) => setSelected(on ? new Set(shownIds) : new Set())}
                 />
               </TableHead>
-              <TableHead>Person</TableHead>
+              <TableHead className="pl-4">Person</TableHead>
               <TableHead>Next</TableHead>
               <TableHead>Tags</TableHead>
               <TableHead className="pr-6">Last touch</TableHead>
@@ -435,7 +435,7 @@ export function PeopleView({
                   <TableCell className="pl-6" onClick={(e) => e.stopPropagation()}>
                     <Checkbox aria-label={`Select ${p.name}`} checked={on} onCheckedChange={(v) => toggle(p.id, v === true)} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="pl-4">
                     <div className="flex items-center gap-3">
                       <PersonAvatar person={p} className="size-8" />
                       <div className="min-w-0">
