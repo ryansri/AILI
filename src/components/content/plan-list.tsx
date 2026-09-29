@@ -175,17 +175,17 @@ export function ContentList({
       {shown.length === 0 && <p className="px-2 py-8 text-center text-md text-muted-foreground">{empty}</p>}
       {keys.map((key) => (
         <section key={key || "none"} className="flex flex-col">
-          <h3 className="mt-4 flex items-center gap-2 rounded-md bg-muted/70 px-2 py-1.5 text-md font-semibold">
+          <h3 className="mt-4 flex items-center gap-2 rounded-md border border-stone-300/70 bg-stone-200/70 px-2.5 py-2 text-md font-bold dark:border-border dark:bg-muted">
             {key ? weekTitle(key, today) : "No day yet"}
             {key === mondayOf(today) && (
               <span className="rounded bg-foreground px-1.5 text-[10px] leading-4 font-bold tracking-wide text-background uppercase">Now</span>
             )}
             {key && (
-              <span className="text-xs font-normal text-muted-foreground">
+              <span className="text-xs font-medium text-foreground/60">
                 {short(key)} – {short(addDays(key, 6))}
               </span>
             )}
-            <span className="ml-auto text-xs font-normal text-muted-foreground">{readyLine(groups.get(key)!)}</span>
+            <span className="ml-auto text-xs font-medium text-foreground/70">{readyLine(groups.get(key)!)}</span>
           </h3>
           {groups.get(key)!.map((e) => {
             const s = STATUS[e.status];
