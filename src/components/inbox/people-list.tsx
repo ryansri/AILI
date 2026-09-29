@@ -17,7 +17,6 @@ import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/compo
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
 import { LinkedInButton } from "@/components/linkedin-bits";
-import { StatusPill } from "@/components/status-pill";
 import { needsConnect } from "@/lib/invites";
 import { PersonAvatar } from "@/components/person-avatar";
 import { SyncLineBar } from "./sync-line";
@@ -118,7 +117,6 @@ export function PeopleList({
   query,
   conditions,
   helper,
-  stages,
   onMessageAll,
 }: {
   view: View;
@@ -131,7 +129,6 @@ export function PeopleList({
   query: string;
   conditions: Condition[];
   helper: HelperStatus;
-  stages: StageDef[];
   /** Tag and stage views: write one message for everyone shown. */
   onMessageAll?: () => void;
 }) {
@@ -225,11 +222,8 @@ export function PeopleList({
                             </div>
                             <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
                           </div>
-                          <span className="flex shrink-0 flex-col items-end gap-1.5 self-center">
-                            <span className="text-xs text-muted-foreground" suppressHydrationWarning>
-                              {lastTime(row)}
-                            </span>
-                            {row.person.lead !== false && <StatusPill stages={stages} stage={row.person.stage} />}
+                          <span className="shrink-0 self-start pt-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
+                            {lastTime(row)}
                           </span>
                         </button>
                         <span className={cn("absolute top-3.5 left-4", stale && !active && "opacity-60")}>

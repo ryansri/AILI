@@ -42,7 +42,17 @@ export function StatusPill({ stages, stage, className }: { stages: StageDef[]; s
 }
 
 /** The pill as a control: click it to change the status. */
-export function StatusMenu({ stages, stage, onChange }: { stages: StageDef[]; stage: string; onChange: (key: string) => void }) {
+export function StatusMenu({
+  stages,
+  stage,
+  onChange,
+  align = "end",
+}: {
+  stages: StageDef[];
+  stage: string;
+  onChange: (key: string) => void;
+  align?: "start" | "end";
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -58,7 +68,7 @@ export function StatusMenu({ stages, stage, onChange }: { stages: StageDef[]; st
           <ChevronDown className="size-3.5 opacity-60" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align={align} className="w-52">
         {stages.map((s) => (
           <DropdownMenuItem key={s.key} onSelect={() => s.key !== stage && onChange(s.key)} className="gap-2">
             <span className={cn("inline-flex h-5 items-center rounded-full px-2 text-xs font-semibold", statusTone(s.key))}>{s.label}</span>

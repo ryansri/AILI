@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowUp, Check, CheckCheck, Clock3, MoreHorizontal, RotateCcw, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, toggleStar, updateStage } from "@/lib/client-actions";
+import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, toggleStar } from "@/lib/client-actions";
 import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { relativeTime, shortDate, shortTime, type NextStep } from "@/lib/next-step";
@@ -30,7 +30,6 @@ import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
 import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf, NextBox } from "./connect";
-import { StatusMenu } from "@/components/status-pill";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
@@ -218,9 +217,6 @@ export function ConversationPane({
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {isLead && (
             <>
-            <span className="mr-2">
-              <StatusMenu stages={stages} stage={person.stage} onChange={(key) => run(() => updateStage(person.id, key), "")} />
-            </span>
             {isDone ? (
               <HeaderAction icon={RotateCcw} label="Reopen" onClick={() => run(() => reopen(person.id), "Reopened.")} />
             ) : (

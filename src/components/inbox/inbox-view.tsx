@@ -258,7 +258,6 @@ export function InboxView({
             query={query}
             conditions={conditions}
             helper={account.helper}
-            stages={stages}
             onMessageAll={view.kind === "tag" || view.kind === "stage" ? () => setMessageAll(true) : undefined}
           />
         </div>

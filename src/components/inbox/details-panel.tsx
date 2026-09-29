@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { ExternalLink, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
-import { updateNotes } from "@/lib/client-actions";
+import { updateNotes, updateStage } from "@/lib/client-actions";
 import type { StageDef, Tag } from "@/lib/types";
+import { StatusMenu } from "@/components/status-pill";
 import { TagChip } from "@/components/tag-chip";
 import { TagPicker } from "@/components/people/tag-picker";
 import { shortDate, shortTime } from "@/lib/next-step";
@@ -77,6 +78,16 @@ export function DetailsPanel({
     });
   }
 
+  function changeStage(key: string) {
+    start(async () => {
+      try {
+        await updateStage(person.id, key);
+      } catch {
+        toast.error("The stage did not save.");
+      }
+    });
+  }
+
   return (
     <aside
       aria-label="Person details"
@@ -115,6 +126,14 @@ export function DetailsPanel({
       {person.headline && (
         <Field label="LinkedIn headline">
           <p className="text-xs leading-relaxed text-muted-foreground">{person.headline}</p>
+        </Field>
+      )}
+
+      {person.lead !== false && (
+        <Field label="Stage">
+          <div>
+            <StatusMenu stages={stages} stage={person.stage} onChange={changeStage} align="start" />
+          </div>
         </Field>
       )}
 
