@@ -175,21 +175,17 @@ export function ContentList({
       {shown.length === 0 && <p className="px-2 py-8 text-center text-md text-muted-foreground">{empty}</p>}
       {keys.map((key) => (
         <section key={key || "none"} className="flex flex-col">
-          <h3
-            className={cn(
-              "mt-5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-lg font-bold tracking-tight",
-              key === mondayOf(today) ? "bg-foreground text-background" : "bg-muted",
-            )}
-          >
+          <h3 className="mt-4 flex items-center gap-2 rounded-md bg-muted/70 px-2 py-1.5 text-md font-semibold">
             {key ? weekTitle(key, today) : "No day yet"}
+            {key === mondayOf(today) && (
+              <span className="rounded bg-foreground px-1.5 text-[10px] leading-4 font-bold tracking-wide text-background uppercase">Now</span>
+            )}
             {key && (
-              <span className={cn("text-md font-normal", key === mondayOf(today) ? "text-background/70" : "text-muted-foreground")}>
+              <span className="text-xs font-normal text-muted-foreground">
                 {short(key)} – {short(addDays(key, 6))}
               </span>
             )}
-            <span className={cn("ml-auto text-md font-medium", key === mondayOf(today) ? "text-background/80" : "text-muted-foreground")}>
-              {readyLine(groups.get(key)!)}
-            </span>
+            <span className="ml-auto text-xs font-normal text-muted-foreground">{readyLine(groups.get(key)!)}</span>
           </h3>
           {groups.get(key)!.map((e) => {
             const s = STATUS[e.status];
