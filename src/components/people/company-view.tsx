@@ -20,7 +20,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TagChip } from "@/components/tag-chip";
 import { PersonAvatar } from "@/components/person-avatar";
-import { ConnectionBadge, LinkedInButton } from "@/components/linkedin-bits";
+import { LinkedInButton } from "@/components/linkedin-bits";
 
 /*
  * Leads, Companies: one row per company with who you know there, how far the
@@ -202,7 +202,6 @@ export function CompanyTable({
                         <div className="min-w-0">
                           <div className="flex min-w-0 items-center gap-1.5">
                             <span className="truncate text-sm font-semibold">{p.name}</span>
-                            <ConnectionBadge person={p} />
                             <LinkedInButton person={p} className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" />
                           </div>
                           <div className="truncate text-xs text-muted-foreground">{p.jobTitle || p.headline}</div>
@@ -507,7 +506,6 @@ export function CompanyPanel({
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5 text-md font-semibold">
                           <span className="truncate">{p.name}</span>
-                          <ConnectionBadge person={p} />
                           {deciderRank(title) >= 0 && (
                             <span className="shrink-0 rounded-full bg-foreground px-1.5 py-px text-2xs font-semibold text-background">Decision maker</span>
                           )}

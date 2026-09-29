@@ -26,7 +26,7 @@ import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/compo
 import { CountBadge } from "@/components/count-badge";
 import { TagChip, TagDot } from "@/components/tag-chip";
 import { PersonAvatar } from "@/components/person-avatar";
-import { ConnectionBadge, LinkedInButton } from "@/components/linkedin-bits";
+import { LinkedInButton } from "@/components/linkedin-bits";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 import { FunnelRow, type Pick } from "./funnel";
 import { ImportDialog } from "./import-dialog";
@@ -516,7 +516,6 @@ export function PeopleView({
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-md font-semibold">{p.name}</span>
-                          <ConnectionBadge person={p} />
                           <LinkedInButton person={p} className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" />
                         </div>
                         <div className="max-w-72 truncate text-xs text-muted-foreground">
