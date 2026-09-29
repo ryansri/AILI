@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -177,6 +177,14 @@ export function ConversationPane({
   const messages = [...person.messages].sort(
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
   );
+  // Open on the newest message, like any chat, and follow new ones as they arrive.
+  const scroller = useRef<HTMLDivElement>(null);
+  const shown = messages.length + person.pending.length;
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [person.id, shown, hydrated]);
+
   const capReached = account.sentToday >= account.dailyCap;
   const followUp: 1 | 2 | undefined =
     step.step === "Follow-up 1" ? 1 : step.step === "Follow-up 2" ? 2 : undefined;
@@ -317,8 +325,8 @@ export function ConversationPane({
         <NotLeadBar personId={person.id} firstName={first} currentStage={person.stage} stages={stages} tags={tags} ask={person.askLead} />
       )}
 
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <ol className="flex flex-col px-8 pt-6 pb-3">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <ol className="flex flex-col px-8 pt-6 pb-7">
           {person.connectedAt && (
             <li className="mb-4 text-center text-2xs text-muted-foreground">
               {hydrated ? `Connected ${shortDate(new Date(person.connectedAt))}` : "\u00a0"}

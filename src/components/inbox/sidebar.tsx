@@ -587,7 +587,7 @@ export function InboxSidebar({
   stages: StageDef[];
 }) {
   const [addingStage, setAddingStage] = useState(false);
-  const [more, setMore] = useState(view.kind === "starred" || view.kind === "tag" || view.kind === "stage");
+  const [more, setMore] = useState(view.kind === "tag" || view.kind === "stage");
 
   return (
     <nav aria-label="Inbox views" className="flex w-[220px] shrink-0 flex-col border-r bg-sidebar/50">
@@ -618,6 +618,14 @@ export function InboxSidebar({
             active={sameView(view, { kind: "all" })}
             onClick={() => onView({ kind: "all" })}
           />
+          <Item
+            icon={Star}
+            label="Starred"
+            count={counts.starred}
+            roomy
+            active={sameView(view, { kind: "starred" })}
+            onClick={() => onView({ kind: "starred" })}
+          />
           <div aria-hidden="true" className="mx-2 my-2 h-px bg-border" />
           <Item
             icon={MessageSquare}
@@ -629,7 +637,7 @@ export function InboxSidebar({
           />
         </div>
 
-        {/* Starred, tags and stages: one click away, closed until wanted. */}
+        {/* Tags and stages: one click away, closed until wanted. */}
         <button
           type="button"
           aria-expanded={more}
@@ -637,17 +645,10 @@ export function InboxSidebar({
           className="mt-3 flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-xs font-medium text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
         >
           <ChevronRight className={cn("size-3.5 transition-transform", more && "rotate-90")} />
-          More: starred, tags, stages
+          More: tags, stages
         </button>
         {more && (
           <>
-        <Item
-          icon={Star}
-          label="Starred"
-          count={counts.starred}
-          active={sameView(view, { kind: "starred" })}
-          onClick={() => onView({ kind: "starred" })}
-        />
         <SectionHeader title="Tags" action={<AddTag />} />
         {tags.map((t) => (
           <div key={t.id} className="group/tag relative">
