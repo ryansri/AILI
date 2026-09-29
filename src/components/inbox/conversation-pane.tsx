@@ -2,13 +2,29 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowUp, Check, CheckCheck, Clock3, MoreHorizontal, RotateCcw, Sparkles, X } from "lucide-react";
+import {
+  AlertCircle,
+  Archive,
+  ArrowUp,
+  Check,
+  CheckCheck,
+  ClipboardPaste,
+  Clock3,
+  FolderInput,
+  Info,
+  MoreHorizontal,
+  RotateCcw,
+  Sparkles,
+  Star,
+  StarOff,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, toggleStar } from "@/lib/client-actions";
 import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
-import { relativeTime, shortDate, shortTime, type NextStep } from "@/lib/next-step";
+import { relativeTime, shortDate, shortTime } from "@/lib/next-step";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +37,6 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { NextStepHint } from "./next-step-hint";
 import { HeaderAction } from "@/components/page-header";
 import { PersonAvatar } from "@/components/person-avatar";
 import { SnoozeMenu } from "./snooze-menu";
@@ -29,7 +44,8 @@ import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
-import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf, NextBox } from "./connect";
+import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf } from "./connect";
+import { LinkedInMark } from "@/components/linkedin-bits";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
@@ -70,22 +86,6 @@ function MyAvatar({ account }: { account: Account }) {
       <AvatarFallback className="bg-foreground text-2xs font-semibold text-background">{account.initials}</AvatarFallback>
     </Avatar>
   );
-}
-
-/** What the card above the composer says. */
-function cardTitle(step: NextStep, first: string): string {
-  switch (step.kind) {
-    case "reply":
-      return step.step === "First message" ? `First message to ${first}` : `Reply to ${first}`;
-    case "chase":
-      return step.step === "Check back" ? `Check back with ${first}` : `${step.step} to ${first}`;
-    case "quiet":
-      return `Chase or drop ${first}`;
-    case "waiting":
-      return step.step === "Done" ? "Done" : step.detail === "snoozed" ? `Snoozed until ${shortDate(step.dueAt)}` : "Nothing to do yet";
-    default:
-      return "No next step";
-  }
 }
 
 export function ConversationPane({
@@ -248,19 +248,37 @@ export function ConversationPane({
               <TooltipContent side="bottom">More</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onToggleDetails}>{detailsOpen ? "Hide details" : "Details and tags"}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onToggleDetails}>
+                <Info />
+                {detailsOpen ? "Hide info" : "View info"}
+              </DropdownMenuItem>
+              {person.linkedinUrl && (
+                <DropdownMenuItem asChild>
+                  <a href={person.linkedinUrl} target="_blank" rel="noreferrer">
+                    <LinkedInMark />
+                    Visit LinkedIn profile
+                  </a>
+                </DropdownMenuItem>
+              )}
               {isLead && (
-                <DropdownMenuItem onSelect={() => run(() => toggleStar(person.id), "")}>{person.starred ? "Unstar" : "Star"}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => run(() => toggleStar(person.id), "")}>
+                  {person.starred ? <StarOff /> : <Star />}
+                  {person.starred ? "Unstar" : "Star"}
+                </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               {!viaHelper && (
                 <>
-                  <DropdownMenuItem onSelect={() => setLogging(true)}>Paste a reply from LinkedIn</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setLogging(true)}>
+                    <ClipboardPaste />
+                    Paste a reply from LinkedIn
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
               )}
               {isLead && (
                 <DropdownMenuItem onSelect={() => run(() => moveToOther([person.id]), `${first} moved to Other.`)}>
+                  <FolderInput />
                   Move to Other
                 </DropdownMenuItem>
               )}
@@ -268,6 +286,7 @@ export function ConversationPane({
                 variant="destructive"
                 onSelect={() => run(() => archivePerson(person.id), `${person.name} archived.`)}
               >
+                <Archive />
                 Archive
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -452,23 +471,6 @@ export function ConversationPane({
         </footer>
       ) : (
         <footer className="flex flex-col gap-3 px-6 pt-1 pb-4">
-          {isLead && step.kind !== "stale" && (
-            <NextBox
-              title={cardTitle(step, first)}
-              action={
-                actionable && (
-                  <>
-                    <SnoozeMenu personId={person.id} snoozed={Boolean(person.snoozedUntil)} label="Not now" />
-                    <DraftWithAi personName={person.name} />
-                  </>
-                )
-              }
-            >
-              <span className="min-w-0 truncate">
-                <NextStepHint row={row} />
-              </span>
-            </NextBox>
-          )}
 
           {aiDraft && (
             <div className="-mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
@@ -502,6 +504,7 @@ export function ConversationPane({
                 requestAnimationFrame(() => document.getElementById("reply")?.focus());
               }}
             />
+            {isLead && <DraftWithAi personName={person.name} compact />}
             <div className="relative flex-1">
               <label htmlFor="reply" className="sr-only">
                 Your message

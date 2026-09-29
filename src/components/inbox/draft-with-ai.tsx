@@ -16,7 +16,7 @@ const APPS = [
  * connected. This gives the words to ask with; the draft then lands in the
  * message box here.
  */
-export function DraftWithAi({ personName }: { personName: string }) {
+export function DraftWithAi({ personName, compact }: { personName: string; compact?: boolean }) {
   const ask = `Read my conversation with ${personName} in AILI and draft a reply. Save it in AILI, don't send.`;
 
   function copyAndOpen(url: string, name: string) {
@@ -31,12 +31,18 @@ export function DraftWithAi({ personName }: { personName: string }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="sm" className="h-7 rounded-full px-3 text-xs">
-          <Sparkles />
-          Draft with AI
-        </Button>
+        {compact ? (
+          <Button variant="ghost" size="icon" aria-label="Draft with AI" title="Draft with AI" className="size-10 shrink-0 rounded-full">
+            <Sparkles />
+          </Button>
+        ) : (
+          <Button size="sm" className="h-7 rounded-full px-3 text-xs">
+            <Sparkles />
+            Draft with AI
+          </Button>
+        )}
       </PopoverTrigger>
-      <PopoverContent align="end" className="flex w-80 flex-col gap-3">
+      <PopoverContent align={compact ? "start" : "end"} side={compact ? "top" : undefined} className="flex w-80 flex-col gap-3">
         <div className="text-md font-semibold">Ask Claude or ChatGPT</div>
         <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed select-all">{ask}</p>
         <div className="flex gap-2">

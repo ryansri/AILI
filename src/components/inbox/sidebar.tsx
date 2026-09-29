@@ -43,6 +43,7 @@ function Item({
   icon: Icon,
   lead,
   strong,
+  roomy,
   hideCountOnHover,
 }: {
   label: string;
@@ -52,6 +53,8 @@ function Item({
   icon?: LucideIcon;
   lead?: React.ReactNode;
   strong?: boolean;
+  /** The main views: taller rows, easier to hit and to scan. */
+  roomy?: boolean;
   /** Hide the count while the row's group is hovered, to make room for a menu button. */
   hideCountOnHover?: "tag" | "stage";
 }) {
@@ -62,6 +65,7 @@ function Item({
       aria-current={active ? "true" : undefined}
       className={cn(
         "group/item flex h-[30px] w-full min-w-0 items-center gap-2.5 rounded-md px-2 text-left text-md transition-colors hover:bg-foreground/[0.05]",
+        roomy && "h-9 gap-3 px-2.5",
         active && "bg-foreground/[0.08] font-medium hover:bg-foreground/[0.08]",
       )}
     >
@@ -588,37 +592,42 @@ export function InboxSidebar({
   return (
     <nav aria-label="Inbox views" className="flex w-[220px] shrink-0 flex-col border-r bg-sidebar/50">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3">
-        <Item
-          icon={Inbox}
-          label="Needs you"
-          count={counts.now}
-          strong
-          active={sameView(view, { kind: "now" })}
-          onClick={() => onView({ kind: "now" })}
-        />
-        <Item
-          icon={Hourglass}
-          label="Waiting on them"
-          count={counts.waiting}
-          active={sameView(view, { kind: "waiting" })}
-          onClick={() => onView({ kind: "waiting" })}
-        />
-        <Item
-          icon={List}
-          label="Everyone"
-          count={counts.all}
-          active={sameView(view, { kind: "all" })}
-          onClick={() => onView({ kind: "all" })}
-        />
-
-        <div aria-hidden="true" className="mx-2 my-2 h-px bg-border" />
-        <Item
-          icon={MessageSquare}
-          label="Other"
-          count={counts.other}
-          active={sameView(view, { kind: "other" })}
-          onClick={() => onView({ kind: "other" })}
-        />
+        <div className="flex flex-col gap-1">
+          <Item
+            icon={Inbox}
+            label="Needs you"
+            count={counts.now}
+            strong
+            roomy
+            active={sameView(view, { kind: "now" })}
+            onClick={() => onView({ kind: "now" })}
+          />
+          <Item
+            icon={Hourglass}
+            label="Waiting on them"
+            count={counts.waiting}
+            roomy
+            active={sameView(view, { kind: "waiting" })}
+            onClick={() => onView({ kind: "waiting" })}
+          />
+          <Item
+            icon={List}
+            label="Everyone"
+            count={counts.all}
+            roomy
+            active={sameView(view, { kind: "all" })}
+            onClick={() => onView({ kind: "all" })}
+          />
+          <div aria-hidden="true" className="mx-2 my-2 h-px bg-border" />
+          <Item
+            icon={MessageSquare}
+            label="Other"
+            count={counts.other}
+            roomy
+            active={sameView(view, { kind: "other" })}
+            onClick={() => onView({ kind: "other" })}
+          />
+        </div>
 
         {/* Starred, tags and stages: one click away, closed until wanted. */}
         <button
