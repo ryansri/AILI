@@ -19,13 +19,13 @@ function dismissedToday(): boolean {
 /**
  * The note across the app when planned posts are coming up and not ready
  * (Settings, Sending, Plan warning). Hidden for the rest of the day once closed,
- * and never in the inbox or Leads.
+ * and never in the inbox, Leads or Content.
  */
 export function PlanBar({ toWrite, toSchedule, firstDay }: { toWrite: number; toSchedule: number; firstDay: string }) {
   const hidden = useSyncExternalStore(noop, dismissedToday, () => true);
-  // The inbox and Leads are for people; the plan's reminder shows on the other pages.
+  // The inbox and Leads are for people, and Content shows the plan itself; the reminder shows on the other pages.
   const path = usePathname() ?? "";
-  if (hidden || path.startsWith("/inbox") || path.startsWith("/people")) return null;
+  if (hidden || path.startsWith("/inbox") || path.startsWith("/people") || path.startsWith("/posts")) return null;
   const parts = [
     toWrite ? `${toWrite} planned ${toWrite === 1 ? "post needs" : "posts need"} writing` : "",
     toSchedule ? `${toSchedule} ${toSchedule === 1 ? "is" : "are"} written but not scheduled` : "",

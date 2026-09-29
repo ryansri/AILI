@@ -51,7 +51,7 @@ function Action({ entry, timeZone }: { entry: EntryView; timeZone: string }) {
     case "skipped":
       return <span className="text-xs text-muted-foreground">Skipped</span>;
     default:
-      return entry.due ? <WriteMenu entry={entry} /> : <span className="text-xs text-muted-foreground">Planned</span>;
+      return entry.due ? <WriteMenu entry={entry} /> : <span className="text-xs text-muted-foreground">To write</span>;
   }
 }
 

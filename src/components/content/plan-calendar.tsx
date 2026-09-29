@@ -6,9 +6,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { moveEntry } from "@/lib/client-actions";
 import type { EntryView } from "@/lib/content-plan";
-import { addDays, dayLabel, mondayOf, MONTH_NAMES, type PillarColour } from "@/lib/plan";
+import { addDays, dayLabel, mondayOf, MONTH_NAMES } from "@/lib/plan";
 import { Button } from "@/components/ui/button";
-import { PILLAR_CLASS, StatusDot } from "./plan-ui";
+import { cardLook } from "./plan-week";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -28,17 +28,15 @@ function shiftMonth(month: string, n: number): string {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
 }
 
-/** The plan as a month: each row a pill coloured by its pillar, with its status dot. Drag a pill to move it. */
+/** The plan as a month: each row a pill coloured by its status, as in the week. Drag a pill to move it. */
 export function PlanCalendar({
   entries,
   today,
-  colours,
   selectedId,
   onSelect,
 }: {
   entries: EntryView[];
   today: string;
-  colours: Record<string, PillarColour>;
   selectedId?: string;
   onSelect: (id: string) => void;
 }) {
@@ -81,7 +79,7 @@ export function PlanCalendar({
         <Button variant="outline" size="icon-sm" aria-label="Month after" onClick={() => setMonth(shiftMonth(month, 1))}>
           <ChevronRight />
         </Button>
-        <span className="ml-auto text-xs text-muted-foreground">Colour is the pillar, the dot is the status. Drag to move; drop on a busy day to swap.</span>
+        <span className="ml-auto text-xs text-muted-foreground">Colour is the status; a dark edge is an article. Drag to move; drop on a busy day to swap.</span>
       </div>
       <div className="grid overflow-hidden rounded-xl border" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
         {WEEKDAYS.map((d) => (
@@ -123,7 +121,6 @@ export function PlanCalendar({
                 {Number(day.slice(8))}
               </span>
               {here.map((e) => {
-                const colour = colours[e.pillar.trim()];
                 return (
                   <button
                     key={e.id}
@@ -134,13 +131,13 @@ export function PlanCalendar({
                     title={`${e.topic || "No topic yet"}${e.pillar ? ` · ${e.pillar}` : ""}`}
                     className={cn(
                       "flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs",
-                      colour ? PILLAR_CLASS[colour].soft : "bg-muted",
-                      e.kind === "article" && "shadow-[inset_3px_0_0_var(--color-indigo-500)]",
-                      e.status === "skipped" && "line-through opacity-60",
+                      "border",
+                      cardLook(e).card,
+                      e.kind === "article" && "shadow-[inset_3px_0_0_var(--color-foreground)]",
+                      e.status === "skipped" && "line-through",
                       selectedId === e.id && "ring-2 ring-foreground",
                     )}
                   >
-                    <StatusDot status={e.status} className="size-2" />
                     <span className={cn("truncate", !e.topic && "text-muted-foreground")}>{e.topic || "No topic yet"}</span>
                   </button>
                 );

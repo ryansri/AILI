@@ -1,16 +1,15 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import {
-  CalendarDays,
+  BarChart3,
   CalendarPlus,
-  Check,
+  ChevronLeft,
+  ChevronRight,
   ClipboardPaste,
   Download,
   FileDown,
   FileUp,
-  List,
   MoreHorizontal,
   Repeat,
   Table2,
@@ -19,17 +18,14 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { deletePlan } from "@/lib/client-actions";
-import type { EntryView, PlanData } from "@/lib/content-plan";
+import type { PlanData } from "@/lib/content-plan";
 import {
   addDays,
-  countStatuses,
   dayLabel,
   mondayOf,
-  needsYou,
   onTimeSoFar,
   pillarBalance,
   pillarColours,
-  planSpan,
   statusLabel,
   type PillarColour,
 } from "@/lib/plan";
@@ -42,139 +38,34 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntryPanel } from "./entry-panel";
 import { ImportPlanDialog } from "./import-plan-dialog";
 import { AddRowDialog, MoveDialog, RhythmDialog } from "./plan-dialogs";
 import { PlanAgenda } from "./plan-agenda";
 import { PlanCalendar } from "./plan-calendar";
 import { PlanTable } from "./plan-table";
+import { PlanWeek, ReadyBar, WeekCounts, type StatusPick } from "./plan-week";
 import { PlanStart } from "./plan-start";
-import { downloadText, PILLAR_CLASS, StatusDot } from "./plan-ui";
+import { downloadText, PILLAR_CLASS } from "./plan-ui";
 
 /*
- * Content, Plan: the user's content plan, row by row. On top, how far along
- * it is and what needs them now (one button each); below, every row by week,
- * or a month calendar. Click a row to open it on the right.
+ * Content, Plan: the plan a week at a time. The week as a grid, a row per
+ * page (Personal, Company page) and a column per day, every post and article
+ * a card in one word and one colour; above it the week's counts and how
+ * ready the next seven days are. Month and List show the same cards another
+ * way; the table, for editing many rows, and the plan's stats are in •••.
+ * Click a card to open it on the right.
  */
 
-type View = "agenda" | "table" | "calendar";
-type Range = "week" | "next30" | "next90" | "past" | "all";
-const RANGES: { key: Range; label: string }[] = [
-  { key: "week", label: "This week" },
-  { key: "next30", label: "Next 30 days" },
-  { key: "next90", label: "Next 90 days" },
-  { key: "past", label: "So far" },
-  { key: "all", label: "The whole plan" },
-];
+export type View = "week" | "calendar" | "list" | "table";
 
-function inRange(day: string, range: Range, today: string): boolean {
-  switch (range) {
-    case "week":
-      return day >= mondayOf(today) && day <= addDays(mondayOf(today), 6);
-    case "next30":
-      return day >= today && day <= addDays(today, 29);
-    case "next90":
-      return day >= today && day <= addDays(today, 89);
-    case "past":
-      return day < today;
-    default:
-      return true;
-  }
-}
-
-function NeedsBox({ plan, onOpen, onRange }: { plan: PlanData; onOpen: (id: string) => void; onRange: (r: Range) => void }) {
-  const n = useMemo(() => needsYou(plan.entries, plan.today), [plan]);
-  const short = (e: EntryView) => dayLabel(e.day!).split(" ")[0];
-  // "Tue 29 Sep (2), Wed 30 Sep": each day once, with how many.
-  const days = (list: EntryView[]) => {
-    const counts = new Map<string, number>();
-    for (const e of list) counts.set(e.day!, (counts.get(e.day!) ?? 0) + 1);
-    const parts = [...counts.entries()].map(([d, n]) => `${dayLabel(d)}${n > 1 ? ` (${n})` : ""}`);
-    return parts.slice(0, 4).join(", ") + (parts.length > 4 ? "…" : "");
-  };
-  const lines: React.ReactNode[] = [];
-  if (n.missed.length === 1 || n.missed.length === 2) {
-    for (const e of n.missed) {
-      lines.push(
-        <Line key={e.id} tone="bad" title={`${dayLabel(e.day!)} was missed.`} sub={`“${e.topic || "No topic"}”`}>
-          <Button size="sm" variant="outline" onClick={() => onOpen(e.id)}>
-            Move or skip
-          </Button>
-        </Line>,
-      );
-    }
-  } else if (n.missed.length > 2) {
-    lines.push(
-      <Line key="missed" tone="bad" title={`${n.missed.length} days were missed in the last two weeks.`} sub={days(n.missed)}>
-        <Button size="sm" variant="outline" onClick={() => onRange("past")}>
-          See them
-        </Button>
-      </Line>,
-    );
-  }
-  if (n.toWrite.length) {
-    lines.push(
-      <Line
-        key="write"
-        tone="warn"
-        title={`${n.toWrite.length} due in the next ${plan.warnDays} ${plan.warnDays === 1 ? "day" : "days"} ${n.toWrite.length === 1 ? "is" : "are"} not written.`}
-        sub={days(n.toWrite)}
-      >
-        <Button size="sm" onClick={() => onOpen(n.toWrite[0].id)}>
-          Write {short(n.toWrite[0])}
-        </Button>
-      </Line>,
-    );
-  }
-  if (n.toSchedule.length) {
-    const first = n.toSchedule[0];
-    lines.push(
-      <Line key="schedule" tone="warn" title={`${n.toSchedule.length} ${n.toSchedule.length === 1 ? "is" : "are"} written but not scheduled.`} sub={days(n.toSchedule)}>
-        <Button size="sm" asChild>
-          <Link href={`/posts?tab=posts&post=${first.post!.id}`}>Schedule {short(first)}</Link>
-        </Button>
-      </Line>,
-    );
-  }
-  if (lines.length === 0) {
-    const next = plan.entries.find((e) => e.day && e.day >= plan.today && e.status === "planned");
-    return (
-      <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-md">
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-          <Check className="size-3.5" strokeWidth={3} />
-        </span>
-        <b className="font-semibold">
-          On track.{plan.warnDays > 0 ? ` Everything due in the next ${plan.warnDays} ${plan.warnDays === 1 ? "day" : "days"} is ready.` : ""}
-        </b>
-        {next && (
-          <button type="button" className="ml-auto text-emerald-800 underline-offset-2 hover:underline" onClick={() => onOpen(next.id)}>
-            Next to write: {dayLabel(next.day!)}
-          </button>
-        )}
-      </div>
-    );
-  }
-  return <div className="flex flex-col rounded-2xl border border-amber-200 bg-amber-50/70 px-4">{lines}</div>;
-}
-
-function Line({ tone, title, sub, children }: { tone: "bad" | "warn"; title: string; sub: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 border-t border-amber-200 py-2.5 text-md first:border-t-0">
-      <span
-        className={cn(
-          "flex size-[22px] shrink-0 items-center justify-center rounded-full text-xs font-bold text-white",
-          tone === "bad" ? "bg-red-500" : "bg-amber-500",
-        )}
-      >
-        !
-      </span>
-      <span className="min-w-0 flex-1">
-        <b className="font-semibold">{title}</b> <span className="text-amber-800">{sub}</span>
-      </span>
-      {children}
-    </div>
-  );
+/** "This week", "Next week", "Last week", or the dates. */
+function weekName(monday: string, today: string): string {
+  const now = mondayOf(today);
+  if (monday === now) return "This week";
+  if (monday === addDays(now, 7)) return "Next week";
+  if (monday === addDays(now, -7)) return "Last week";
+  return `Week of ${dayLabel(monday)}`;
 }
 
 function Aside({ plan, colours }: { plan: PlanData; colours: Record<string, PillarColour> }) {
@@ -290,8 +181,9 @@ export function PlanView({
   openAdd?: boolean;
 }) {
   const [view, setView] = useState<View>(initialView);
-  const [channel, setChannel] = useState<string>("all");
-  const [range, setRange] = useState<Range>("next30");
+  const [monday, setMonday] = useState(() => mondayOf(plan.today));
+  const [pick, setPick] = useState<StatusPick | null>(null);
+  const [stats, setStats] = useState(false);
   const [selectedId, setSelectedId] = useState<string | undefined>(initialRow);
   const [importing, setImporting] = useState<"file" | "paste" | null>(null);
   const [adding, setAdding] = useState(Boolean(openAdd));
@@ -303,7 +195,6 @@ export function PlanView({
   const colours = useMemo(() => pillarColours(entries.map((e) => e.pillar)), [entries]);
   const pillars = Object.keys(colours);
   const selected = entries.find((e) => e.id === selectedId);
-  const span = planSpan(entries, today);
 
   const dialogs = (
     <>
@@ -351,216 +242,167 @@ export function PlanView({
     );
   }
 
-  // Personal, Company page…: one tap shows just one. Only when the plan has more than one.
-  const channels = [...new Map(entries.filter((e) => e.channel).map((e) => [e.channel, 0])).keys()].map((c) => ({
-    value: c,
-    count: entries.filter((e) => e.channel === c).length,
-  }));
-  channels.sort((a, b) => b.count - a.count);
-  const visible = channel === "all" ? entries : entries.filter((e) => e.channel === channel);
-  const vplan = { ...plan, entries: visible };
-  const counts = countStatuses(visible);
-  const shown = visible.filter((e) => (e.day ? inRange(e.day, range, today) : range !== "past"));
-
-  const segments: [number, string][] = [
-    [counts.posted, "bg-emerald-500"],
-    [counts.missed, "bg-red-500"],
-    [counts.scheduled, "bg-blue-500"],
-    [counts.written, "bg-amber-500"],
-  ];
-
   function switchView(v: View) {
     setView(v);
+    setPick(null);
     const url = new URL(window.location.href);
-    if (v === "agenda") url.searchParams.delete("view");
+    if (v === "week") url.searchParams.delete("view");
     else url.searchParams.set("view", v);
     window.history.replaceState(null, "", url);
   }
 
+  const menu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label="More">
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      {/* Its items open dialogs: the menu must not pull focus back to its button as they open. */}
+      <DropdownMenuContent align="end" className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
+        <DropdownMenuItem onSelect={() => switchView(view === "table" ? "week" : "table")}>
+          <Table2 />
+          {view === "table" ? "Back to the week" : "Edit as a table"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setStats((v) => !v)}>
+          <BarChart3 />
+          {stats ? "Hide plan stats" : "Plan stats and pillar balance"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setAdding(true)}>
+          <CalendarPlus />
+          Add a row
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setImporting("file")}>
+          <FileUp />
+          Import from a file
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setImporting("paste")}>
+          <ClipboardPaste />
+          Paste rows
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setRhythm(true)}>
+          <Repeat />
+          Add days on a rhythm
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => downloadText("content-plan.csv", planCsv(plan))}>
+          <FileDown />
+          Export as CSV
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => downloadText("content-plan-template.csv", templateCsv(today))}>
+          <Download />
+          Download the blank template
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={pending}
+          onSelect={() => {
+            if (!window.confirm(`Delete all ${entries.length} rows of the plan? Posts and articles stay in Posts.`)) return;
+            start(async () => {
+              try {
+                await deletePlan();
+                toast.success("The plan is deleted. Your posts are still in Posts.");
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "That did not work.");
+              }
+            });
+          }}
+        >
+          <Trash2 />
+          Delete the plan
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const sunday = addDays(monday, 6);
+  const week = entries.filter((e) => e.day && e.day >= monday && e.day <= sunday);
+  const weekly = view === "week" || view === "list";
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto px-8 py-6">
-        <div className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h2 className="text-2xl font-bold tracking-tight">{span ? `${span.length}-day plan` : "Your plan"}</h2>
-            {span && (
-              <span className="text-md text-muted-foreground">
-                {dayLabel(span.first)} to {dayLabel(span.last)}
-                {span.dayOf > 0 && span.dayOf <= span.length && today <= span.last ? ` · day ${span.dayOf} of ${span.length}` : ""}
-              </span>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="More">
-                    <MoreHorizontal />
-                  </Button>
-                </DropdownMenuTrigger>
-                {/* Its items open dialogs: the menu must not pull focus back to its button as they open. */}
-                <DropdownMenuContent align="end" className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-                  <DropdownMenuItem onSelect={() => setAdding(true)}>
-                    <CalendarPlus />
-                    Add a row
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setImporting("file")}>
-                    <FileUp />
-                    Import from a file
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setImporting("paste")}>
-                    <ClipboardPaste />
-                    Paste rows
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setRhythm(true)}>
-                    <Repeat />
-                    Add days on a rhythm
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => downloadText("content-plan.csv", planCsv(plan))}>
-                    <FileDown />
-                    Export as CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => downloadText("content-plan-template.csv", templateCsv(today))}>
-                    <Download />
-                    Download the blank template
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={pending}
-                    onSelect={() => {
-                      if (!window.confirm(`Delete all ${entries.length} rows of the plan? Posts and articles stay in Posts.`)) return;
-                      start(async () => {
-                        try {
-                          await deletePlan();
-                          toast.success("The plan is deleted. Your posts are still in Posts.");
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "That did not work.");
-                        }
-                      });
-                    }}
-                  >
-                    <Trash2 />
-                    Delete the plan
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-          {counts.total > 0 && (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-8 py-5">
+        <div className="flex flex-wrap items-center gap-2">
+          {weekly && (
             <>
-              <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-                {segments.map(([n, cls], i) => (n ? <i key={i} className={cls} style={{ width: `${(n / counts.total) * 100}%` }} /> : null))}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                {(
-                  [
-                    [counts.posted, "posted", "posted"],
-                    [counts.missed, "missed", "missed"],
-                    [counts.scheduled, "scheduled", "scheduled"],
-                    [counts.written, "written", "written"],
-                    [counts.planned, "to write", "planned"],
-                  ] as const
-                ).map(([n, label, status]) => (
-                  <span key={label} className="flex items-center gap-1.5">
-                    <StatusDot status={status} className="size-2" />
-                    {n} {label}
-                  </span>
-                ))}
-                <span className="ml-auto">
-                  {counts.total} in the plan{counts.skipped ? ` · ${counts.skipped} skipped` : ""}
-                </span>
-              </div>
+              <Button variant="ghost" size="icon-sm" aria-label="Previous week" onClick={() => setMonday(addDays(monday, -7))}>
+                <ChevronLeft />
+              </Button>
+              <h2 className="text-lg font-bold tracking-tight">{weekName(monday, today)}</h2>
+              <span className="text-md text-muted-foreground">
+                {dayLabel(monday).split(" ").slice(1).join(" ")} – {dayLabel(sunday).split(" ").slice(1).join(" ")}
+              </span>
+              <Button variant="ghost" size="icon-sm" aria-label="Next week" onClick={() => setMonday(addDays(monday, 7))}>
+                <ChevronRight />
+              </Button>
+              {monday !== mondayOf(today) && (
+                <Button variant="outline" size="sm" onClick={() => setMonday(mondayOf(today))}>
+                  Today
+                </Button>
+              )}
             </>
           )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg bg-muted p-[3px]" role="radiogroup" aria-label="View">
-            {(
-              [
-                ["agenda", List, "Agenda"],
-                ["table", Table2, "Table"],
-                ["calendar", CalendarDays, "Calendar"],
-              ] as const
-            ).map(([key, Icon, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="radio"
-                aria-checked={view === key}
-                onClick={() => switchView(key)}
-                className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-md px-3 text-md",
-                  view === key ? "bg-background font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="size-3.5" />
-                {label}
-              </button>
-            ))}
+          {view === "table" && <h2 className="text-lg font-bold tracking-tight">The whole plan, as a table</h2>}
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex rounded-lg bg-muted p-[3px]" role="radiogroup" aria-label="View">
+              {(
+                [
+                  ["week", "Week"],
+                  ["calendar", "Month"],
+                  ["list", "List"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={view === key}
+                  onClick={() => switchView(key)}
+                  className={cn(
+                    "flex h-7 items-center rounded-md px-3 text-md",
+                    view === key ? "bg-background font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {menu}
           </div>
-          {channels.length > 1 &&
-            [{ value: "all", count: entries.length }, ...channels].map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                aria-pressed={channel === c.value}
-                onClick={() => setChannel(c.value)}
-                className={cn(
-                  "flex h-8 items-center gap-1.5 rounded-full border px-3 text-md transition-colors",
-                  channel === c.value ? "border-foreground bg-foreground text-background" : "bg-background hover:bg-muted",
-                )}
-              >
-                {c.value === "all" ? "All" : c.value}
-                <span className={cn("text-xs", channel === c.value ? "text-background/70" : "text-muted-foreground")}>{c.count}</span>
-              </button>
-            ))}
-          {view !== "calendar" && (
-            <Select value={range} onValueChange={(v) => setRange(v as Range)}>
-              <SelectTrigger size="sm" className="ml-auto w-40" aria-label="Show">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                {RANGES.map((r) => (
-                  <SelectItem key={r.key} value={r.key}>
-                    {r.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
         </div>
 
-        <NeedsBox
-          plan={vplan}
-          onOpen={(id) => setSelectedId(id)}
-          onRange={(r) => {
-            setRange(r);
-            if (view === "calendar") switchView("agenda");
-          }}
-        />
+        {weekly && (
+          <>
+            <WeekCounts entries={week} pick={pick} onPick={setPick} />
+            <ReadyBar entries={entries} today={today} />
+          </>
+        )}
 
-        {view === "calendar" ? (
-          <PlanCalendar entries={visible} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} />
-        ) : shown.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-md text-muted-foreground">
-            Nothing in the plan {RANGES.find((r) => r.key === range)!.label.toLowerCase().replace("the whole plan", "yet")}.{" "}
-            <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setRange("all")}>
-              See the whole plan
-            </button>
-          </p>
+        {view === "week" ? (
+          <PlanWeek entries={entries} monday={monday} today={today} pick={pick} selectedId={selectedId} onSelect={setSelectedId} />
+        ) : view === "calendar" ? (
+          <PlanCalendar entries={entries} today={today} selectedId={selectedId} onSelect={setSelectedId} />
         ) : view === "table" ? (
-          <PlanTable entries={shown} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} newestFirst={range === "past"} />
+          <PlanTable entries={entries} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} />
+        ) : week.length === 0 ? (
+          <p className="rounded-xl border border-dashed p-6 text-center text-md text-muted-foreground">Nothing planned this week.</p>
         ) : (
-          <PlanAgenda entries={shown} today={today} timeZone={plan.timeZone} selectedId={selectedId} onSelect={setSelectedId} newestFirst={range === "past"} />
+          <PlanAgenda
+            entries={pick ? week.filter((e) => e.status === pick) : week}
+            today={today}
+            timeZone={plan.timeZone}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
         )}
       </div>
 
       {selected ? (
         <EntryPanel key={selected.id} entry={selected} today={today} onClose={() => setSelectedId(undefined)} onMove={() => setMoving(selected.id)} />
-      ) : view === "table" ? null : (
-        // The table needs the width; the summary column stays with Agenda and Calendar.
-        <Aside plan={vplan} colours={colours} />
+      ) : (
+        stats && view !== "table" && <Aside plan={plan} colours={colours} />
       )}
       {dialogs}
     </div>
