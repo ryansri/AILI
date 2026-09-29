@@ -9,6 +9,7 @@ import {
   ArrowUp,
   Check,
   CheckCheck,
+  CircleHelp,
   ClipboardPaste,
   Clock3,
   FolderInput,
@@ -94,8 +95,9 @@ function MyAvatar({ account }: { account: Account }) {
 function AiTip({ apps, first }: { apps: string[]; first: string }) {
   const names = apps.filter((a) => a === "Claude" || a === "ChatGPT");
   return (
-    <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-      <Sparkles className="size-3 shrink-0" />
+    // Lined up with the words in the message box: past the templates button (40px + 10px gap) and the box's padding.
+    <div className="flex items-center gap-1.5 pl-[66px] text-2xs text-muted-foreground">
+      <CircleHelp className="size-3 shrink-0" />
       {names.length > 0 ? (
         <span className="min-w-0 truncate">
           Want help writing? Ask {names.join(" or ")}: &ldquo;Draft a reply to {first} in AILI.&rdquo; The draft appears here, for you to
@@ -316,7 +318,7 @@ export function ConversationPane({
       )}
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <ol className="flex flex-col px-8 py-6">
+        <ol className="flex flex-col px-8 pt-6 pb-3">
           {person.connectedAt && (
             <li className="mb-4 text-center text-2xs text-muted-foreground">
               {hydrated ? `Connected ${shortDate(new Date(person.connectedAt))}` : "\u00a0"}
@@ -487,7 +489,7 @@ export function ConversationPane({
           />
         </footer>
       ) : (
-        <footer className="flex flex-col gap-3 px-6 pt-1 pb-4">
+        <footer className="flex flex-col gap-4 px-6 pt-1 pb-4">
 
           {aiDraft && (
             <div className="-mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
