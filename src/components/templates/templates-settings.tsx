@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createTemplate, deleteTemplate, updateTemplate } from "@/lib/client-actions";
-import type { Template } from "@/lib/templates";
+import { replyRateLabel, type Template } from "@/lib/templates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,7 +98,10 @@ export function TemplatesSettings({ templates }: { templates: Template[] }) {
         ) : (
           <div key={t.id} className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2.5">
             <div className="min-w-0 flex-1">
-              <div className="text-md font-medium">{t.name}</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-md font-medium">{t.name}</span>
+                <span className="text-2xs text-muted-foreground">{replyRateLabel(t)}</span>
+              </div>
               <p className="line-clamp-2 text-xs whitespace-pre-wrap text-muted-foreground">{t.body}</p>
             </div>
             {confirming === t.id ? (

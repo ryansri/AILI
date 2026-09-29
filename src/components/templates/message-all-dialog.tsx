@@ -89,7 +89,7 @@ export function MessageAllDialog({
   function queue() {
     start(async () => {
       try {
-        const r = await queueBulk({ personIds: split.ready.slice(0, willQueue).map((p) => p.id), body });
+        const r = await queueBulk({ personIds: split.ready.slice(0, willQueue).map((p) => p.id), body, templateId: templateId || undefined });
         const skipped = r.noLinkedIn + r.alreadyWaiting + r.overCap;
         toast.success(
           `${plural(r.queued, "message")} queued.${skipped ? ` ${skipped} skipped.` : ""} The helper sends one a minute.`,

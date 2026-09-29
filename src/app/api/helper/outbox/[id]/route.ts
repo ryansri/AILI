@@ -31,6 +31,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/helper/outb
     const sentAt = typeof body.sentAt === "number" ? new Date(body.sentAt) : new Date();
     const externalId = typeof body.externalId === "string" ? body.externalId : null;
     const already = externalId ? await db.message.findUnique({ where: { externalId } }) : null;
+    // The sync can bring the message in first; it still came from this template.
+    if (already && item.templateId && !already.templateId) {
+      await db.message.update({ where: { id: already.id }, data: { templateId: item.templateId } });
+    }
     if (!already) {
       await db.message.create({
         data: {
@@ -39,6 +43,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/helper/outb
           body: item.body,
           sentAt,
           followUp: item.followUp,
+          templateId: item.templateId,
           source: "helper",
           externalId,
         },

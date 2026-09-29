@@ -238,6 +238,8 @@ model Message {
   sentAt    DateTime
   /// 1 or 2 when this outbound message was a planned follow-up
   followUp  Int?
+  /// The template this outbound message started from, for reply rates per template
+  templateId String?
   /// "manual" (logged by hand), "helper" (Chrome helper), "api"
   source    String   @default("manual")
   /// Id on LinkedIn's side when synced, to avoid duplicates
@@ -245,6 +247,7 @@ model Message {
   createdAt DateTime @default(now())
 
   @@index([personId, sentAt])
+  @@index([templateId])
 }
 
 /// A message the user clicked Send on, waiting for the Chrome helper to deliver it.
@@ -256,6 +259,8 @@ model Outbox {
   person      Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
   body        String
   followUp    Int?
+  /// The template it started from, copied to the Message once sent
+  templateId  String?
   /// queued | sending | sent | failed
   status      String    @default("queued")
   error       String?

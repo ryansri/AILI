@@ -161,6 +161,8 @@ export function ConversationPane({
     if (!draft.trim()) setDraft(person.draft.text);
   }
   const aiDraft = person.draft && draftAt === person.draft.at ? person.draft : undefined;
+  // The template the message started from, for its reply rate. Cleared with the box.
+  const [templateId, setTemplateId] = useState<string>();
   const [sending, setSending] = useState(false);
   const [logging, setLogging] = useState(false);
   const [pending, start] = useTransition();
@@ -224,8 +226,9 @@ export function ConversationPane({
     if (viaHelper) {
       const body = draft;
       run(async () => {
-        await queueSend({ personId: person.id, body, followUp });
+        await queueSend({ personId: person.id, body, followUp, templateId });
         setDraft("");
+        setTemplateId(undefined);
         // Wake the Chrome helper so it sends now, not at its next minute.
         window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
       }, "");
@@ -538,8 +541,9 @@ export function ConversationPane({
             <TemplatePicker
               templates={templates}
               person={person}
-              onPick={(text) => {
+              onPick={(text, id) => {
                 setDraft(text);
+                setTemplateId(id);
                 requestAnimationFrame(() => document.getElementById("reply")?.focus());
               }}
             />
@@ -551,7 +555,10 @@ export function ConversationPane({
                 id="reply"
                 rows={1}
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  if (!e.target.value.trim()) setTemplateId(undefined);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
@@ -619,7 +626,11 @@ export function ConversationPane({
         linkedinUrl={person.linkedinUrl}
         body={draft}
         followUp={followUp}
-        onSent={() => setDraft("")}
+        templateId={templateId}
+        onSent={() => {
+          setDraft("");
+          setTemplateId(undefined);
+        }}
       />
       <LogReplyDialog open={logging} onOpenChange={setLogging} personId={person.id} personName={person.name} />
     </section>

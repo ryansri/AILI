@@ -27,6 +27,7 @@ export function SendDialog({
   linkedinUrl,
   body,
   followUp,
+  templateId,
   onSent,
 }: {
   open: boolean;
@@ -36,6 +37,8 @@ export function SendDialog({
   linkedinUrl: string;
   body: string;
   followUp?: 1 | 2;
+  /** The template the message started from, for its reply rate. */
+  templateId?: string;
   onSent: () => void;
 }) {
   const [pending, start] = useTransition();
@@ -58,7 +61,7 @@ export function SendDialog({
   function confirm() {
     start(async () => {
       try {
-        await logMessage({ personId, direction: "out", body, followUp });
+        await logMessage({ personId, direction: "out", body, followUp, templateId });
         toast.success(`Logged as sent to ${personName.split(" ")[0]}.`);
         onSent();
         handleOpenChange(false);

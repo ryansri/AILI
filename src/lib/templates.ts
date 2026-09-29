@@ -14,6 +14,49 @@ export interface Template {
   id: string;
   name: string;
   body: string;
+  /** People who got a message started from this template. */
+  sent: number;
+  /** Of those, how many wrote back after it. */
+  replied: number;
+}
+
+/** One outbound message that started from a template. */
+export interface TemplateUse {
+  templateId: string;
+  personId: string;
+  sentAt: Date;
+}
+
+/**
+ * Reply rate per template, counted by person: someone who got a template
+ * counts once, from the first time they got it, and counts as replied when
+ * any message from them came after that.
+ */
+export function templateStats(
+  uses: TemplateUse[],
+  lastReply: Map<string, Date>,
+): Map<string, { sent: number; replied: number }> {
+  const first = new Map<string, Date>();
+  for (const u of uses) {
+    const key = `${u.templateId}|${u.personId}`;
+    const seen = first.get(key);
+    if (!seen || u.sentAt < seen) first.set(key, u.sentAt);
+  }
+  const stats = new Map<string, { sent: number; replied: number }>();
+  for (const [key, sentAt] of first) {
+    const [templateId, personId] = key.split("|");
+    const s = stats.get(templateId) ?? { sent: 0, replied: 0 };
+    s.sent += 1;
+    const reply = lastReply.get(personId);
+    if (reply && reply > sentAt) s.replied += 1;
+    stats.set(templateId, s);
+  }
+  return stats;
+}
+
+/** "3 of 10 replied", or "Not used yet". */
+export function replyRateLabel(t: Pick<Template, "sent" | "replied">): string {
+  return t.sent === 0 ? "Not used yet" : `${t.replied} of ${t.sent} replied`;
 }
 
 const PLACEHOLDER = /\{\s*(first_name|name|company|title)\s*\}/gi;

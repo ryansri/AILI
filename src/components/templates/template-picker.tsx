@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { FileText } from "lucide-react";
-import { fillTemplate, missingFields, TEMPLATE_FIELDS, type Template } from "@/lib/templates";
+import { fillTemplate, missingFields, replyRateLabel, TEMPLATE_FIELDS, type Template } from "@/lib/templates";
 import type { Person } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,7 +19,7 @@ export function TemplatePicker({
 }: {
   templates: Template[];
   person: Person;
-  onPick: (text: string) => void;
+  onPick: (text: string, templateId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const first = person.name.split(" ")[0];
@@ -47,12 +47,15 @@ export function TemplatePicker({
                   <button
                     type="button"
                     onClick={() => {
-                      onPick(fillTemplate(t.body, person));
+                      onPick(fillTemplate(t.body, person), t.id);
                       setOpen(false);
                     }}
                     className="flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left hover:bg-muted"
                   >
-                    <span className="text-md font-medium">{t.name}</span>
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-md font-medium">{t.name}</span>
+                      <span className="shrink-0 text-2xs text-muted-foreground">{replyRateLabel(t)}</span>
+                    </span>
                     <span className="line-clamp-2 text-xs text-muted-foreground">{fillTemplate(t.body, person)}</span>
                     {missing.length > 0 && (
                       <span className="text-2xs text-amber-700">

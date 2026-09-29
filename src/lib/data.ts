@@ -8,7 +8,7 @@ import { helperOutdated } from "./helper-version";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
 import type { InviteFacts } from "./invites";
-import type { Template } from "./templates";
+import { templateStats, type Template } from "./templates";
 import { DEFAULT_STAGES, isTagColor, type Account, type InviteView, type Person, type StageDef, type Tag } from "./types";
 
 /** The logged-in workspace's id, from the session cookie (no database trip). Anyone else goes to /login. */
@@ -150,8 +150,27 @@ export async function getStages(workspaceId: string): Promise<StageDef[]> {
 }
 
 export async function getTemplates(workspaceId: string): Promise<Template[]> {
-  const rows = await db.template.findMany({ where: { workspaceId }, orderBy: { name: "asc" } });
-  return rows.map((t) => ({ id: t.id, name: t.name, body: t.body }));
+  const [rows, uses] = await Promise.all([
+    db.template.findMany({ where: { workspaceId }, orderBy: { name: "asc" } }),
+    db.message.findMany({
+      where: { direction: "out", templateId: { not: null }, person: { workspaceId } },
+      select: { templateId: true, personId: true, sentAt: true },
+    }),
+  ]);
+  // Their latest message, for everyone who got a template.
+  const replies = uses.length
+    ? await db.message.groupBy({
+        by: ["personId"],
+        where: { direction: "in", personId: { in: [...new Set(uses.map((u) => u.personId))] } },
+        _max: { sentAt: true },
+      })
+    : [];
+  const lastReply = new Map(replies.flatMap((r) => (r._max.sentAt ? [[r.personId, r._max.sentAt] as const] : [])));
+  const stats = templateStats(
+    uses.map((u) => ({ templateId: u.templateId!, personId: u.personId, sentAt: u.sentAt })),
+    lastReply,
+  );
+  return rows.map((t) => ({ id: t.id, name: t.name, body: t.body, sent: 0, replied: 0, ...stats.get(t.id) }));
 }
 
 /** The helper token, created on first use for accounts from before the helper existed. */

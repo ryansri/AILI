@@ -122,8 +122,9 @@ async function logMessageImpl(input: {
   body: string;
   followUp?: 1 | 2;
   sentAt?: string;
+  templateId?: string;
 }) {
-  const { person } = await ownPerson(input.personId);
+  const { workspace, person } = await ownPerson(input.personId);
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
   const sentAt = input.sentAt ? new Date(input.sentAt) : new Date();
@@ -134,6 +135,7 @@ async function logMessageImpl(input: {
       body,
       sentAt,
       followUp: input.direction === "out" ? (input.followUp ?? null) : null,
+      templateId: input.direction === "out" ? await ownTemplateId(workspace.id, input.templateId) : null,
       source: "manual",
     },
   });
@@ -164,7 +166,14 @@ async function logMessageImpl(input: {
  * Hands a message to the Chrome helper to deliver. The user clicked Send in
  * AILI; the helper is only the courier. Refuses past the daily cap.
  */
-async function queueSendImpl(input: { personId: string; body: string; followUp?: 1 | 2 }) {
+/** A template id from the browser, kept only when it is one of this workspace's templates. */
+async function ownTemplateId(workspaceId: string, id: string | undefined): Promise<string | null> {
+  if (!id) return null;
+  const template = await db.template.findFirst({ where: { id, workspaceId }, select: { id: true } });
+  return template?.id ?? null;
+}
+
+async function queueSendImpl(input: { personId: string; body: string; followUp?: 1 | 2; templateId?: string }) {
   const { workspace, person } = await ownPerson(input.personId);
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
@@ -181,7 +190,13 @@ async function queueSendImpl(input: { personId: string; body: string; followUp?:
   if (sentToday + queued >= workspace.dailyCap) throw new Error(`Daily cap of ${workspace.dailyCap} reached.`);
 
   await db.outbox.create({
-    data: { workspaceId: workspace.id, personId: person.id, body, followUp: input.followUp ?? null },
+    data: {
+      workspaceId: workspace.id,
+      personId: person.id,
+      body,
+      followUp: input.followUp ?? null,
+      templateId: await ownTemplateId(workspace.id, input.templateId),
+    },
   });
   await db.person.update({
     where: { id: person.id },
@@ -639,8 +654,9 @@ async function deleteTemplateImpl(id: string) {
  * cap; skips people AILI cannot reach on LinkedIn and people with a message
  * already waiting. Every send still starts with this click.
  */
-async function queueBulkImpl(input: { personIds: string[]; body: string }) {
+async function queueBulkImpl(input: { personIds: string[]; body: string; templateId?: string }) {
   const workspace = await getWorkspace();
+  const templateId = await ownTemplateId(workspace.id, input.templateId);
   const body = String(input.body ?? "").trim().slice(0, 8000);
   if (!body) throw new Error("Write a message first.");
   const ids = [...new Set(input.personIds)].slice(0, 500);
@@ -672,7 +688,7 @@ async function queueBulkImpl(input: { personIds: string[]; body: string }) {
       continue;
     }
     const text = fillTemplate(body, { name: person.name, company: person.company, jobTitle: person.jobTitle });
-    await db.outbox.create({ data: { workspaceId: workspace.id, personId: person.id, body: text } });
+    await db.outbox.create({ data: { workspaceId: workspace.id, personId: person.id, body: text, templateId } });
     await db.person.update({ where: { id: person.id }, data: { handledAt: null, ...touched() } });
     room -= 1;
     result.queued += 1;
