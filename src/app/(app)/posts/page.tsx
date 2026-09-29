@@ -25,7 +25,7 @@ export default async function ContentPage({ searchParams }: PageProps<"/posts">)
           key={`${one("row")}-${one("add")}`}
           plan={plan}
           initialRow={one("row")}
-          initialView={one("view") === "calendar" ? "calendar" : one("view") === "table" ? "table" : one("view") === "list" ? "list" : "week"}
+          initialView={one("view") === "calendar" ? "calendar" : one("view") === "table" ? "table" : one("view") === "week" ? "week" : "list"}
           openAdd={one("add") === "1"}
         />
       </ContentShell>

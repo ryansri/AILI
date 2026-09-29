@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import {
   BarChart3,
+  CalendarDays,
+  Columns3,
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
@@ -31,6 +33,7 @@ import {
 } from "@/lib/plan";
 import { csvCell, templateCsv } from "@/lib/plan-import";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,9 +44,9 @@ import {
 import { EntryPanel } from "./entry-panel";
 import { ImportPlanDialog } from "./import-plan-dialog";
 import { AddRowDialog, MoveDialog, RhythmDialog } from "./plan-dialogs";
-import { PlanAgenda } from "./plan-agenda";
 import { PlanCalendar } from "./plan-calendar";
 import { PlanTable } from "./plan-table";
+import { ContentList, ScoreCard, StatusCounts, type StatusFilter } from "./plan-list";
 import { PlanWeek, ReadyBar, WeekCounts, type StatusPick } from "./plan-week";
 import { PlanStart } from "./plan-start";
 import { downloadText, PILLAR_CLASS } from "./plan-ui";
@@ -57,7 +60,7 @@ import { downloadText, PILLAR_CLASS } from "./plan-ui";
  * Click a card to open it on the right.
  */
 
-export type View = "week" | "calendar" | "list" | "table";
+export type View = "list" | "week" | "calendar" | "table";
 
 /** "This week", "Next week", "Last week", or the dates. */
 function weekName(monday: string, today: string): string {
@@ -183,6 +186,9 @@ export function PlanView({
   const [view, setView] = useState<View>(initialView);
   const [monday, setMonday] = useState(() => mondayOf(plan.today));
   const [pick, setPick] = useState<StatusPick | null>(null);
+  const [status, setStatus] = useState<StatusFilter | null>(null);
+  const [pageFilter, setPageFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "post" | "article">("all");
   const [stats, setStats] = useState(false);
   const [selectedId, setSelectedId] = useState<string | undefined>(initialRow);
   const [importing, setImporting] = useState<"file" | "paste" | null>(null);
@@ -246,7 +252,7 @@ export function PlanView({
     setView(v);
     setPick(null);
     const url = new URL(window.location.href);
-    if (v === "week") url.searchParams.delete("view");
+    if (v === "list") url.searchParams.delete("view");
     else url.searchParams.set("view", v);
     window.history.replaceState(null, "", url);
   }
@@ -260,9 +266,17 @@ export function PlanView({
       </DropdownMenuTrigger>
       {/* Its items open dialogs: the menu must not pull focus back to its button as they open. */}
       <DropdownMenuContent align="end" className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <DropdownMenuItem onSelect={() => switchView(view === "table" ? "week" : "table")}>
+        <DropdownMenuItem onSelect={() => switchView("week")}>
+          <Columns3 />
+          Week grid
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => switchView("calendar")}>
+          <CalendarDays />
+          Month calendar
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => switchView("table")}>
           <Table2 />
-          {view === "table" ? "Back to the week" : "Edit as a table"}
+          Edit rows in bulk
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => setStats((v) => !v)}>
           <BarChart3 />
@@ -317,86 +331,96 @@ export function PlanView({
     </DropdownMenu>
   );
 
+  // Which page and whether posts or articles: they narrow everything below, the score too.
+  const pages = [...new Set(entries.map((e) => e.channel).filter(Boolean))];
+  const visible = entries.filter(
+    (e) => (pageFilter === "all" || e.channel === pageFilter) && (typeFilter === "all" || e.kind === typeFilter),
+  );
   const sunday = addDays(monday, 6);
-  const week = entries.filter((e) => e.day && e.day >= monday && e.day <= sunday);
-  const weekly = view === "week" || view === "list";
+  const week = visible.filter((e) => e.day && e.day >= monday && e.day <= sunday);
+  const TITLES: Record<View, string> = { list: "", week: "Week grid", calendar: "Month calendar", table: "Edit rows in bulk" };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-8 py-5">
         <div className="flex flex-wrap items-center gap-2">
-          {weekly && (
+          {view !== "list" && (
             <>
+              <Button variant="ghost" size="sm" onClick={() => switchView("list")}>
+                <ChevronLeft />
+                Back to the list
+              </Button>
+              <h2 className="text-lg font-bold tracking-tight">{TITLES[view]}</h2>
+            </>
+          )}
+          {view === "week" && (
+            <span className="ml-2 flex items-center gap-1">
               <Button variant="ghost" size="icon-sm" aria-label="Previous week" onClick={() => setMonday(addDays(monday, -7))}>
                 <ChevronLeft />
               </Button>
-              <h2 className="text-lg font-bold tracking-tight">{weekName(monday, today)}</h2>
-              <span className="text-md text-muted-foreground">
-                {dayLabel(monday).split(" ").slice(1).join(" ")} – {dayLabel(sunday).split(" ").slice(1).join(" ")}
-              </span>
+              <span className="text-md font-semibold">{weekName(monday, today)}</span>
               <Button variant="ghost" size="icon-sm" aria-label="Next week" onClick={() => setMonday(addDays(monday, 7))}>
                 <ChevronRight />
               </Button>
-              {monday !== mondayOf(today) && (
-                <Button variant="outline" size="sm" onClick={() => setMonday(mondayOf(today))}>
-                  Today
-                </Button>
-              )}
-            </>
+            </span>
           )}
-          {view === "table" && <h2 className="text-lg font-bold tracking-tight">The whole plan, as a table</h2>}
           <div className="ml-auto flex items-center gap-2">
-            <div className="flex rounded-lg bg-muted p-[3px]" role="radiogroup" aria-label="View">
-              {(
-                [
-                  ["week", "Week"],
-                  ["calendar", "Month"],
-                  ["list", "List"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="radio"
-                  aria-checked={view === key}
-                  onClick={() => switchView(key)}
-                  className={cn(
-                    "flex h-7 items-center rounded-md px-3 text-md",
-                    view === key ? "bg-background font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {pages.length > 1 && (
+              <Select value={pageFilter} onValueChange={setPageFilter}>
+                <SelectTrigger size="sm" aria-label="Page" className="min-w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all">All pages</SelectItem>
+                  {pages.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
+              <SelectTrigger size="sm" aria-label="Type" className="min-w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="all">Posts and articles</SelectItem>
+                <SelectItem value="post">Posts</SelectItem>
+                <SelectItem value="article">Articles</SelectItem>
+              </SelectContent>
+            </Select>
             {menu}
           </div>
         </div>
 
-        {weekly && (
+        {view === "list" && (
           <>
-            <WeekCounts entries={week} pick={pick} onPick={setPick} />
-            <ReadyBar entries={entries} today={today} />
+            <ScoreCard entries={visible} today={today} />
+            <StatusCounts entries={visible} filter={status} onFilter={setStatus} />
+            <ContentList
+              entries={status ? visible.filter((e) => e.status === status) : visible}
+              today={today}
+              timeZone={plan.timeZone}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              empty={
+                typeFilter === "article" && !status
+                  ? "No articles planned yet. Add one with New, Plan row, and set its type to Article."
+                  : "Nothing here."
+              }
+            />
           </>
         )}
-
-        {view === "week" ? (
-          <PlanWeek entries={entries} monday={monday} today={today} pick={pick} selectedId={selectedId} onSelect={setSelectedId} />
-        ) : view === "calendar" ? (
-          <PlanCalendar entries={entries} today={today} selectedId={selectedId} onSelect={setSelectedId} />
-        ) : view === "table" ? (
-          <PlanTable entries={entries} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} />
-        ) : week.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-md text-muted-foreground">Nothing planned this week.</p>
-        ) : (
-          <PlanAgenda
-            entries={pick ? week.filter((e) => e.status === pick) : week}
-            today={today}
-            timeZone={plan.timeZone}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
+        {view === "week" && (
+          <>
+            <WeekCounts entries={week} pick={pick} onPick={setPick} />
+            <ReadyBar entries={visible} today={today} />
+            <PlanWeek entries={visible} monday={monday} today={today} pick={pick} selectedId={selectedId} onSelect={setSelectedId} />
+          </>
         )}
+        {view === "calendar" && <PlanCalendar entries={visible} today={today} selectedId={selectedId} onSelect={setSelectedId} />}
+        {view === "table" && <PlanTable entries={visible} today={today} colours={colours} selectedId={selectedId} onSelect={setSelectedId} />}
       </div>
 
       {selected ? (
