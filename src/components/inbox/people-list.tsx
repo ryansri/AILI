@@ -7,8 +7,7 @@ import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/client-actions";
 import { relativeTime } from "@/lib/next-step";
 import { bucketOf, type Condition, type Group, type Row, type View } from "@/lib/rows";
-import type { HelperStatus, Person, StageDef, Tag } from "@/lib/types";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import type { HelperStatus, StageDef, Tag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,26 +19,8 @@ import { SnoozeMenu } from "./snooze-menu";
 import { LinkedInButton } from "@/components/linkedin-bits";
 import { StatusPill } from "@/components/status-pill";
 import { needsConnect } from "@/lib/invites";
+import { PersonAvatar } from "@/components/person-avatar";
 import { SyncLineBar } from "./sync-line";
-
-export function initials(name: string): string {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-export function PersonAvatar({ person, className }: { person: Person; className?: string }) {
-  return (
-    <Avatar className={className}>
-      {person.pictureUrl && <AvatarImage src={person.pictureUrl} alt="" />}
-      <AvatarFallback className="text-xs font-semibold">{initials(person.name)}</AvatarFallback>
-    </Avatar>
-  );
-}
 
 function lastLine(row: Row): string {
   const pending = row.person.pending[row.person.pending.length - 1];
@@ -229,7 +210,8 @@ export function PeopleList({
                             stale && !active && "opacity-60",
                           )}
                         >
-                          <PersonAvatar person={row.person} className="size-10" />
+                          {/* Room for the photo, which is its own link on top (a link cannot sit in a button). */}
+                          <span aria-hidden="true" className="size-10 shrink-0" />
                           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                             <div className="flex items-center gap-1.5">
                               {bucketOf(row) === "replied" && (
@@ -250,6 +232,9 @@ export function PeopleList({
                             {row.person.lead !== false && <StatusPill stages={stages} stage={row.person.stage} />}
                           </span>
                         </button>
+                        <span className={cn("absolute top-3.5 left-4", stale && !active && "opacity-60")}>
+                          <PersonAvatar person={row.person} className="size-10" />
+                        </span>
                         {/* LinkedIn for everyone; done and snooze are for leads, as Other has no next step. */}
                         {(row.person.lead !== false || row.person.linkedinUrl) && (
                           <div

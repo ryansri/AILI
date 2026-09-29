@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TagChip } from "@/components/tag-chip";
-import { PersonAvatar } from "@/components/inbox/people-list";
+import { PersonAvatar } from "@/components/person-avatar";
 import { ConnectionBadge, LinkedInButton } from "@/components/linkedin-bits";
 
 /*
@@ -503,7 +503,7 @@ export function CompanyPanel({
                       href={`/inbox?person=${p.id}`}
                       className="-mx-2 flex items-center gap-3 rounded-lg border-t border-border/60 px-2 py-2.5 first-of-type:border-t-0 hover:bg-muted/50"
                     >
-                      <PersonAvatar person={p} className="size-8" />
+                      <PersonAvatar person={p} className="size-8" link={false} />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5 text-md font-semibold">
                           <span className="truncate">{p.name}</span>

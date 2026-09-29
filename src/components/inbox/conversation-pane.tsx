@@ -23,14 +23,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NextStepHint } from "./next-step-hint";
 import { HeaderAction } from "@/components/page-header";
-import { PersonAvatar } from "./people-list";
+import { PersonAvatar } from "@/components/person-avatar";
 import { SnoozeMenu } from "./snooze-menu";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
 import { DraftWithAi } from "./draft-with-ai";
 import { AcceptedLine, ConnectDialog, ConnectPanel, connectStateOf, NextBox } from "./connect";
-import { LinkedInMark } from "@/components/linkedin-bits";
 import { StatusMenu } from "@/components/status-pill";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { TemplatePicker } from "@/components/templates/template-picker";
@@ -194,25 +193,9 @@ export function ConversationPane({
     <section aria-label={`Conversation with ${person.name}`} className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-14 shrink-0 items-center gap-1.5 border-b pr-3 pl-5">
         {/* The photo opens their LinkedIn profile; the name opens the details. */}
-        {person.linkedinUrl ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <a
-                href={person.linkedinUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`Open ${person.name}'s LinkedIn profile`}
-                className="relative shrink-0 rounded-full transition-opacity hover:opacity-85"
-              >
-                <PersonAvatar person={person} className="size-8" />
-                <LinkedInMark className="absolute -right-1 -bottom-1 size-3.5 text-[8px] ring-2 ring-background" />
-              </a>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Open LinkedIn profile</TooltipContent>
-          </Tooltip>
-        ) : (
-          <PersonAvatar person={person} className="size-8 shrink-0" />
-        )}
+        <span className="ml-0.5 shrink-0">
+          <PersonAvatar person={person} className="size-8" />
+        </span>
         <Tooltip>
           <TooltipTrigger asChild>
             <button

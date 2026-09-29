@@ -25,7 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
 import { CountBadge } from "@/components/count-badge";
 import { TagChip, TagDot } from "@/components/tag-chip";
-import { PersonAvatar } from "@/components/inbox/people-list";
+import { PersonAvatar } from "@/components/person-avatar";
 import { ConnectionBadge, LinkedInButton } from "@/components/linkedin-bits";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 import { FunnelRow, type Pick } from "./funnel";

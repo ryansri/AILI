@@ -13,7 +13,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import { PersonDialog } from "@/components/people/person-dialog";
 import type { Row } from "@/lib/rows";
-import { PersonAvatar } from "./people-list";
+import { PersonAvatar } from "@/components/person-avatar";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

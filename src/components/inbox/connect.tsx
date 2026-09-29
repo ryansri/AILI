@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { TemplatePicker } from "@/components/templates/template-picker";
-import { PersonAvatar } from "./people-list";
+import { PersonAvatar } from "@/components/person-avatar";
 
 /*
  * Connection requests in a conversation. LinkedIn only lets you message people

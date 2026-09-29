@@ -11,7 +11,7 @@ import { localDay } from "@/lib/plan";
 import type { Person } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { PersonAvatar } from "@/components/inbox/people-list";
+import { PersonAvatar } from "@/components/person-avatar";
 
 /*
  * Post alerts: a few leads a day to tap the bell for on LinkedIn, so LinkedIn
