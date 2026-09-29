@@ -12,10 +12,10 @@ import {
   CircleHelp,
   ClipboardPaste,
   Clock3,
-  ExternalLink,
   FolderInput,
   Info,
   MoreHorizontal,
+  Newspaper,
   RotateCcw,
   Sparkles,
   Star,
@@ -268,10 +268,10 @@ export function ConversationPane({
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {/* Their posts on LinkedIn, the best thing to write about. It only opens LinkedIn; AILI reads nothing. */}
           {posts && (
-            <Button variant="ghost" size="sm" asChild className="mr-1 h-8 rounded-full px-3 text-xs">
-              <a href={posts} target="_blank" rel="noreferrer">
+            <Button variant="secondary" size="sm" asChild className="mr-1.5 h-8 rounded-full px-3 text-xs">
+              <a href={posts} target="_blank" rel="noreferrer" title="Opens their posts on LinkedIn">
+                <Newspaper />
                 Recent posts
-                <ExternalLink className="size-3.5 text-muted-foreground" />
               </a>
             </Button>
           )}
