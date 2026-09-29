@@ -5,6 +5,7 @@ import {
   BarChart3,
   CalendarDays,
   Columns3,
+  List as ListIcon,
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
@@ -270,10 +271,6 @@ export function PlanView({
           <Columns3 />
           Week grid
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => switchView("calendar")}>
-          <CalendarDays />
-          Month calendar
-        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => switchView("table")}>
           <Table2 />
           Edit rows in bulk
@@ -344,7 +341,30 @@ export function PlanView({
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-8 py-5">
         <div className="flex flex-wrap items-center gap-2">
-          {view !== "list" && (
+          <div className="flex rounded-lg bg-muted p-[3px]" role="radiogroup" aria-label="View">
+            {(
+              [
+                ["list", "List", ListIcon],
+                ["calendar", "Calendar", CalendarDays],
+              ] as const
+            ).map(([key, label, Icon]) => (
+              <button
+                key={key}
+                type="button"
+                role="radio"
+                aria-checked={view === key}
+                onClick={() => switchView(key)}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-md px-3 text-md",
+                  view === key ? "bg-background font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+          {view !== "list" && view !== "calendar" && (
             <>
               <Button variant="ghost" size="sm" onClick={() => switchView("list")}>
                 <ChevronLeft />

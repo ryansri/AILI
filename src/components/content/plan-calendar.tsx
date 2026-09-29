@@ -9,6 +9,7 @@ import type { EntryView } from "@/lib/content-plan";
 import { addDays, dayLabel, mondayOf, MONTH_NAMES } from "@/lib/plan";
 import { Button } from "@/components/ui/button";
 import { cardLook } from "./plan-week";
+import { isPageChannel } from "./plan-ui";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -79,7 +80,7 @@ export function PlanCalendar({
         <Button variant="outline" size="icon-sm" aria-label="Month after" onClick={() => setMonth(shiftMonth(month, 1))}>
           <ChevronRight />
         </Button>
-        <span className="ml-auto text-xs text-muted-foreground">Colour is the status; a dark edge is an article. Drag to move; drop on a busy day to swap.</span>
+        <span className="ml-auto text-xs text-muted-foreground">Colour is the status: grey dashed not written, amber draft, blue scheduled, green published, red missed. Drag to move a day.</span>
       </div>
       <div className="grid overflow-hidden rounded-xl border" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
         {WEEKDAYS.map((d) => (
@@ -128,16 +129,26 @@ export function PlanCalendar({
                     draggable={e.status !== "posted"}
                     onDragStart={(ev) => ev.dataTransfer.setData("text/plain", e.id)}
                     onClick={() => onSelect(e.id)}
-                    title={`${e.topic || "No topic yet"}${e.pillar ? ` · ${e.pillar}` : ""}`}
+                    title={`${e.topic || "No topic yet"} · ${cardLook(e).word}${e.channel ? ` · ${e.channel}` : ""}`}
                     className={cn(
-                      "flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs",
-                      "border",
+                      "flex min-w-0 items-center gap-1.5 rounded-md border px-1.5 py-1 text-left text-xs",
                       cardLook(e).card,
-                      e.kind === "article" && "shadow-[inset_3px_0_0_var(--color-foreground)]",
                       e.status === "skipped" && "line-through",
                       selectedId === e.id && "ring-2 ring-foreground",
                     )}
                   >
+                    {e.channel && (
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "flex size-3.5 shrink-0 items-center justify-center text-[8px] font-bold text-white",
+                          isPageChannel(e.channel) ? "rounded-[3px] bg-[#0a66c2]" : "rounded-full bg-foreground",
+                        )}
+                      >
+                        {isPageChannel(e.channel) ? "C" : "P"}
+                      </span>
+                    )}
+                    {e.kind === "article" && <span className="shrink-0 rounded-[3px] bg-foreground px-1 text-[9px] font-bold text-background">ARTICLE</span>}
                     <span className={cn("truncate", !e.topic && "text-muted-foreground")}>{e.topic || "No topic yet"}</span>
                   </button>
                 );
