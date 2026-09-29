@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { leadNext } from "./lead-next";
+import { companyNext, leadNext } from "./lead-next";
 import type { Person } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -54,5 +54,36 @@ describe("leadNext", () => {
 
   it("says nothing for Not a fit", () => {
     expect(leadNext(person({ stage: "lost" }), 21, now)).toBeNull();
+  });
+});
+
+describe("companyNext", () => {
+  const senior = (p: Person) => (p.jobTitle === "CEO" ? 0 : 5);
+  const not = (id: string, name: string, jobTitle = "") => person({ id, name, jobTitle, stage: "warming", connection: "no" });
+
+  it("sends one request, to the most senior, and holds the rest", () => {
+    const n = companyNext([not("a", "Laura Mahony", "MD"), not("b", "Jaimes Leggett", "CEO")], 21, senior, now)!;
+    expect(n.text).toBe("Send a request to Jaimes");
+    expect(n.people.get("a")).toEqual({ text: "Hold for now", due: false });
+    expect(n.people.get("b")?.text).toBe("Send a request");
+  });
+
+  it("follows whoever is talking and holds the others", () => {
+    const simon = person({
+      id: "s",
+      connection: "yes",
+      messages: [
+        { id: "1", direction: "out", sentAt: ago(3), body: "hi" },
+        { id: "2", direction: "in", sentAt: ago(1), body: "hello" },
+      ],
+    });
+    const n = companyNext([not("h", "Hayley Pelling", "CEO"), simon], 21, senior, now)!;
+    expect(n).toMatchObject({ text: "Reply to Simon", due: true });
+    expect(n.people.get("h")?.text).toBe("Hold for now");
+  });
+
+  it("names the person in the company line", () => {
+    const jaimes = person({ id: "j", name: "Jaimes Leggett", stage: "requested", connection: "no", invite: { id: "i", status: "sent", sentAt: ago(2) } as Person["invite"] });
+    expect(companyNext([jaimes, not("l", "Laura Mahony")], 21, senior, now)?.text).toBe("Waiting for Jaimes to accept");
   });
 });

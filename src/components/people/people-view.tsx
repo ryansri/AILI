@@ -9,8 +9,7 @@ import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } f
 import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
 import { buildFunnel, notMessaged, type Funnel } from "@/lib/funnel";
 import { waitingDays, type InviteFacts } from "@/lib/invites";
-import { leadNext } from "@/lib/lead-next";
-import { relativeTime } from "@/lib/next-step";
+import { lastTouch, leadNext } from "@/lib/lead-next";
 import type { Template } from "@/lib/templates";
 import { stageLabel, type Account, type Person, type StageDef, type Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -70,22 +69,6 @@ function useView(): View {
     () => "",
   );
   return raw === "companies" ? "companies" : "people";
-}
-
-const ago = (iso: string) => {
-  const t = relativeTime(iso);
-  return t === "now" ? "just now" : `${t} ago`;
-};
-
-/** The latest thing that happened with this person, and when. */
-function lastTouch(p: Person): { text: string; at: string | undefined } {
-  const pending = p.pending[p.pending.length - 1];
-  if (pending) return { text: "Message queued", at: pending.createdAt };
-  const last = p.messages[p.messages.length - 1];
-  if (last) return { text: `${last.direction === "out" ? "You wrote" : "They wrote"} ${ago(last.sentAt)}`, at: last.sentAt };
-  if (p.connectedAt) return { text: `Accepted ${ago(p.connectedAt)}`, at: p.connectedAt };
-  if (p.requestedAt) return { text: `Request sent ${ago(p.requestedAt)}`, at: p.requestedAt };
-  return { text: p.createdAt ? `Added ${ago(p.createdAt)}` : "", at: p.createdAt };
 }
 
 /** The early stages the ring on the photo already shows. Past them, the stage shows by the name. */
@@ -389,13 +372,7 @@ export function PeopleView({
             {guessed.map((g) => (
               <GuessBar key={g.key} group={g} onRename={() => setRenaming(g.key)} />
             ))}
-            <CompanyTable
-              groups={companyRows}
-              stages={stages}
-              tags={tags}
-              onOpen={setOpenCompany}
-              onAddPerson={(company) => setAdding({ company })}
-            />
+            <CompanyTable groups={companyRows} stages={stages} staleDays={staleDays} onOpen={setOpenCompany} />
             {companyRows.length === 0 && (
               <div className="p-10 text-center text-sm text-muted-foreground">
                 {people.length === 0 ? "No one yet. Import a list or add your first person." : "No companies here."}
@@ -617,7 +594,7 @@ export function PeopleView({
       />
       <CompanyPanel
         group={opened}
-        stages={stages}
+        staleDays={staleDays}
         onOpenChange={(open) => !open && setOpenCompany(null)}
         onRename={() => opened && setRenaming(opened.key)}
         onAddPerson={(company) => setAdding({ company })}

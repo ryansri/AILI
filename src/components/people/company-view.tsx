@@ -7,9 +7,10 @@ import { Building2, ChevronDown, ChevronRight, MessageSquare, MoreHorizontal, Pe
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { keepCompaniesApart, nameCompany } from "@/lib/client-actions";
-import { companyTimeline, deciderRank, shortRole, type CompanyGroup, type Tone } from "@/lib/companies";
+import { companyTimeline, deciderRank, shortRole, type CompanyGroup } from "@/lib/companies";
+import { companyNext, lastTouch, leadNext, type LeadNext } from "@/lib/lead-next";
 import { relativeTime } from "@/lib/next-step";
-import { stageLabel, type Person, type StageDef, type Tag } from "@/lib/types";
+import { stageLabel, type Person, type StageDef } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,9 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TagChip } from "@/components/tag-chip";
 import { PersonAvatar } from "@/components/person-avatar";
-import { LinkedInButton } from "@/components/linkedin-bits";
 
 /*
  * Leads, Companies: one row per company with who you know there, how far the
@@ -28,7 +27,8 @@ import { LinkedInButton } from "@/components/linkedin-bits";
  * the people inside; the name opens the company.
  */
 
-const TALKING_STAGES = ["conversation", "call", "pilot", "won"];
+/** The early stages the ring on the photo already shows. Past them, the stage shows by the name. */
+const RING_STAGES = new Set(["warming", "requested", "connected"]);
 
 const ago = (iso: string | undefined) => {
   if (!iso) return "";
@@ -38,87 +38,65 @@ const ago = (iso: string | undefined) => {
 
 const firstName = (p: Person) => p.name.trim().split(/\s+/)[0] || p.name;
 
-function StageBadge({ stages, stage }: { stages: StageDef[]; stage: string }) {
+/** Decision makers first; everyone else after. */
+const seniority = (p: Person) => {
+  const r = deciderRank(p.jobTitle || p.headline);
+  return r < 0 ? 99 : r;
+};
+
+function StageWord({ stages, stage }: { stages: StageDef[]; stage: string }) {
+  if (RING_STAGES.has(stage)) return null;
+  return <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground">{stageLabel(stages, stage)}</span>;
+}
+
+function NextText({ next }: { next: LeadNext | null | undefined }) {
+  if (!next) return null;
   return (
-    <span
-      className={cn(
-        "inline-flex rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap",
-        TALKING_STAGES.includes(stage) ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" : "bg-foreground/[0.06]",
-        stage === "lost" && "text-muted-foreground",
-      )}
-    >
-      {stageLabel(stages, stage)}
+    <span className={cn("text-md", next.due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground/80")} suppressHydrationWarning>
+      {next.text}
     </span>
   );
 }
 
-/** The roles you know at a company, decision makers dark and first. */
-function Roles({ people, onAdd }: { people: Person[]; onAdd?: () => void }) {
-  const roles = people
-    .map((p) => {
-      const title = p.jobTitle || p.headline;
-      return { id: p.id, name: p.name, role: shortRole(title) || firstName(p), rank: deciderRank(title) };
-    })
-    .sort((a, b) => (a.rank < 0 ? 9 : a.rank) - (b.rank < 0 ? 9 : b.rank));
+/** Who you know at a company: their photos with the LinkedIn ring, and their roles, decision makers in bold. */
+function WhoYouKnow({ people }: { people: Person[] }) {
+  const sorted = [...people].sort((a, b) => seniority(a) - seniority(b));
+  const shown = sorted.slice(0, 4);
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {roles.map((r) => (
-        <span
-          key={r.id}
-          title={r.name}
-          className={cn(
-            "inline-flex h-5.5 items-center rounded-full px-2 text-xs whitespace-nowrap",
-            r.rank >= 0 ? "bg-foreground text-background" : "bg-muted text-foreground/80",
-          )}
-        >
-          {r.role}
-        </span>
-      ))}
-      {onAdd && people.length === 1 && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAdd();
-          }}
-          className="inline-flex h-5.5 items-center rounded-full border border-dashed px-2 text-xs whitespace-nowrap text-muted-foreground hover:text-foreground"
-        >
-          + someone else
-        </button>
-      )}
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="flex shrink-0 items-center gap-1.5">
+        {shown.map((p) => (
+          <PersonAvatar key={p.id} person={p} className="size-6 text-2xs" link={false} />
+        ))}
+        {sorted.length > shown.length && <span className="text-xs text-muted-foreground">+{sorted.length - shown.length}</span>}
+      </span>
+      <span className="min-w-0 truncate text-xs text-foreground/80">
+        {sorted.map((p, i) => {
+          const title = p.jobTitle || p.headline;
+          const role = shortRole(title) || firstName(p);
+          return (
+            <Fragment key={p.id}>
+              {i > 0 && ", "}
+              <span className={cn(deciderRank(title) >= 0 && "font-semibold text-foreground")}>{role}</span>
+            </Fragment>
+          );
+        })}
+      </span>
     </div>
   );
-}
-
-const TONE_DOT: Record<Tone, string> = { ok: "bg-emerald-500", warn: "bg-amber-500", muted: "bg-muted-foreground/50" };
-
-function Advice({ text, tone }: { text: string; tone: Tone }) {
-  if (!text) return null;
-  return (
-    <span className={cn("flex min-w-0 items-start gap-2 text-xs", tone === "warn" ? "text-amber-800 dark:text-amber-300" : "text-foreground/80")}>
-      <span aria-hidden="true" className={cn("mt-1 size-1.5 shrink-0 rounded-full", TONE_DOT[tone])} />
-      <span>{text}</span>
-    </span>
-  );
-}
-
-function Talking({ group }: { group: CompanyGroup }) {
-  if (!group.talking.length) return <span className="text-xs text-muted-foreground">{group.people.length > 1 ? "No one yet" : "Not yet"}</span>;
-  return <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Yes, {group.talking.map(firstName).slice(0, 2).join(" and ")}</span>;
 }
 
 export function CompanyTable({
   groups,
   stages,
-  tags,
+  staleDays,
   onOpen,
-  onAddPerson,
 }: {
   groups: CompanyGroup[];
   stages: StageDef[];
-  tags: Tag[];
+  /** Days after which a connection request counts as old. */
+  staleDays: number;
   onOpen: (key: string) => void;
-  onAddPerson: (company: string) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -129,24 +107,27 @@ export function CompanyTable({
       else next.add(key);
       return next;
     });
+  const nexts = useMemo(
+    () => new Map(groups.map((g) => [g.key, g.key ? companyNext(g.people, staleDays, seniority) : null] as const)),
+    [groups, staleDays],
+  );
 
   return (
     <Table className="table-fixed">
       <TableHeader>
         <TableRow>
           <TableHead className="w-10 pl-6" />
-          <TableHead className="w-[24%]">Company</TableHead>
-          <TableHead className="w-[20%]">Who you know there</TableHead>
-          <TableHead className="w-36">Furthest step</TableHead>
-          <TableHead className="w-28">Talking?</TableHead>
-          <TableHead className="w-24">Last touch</TableHead>
-          <TableHead className="pr-6">What next</TableHead>
+          <TableHead className="w-[28%] pl-4">Company</TableHead>
+          <TableHead className="w-[24%]">Who you know</TableHead>
+          <TableHead>Next</TableHead>
+          <TableHead className="w-40 pr-6">Last touch</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {groups.map((g) => {
           const isOpen = open.has(g.key) || !g.key;
           const Chevron = isOpen ? ChevronDown : ChevronRight;
+          const next = nexts.get(g.key);
           return (
             <Fragment key={g.key || "none"}>
               <TableRow className={cn("cursor-pointer", isOpen && g.key && "bg-muted/40")} onClick={() => (g.key ? onOpen(g.key) : toggle(g.key))}>
@@ -166,7 +147,7 @@ export function CompanyTable({
                     </button>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="pl-4">
                   <div className="flex min-w-0 items-center gap-3">
                     <span
                       aria-hidden="true"
@@ -175,58 +156,47 @@ export function CompanyTable({
                       {g.key ? g.name.charAt(0).toUpperCase() : <Building2 className="size-4" />}
                     </span>
                     <div className="min-w-0">
-                      <div className={cn("truncate text-md font-semibold", !g.key && "font-medium text-muted-foreground")}>{g.name}</div>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className={cn("truncate text-md font-semibold", !g.key && "font-medium text-muted-foreground")}>{g.name}</span>
+                        {g.key && <StageWord stages={stages} stage={g.stage} />}
+                      </div>
                       <div className="truncate text-xs text-muted-foreground">
                         {g.people.length === 1 ? "1 person" : `${g.people.length} people`}
                       </div>
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>{g.key && <Roles people={g.people} onAdd={() => onAddPerson(g.name)} />}</TableCell>
-                <TableCell>{g.key && <StageBadge stages={stages} stage={g.stage} />}</TableCell>
-                <TableCell>{g.key && <Talking group={g} />}</TableCell>
-                <TableCell className="text-xs text-muted-foreground" suppressHydrationWarning>
-                  {g.key && ago(g.lastAt)}
+                <TableCell>{g.key && <WhoYouKnow people={g.people} />}</TableCell>
+                <TableCell className="whitespace-normal">
+                  <NextText next={next} />
                 </TableCell>
-                <TableCell className="pr-6 whitespace-normal">
-                  <Advice {...g.advice} />
+                <TableCell className="pr-6 text-xs text-muted-foreground" suppressHydrationWarning>
+                  {g.key && ago(g.lastAt)}
                 </TableCell>
               </TableRow>
               {isOpen &&
                 g.people.map((p) => (
-                  <TableRow key={p.id} className="group cursor-pointer bg-muted/40 hover:bg-muted/70" onClick={() => router.push(`/inbox?person=${p.id}`)}>
+                  <TableRow key={p.id} className="cursor-pointer bg-muted/40 hover:bg-muted/70" onClick={() => router.push(`/inbox?person=${p.id}`)}>
                     <TableCell className="pl-6" />
-                    <TableCell>
-                      <div className={cn("flex min-w-0 items-center gap-2.5", g.key && "pl-5")}>
+                    <TableCell className="pl-4">
+                      <div className={cn("flex min-w-0 items-center gap-3", g.key && "pl-5")}>
                         <PersonAvatar person={p} className="size-7" />
                         <div className="min-w-0">
-                          <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="flex min-w-0 items-center gap-2">
                             <span className="truncate text-sm font-semibold">{p.name}</span>
-                            <LinkedInButton person={p} className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" />
+                            <StageWord stages={stages} stage={p.stage} />
                           </div>
                           <div className="truncate text-xs text-muted-foreground">{p.jobTitle || p.headline}</div>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1.5">
-                        {tags
-                          .filter((t) => p.tagIds.includes(t.id))
-                          .map((t) => (
-                            <TagChip key={t.id} tag={t} />
-                          ))}
-                      </div>
+                    <TableCell />
+                    <TableCell className="whitespace-normal">
+                      <NextText next={next ? next.people.get(p.id) : leadNext(p, staleDays)} />
                     </TableCell>
-                    <TableCell>
-                      <StageBadge stages={stages} stage={p.stage} />
+                    <TableCell className="pr-6 text-xs text-muted-foreground" suppressHydrationWarning>
+                      {lastTouch(p).text}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {p.messages.some((m) => m.direction === "in") ? <span className="font-semibold text-emerald-700 dark:text-emerald-400">Yes</span> : "No"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground" suppressHydrationWarning>
-                      {ago(p.messages[p.messages.length - 1]?.sentAt ?? p.connectedAt ?? p.requestedAt ?? p.createdAt)}
-                    </TableCell>
-                    <TableCell className="pr-6 text-xs text-muted-foreground">Open conversation →</TableCell>
                   </TableRow>
                 ))}
             </Fragment>
@@ -393,19 +363,21 @@ function NameForm({ group, others, onDone }: { group: CompanyGroup; others: stri
 /** One company: the next step, who you know there, and everything that happened. */
 export function CompanyPanel({
   group,
-  stages,
+  staleDays,
   onOpenChange,
   onRename,
   onAddPerson,
 }: {
   group: CompanyGroup | null;
-  stages: StageDef[];
+  /** Days after which a connection request counts as old. */
+  staleDays: number;
   onOpenChange: (open: boolean) => void;
   onRename: () => void;
   onAddPerson: (company: string) => void;
 }) {
   const events = useMemo(() => (group ? companyTimeline(group.people, 10) : []), [group]);
   const next = group ? group.talking[0] ?? group.people.find((p) => p.stage === "connected") ?? null : null;
+  const nexts = useMemo(() => (group ? companyNext(group.people, staleDays, seniority) : null), [group, staleDays]);
 
   return (
     <Sheet open={group !== null} onOpenChange={onOpenChange}>
@@ -419,8 +391,13 @@ export function CompanyPanel({
                 </span>
                 <div className="min-w-0 flex-1">
                   <SheetTitle className="truncate text-lg">{group.name}</SheetTitle>
-                  <SheetDescription className="truncate text-xs">
-                    {group.raws.length > 1 ? `On LinkedIn as ${group.raws.join(", ")}` : group.raws[0] !== group.name ? `On LinkedIn as ${group.raws[0]}` : "Company"}
+                  <SheetDescription
+                    className="truncate text-xs"
+                    title={group.raws.some((r) => r !== group.name) ? `On LinkedIn as ${group.raws.join(", ")}` : undefined}
+                    suppressHydrationWarning
+                  >
+                    {group.people.length === 1 ? "1 person" : `${group.people.length} people`}
+                    {group.lastAt ? ` · last touch ${ago(group.lastAt)}` : ""}
                   </SheetDescription>
                 </div>
                 <DropdownMenu>
@@ -444,39 +421,12 @@ export function CompanyPanel({
                   <X />
                 </Button>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg border px-3 py-2">
-                  <div className="text-xs text-muted-foreground">People</div>
-                  <div className="text-md font-semibold">{group.people.length}</div>
-                </div>
-                <div className="rounded-lg border px-3 py-2">
-                  <div className="text-xs text-muted-foreground">Furthest step</div>
-                  <div className={cn("truncate text-md font-semibold", TALKING_STAGES.includes(group.stage) && "text-emerald-700 dark:text-emerald-400")}>
-                    {stageLabel(stages, group.stage)}
-                  </div>
-                </div>
-                <div className="rounded-lg border px-3 py-2">
-                  <div className="text-xs text-muted-foreground">Last touch</div>
-                  <div className="truncate text-md font-semibold" suppressHydrationWarning>
-                    {ago(group.lastAt) || "Never"}
-                  </div>
-                </div>
-              </div>
             </SheetHeader>
 
             <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
               {group.advice.text && (
-                <div
-                  className={cn(
-                    "flex flex-col gap-2.5 rounded-xl border px-4 py-3",
-                    group.advice.tone === "ok"
-                      ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40"
-                      : group.advice.tone === "warn"
-                        ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40"
-                        : "bg-muted/50",
-                  )}
-                >
-                  <span className="text-md font-semibold">Next</span>
+                <div className="flex flex-col gap-2 rounded-xl border px-4 py-3">
+                  <span className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">Next</span>
                   <span className="text-sm text-foreground/80">{group.advice.text}</span>
                   {next && (
                     <div>
@@ -495,7 +445,6 @@ export function CompanyPanel({
                 <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Who you know there</h3>
                 {group.people.map((p) => {
                   const title = p.jobTitle || p.headline;
-                  const sent = p.messages.filter((m) => m.direction === "out").length;
                   return (
                     <Link
                       key={p.id}
@@ -512,11 +461,8 @@ export function CompanyPanel({
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">{title || "No job title yet"}</span>
                       </span>
-                      <span className="flex shrink-0 flex-col items-end gap-1">
-                        <StageBadge stages={stages} stage={p.stage} />
-                        <span className="text-2xs text-muted-foreground tabular-nums">
-                          {sent} sent · {p.messages.length - sent} got
-                        </span>
+                      <span className="shrink-0 text-right text-xs">
+                        <NextText next={nexts?.people.get(p.id)} />
                       </span>
                     </Link>
                   );
