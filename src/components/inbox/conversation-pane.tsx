@@ -12,6 +12,7 @@ import {
   CircleHelp,
   ClipboardPaste,
   Clock3,
+  ExternalLink,
   FolderInput,
   Info,
   MoreHorizontal,
@@ -27,6 +28,7 @@ import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveT
 import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { followUpNote, relativeTime, shortDate, shortTime } from "@/lib/next-step";
+import { postsUrl } from "@/lib/profile-url";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -100,27 +102,47 @@ function FollowUpLine({ row }: { row: Row }) {
 }
 
 /**
- * How to get an AI draft: ask Claude or ChatGPT, connected to AILI, and the
- * draft lands in the message box. Before any is connected, how to connect.
+ * The line under the message box. Left, how to get an AI draft: ask Claude or
+ * ChatGPT, connected to AILI, and it lands in the box (hidden while typing).
+ * Right, their posts on LinkedIn, the best thing to write about. It only
+ * opens LinkedIn; AILI reads nothing.
  */
-function AiTip({ apps, first }: { apps: string[]; first: string }) {
+function WriteHelp({ apps, first, linkedinUrl, typing }: { apps: string[]; first: string; linkedinUrl: string; typing: boolean }) {
   const names = apps.filter((a) => a === "Claude" || a === "ChatGPT");
+  const posts = postsUrl(linkedinUrl);
+  if (typing && !posts) return null;
   return (
     // Lined up with the words in the message box: past the templates button (40px + 10px gap) and the box's padding.
-    <div className="flex items-center gap-1.5 pl-[66px] text-2xs text-muted-foreground">
-      <CircleHelp className="size-3 shrink-0" />
-      {names.length > 0 ? (
-        <span className="min-w-0 truncate">
-          Want help writing? Ask {names.join(" or ")}: &ldquo;Draft a reply to {first} in AILI.&rdquo; The draft appears here, for you to
-          check and send.
-        </span>
-      ) : (
-        <span className="min-w-0 truncate">
-          Want help writing? Connect Claude or ChatGPT to AILI, then ask it to draft a reply to {first}. The draft appears here.{" "}
-          <Link href="/settings/connections" className="font-medium text-foreground underline underline-offset-2">
-            Connect
-          </Link>
-        </span>
+    <div className="flex items-center gap-3 pl-[66px] text-2xs text-muted-foreground">
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        {!typing && (
+          <>
+            <CircleHelp className="size-3 shrink-0" />
+            {names.length > 0 ? (
+              <span className="min-w-0 truncate">
+                Want help writing? Ask {names.join(" or ")}: &ldquo;Draft a reply to {first} in AILI.&rdquo; It appears here.
+              </span>
+            ) : (
+              <span className="min-w-0 truncate">
+                Want help writing? Connect Claude or ChatGPT, then ask it to draft a reply. It appears here.{" "}
+                <Link href="/settings/connections" className="font-medium text-foreground underline underline-offset-2">
+                  Connect
+                </Link>
+              </span>
+            )}
+          </>
+        )}
+      </span>
+      {posts && (
+        <a
+          href={posts}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground"
+        >
+          See {first}&rsquo;s posts
+          <ExternalLink className="size-3" />
+        </a>
       )}
     </div>
   );
@@ -584,7 +606,7 @@ export function ConversationPane({
               <ArrowUp />
             </Button>
           </div>
-          {!draft.trim() && <AiTip apps={account.aiApps} first={first} />}
+          <WriteHelp apps={account.aiApps} first={first} linkedinUrl={person.linkedinUrl} typing={Boolean(draft.trim())} />
           {/* A line under the box only when sending works differently from usual. */}
           {(capReached || !viaHelper || !account.helper.connected || draft.trim()) && (
             <div className="flex justify-between text-2xs text-muted-foreground">
