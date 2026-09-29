@@ -173,6 +173,16 @@ interface Usage {
   invitesWeek: number;
 }
 
+/** Claude, ChatGPT or other AI apps connected to AILI right now, by name. */
+async function aiAppsOf(workspaceId: string): Promise<string[]> {
+  const grants = await db.aiGrant.findMany({
+    where: { workspaceId, revokedAt: null, refreshExpires: { gt: new Date() } },
+    select: { clientName: true },
+    distinct: ["clientName"],
+  });
+  return grants.map((g) => g.clientName);
+}
+
 async function usedToday(workspaceId: string): Promise<Usage> {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -195,14 +205,15 @@ export function invitesSince(workspaceId: string, since: Date): Promise<number> 
 
 /** The account, from the workspace row when the caller already has it (saves a trip to the database). */
 export async function getAccount(workspaceId: string, known?: Workspace): Promise<Account> {
-  const [workspace, used] = await Promise.all([
+  const [workspace, used, aiApps] = await Promise.all([
     known ?? db.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
     usedToday(workspaceId),
+    aiAppsOf(workspaceId),
   ]);
-  return accountOf(workspace, used);
+  return accountOf(workspace, used, aiApps);
 }
 
-function accountOf(workspace: Workspace, used: Usage): Account {
+function accountOf(workspace: Workspace, used: Usage, aiApps: string[]): Account {
   const seen = workspace.helperLastSeenAt?.getTime() ?? 0;
   const online = Date.now() - seen < HELPER_ONLINE_MS;
   return {
@@ -212,6 +223,7 @@ function accountOf(workspace: Workspace, used: Usage): Account {
     dailyCap: workspace.dailyCap,
     notifyReplies: workspace.notifyReplies,
     sentToday: used.messages,
+    aiApps,
     invites: {
       cap: workspace.inviteCap,
       today: used.invitesToday,
@@ -288,20 +300,21 @@ async function sortLeadsOnce(workspace: { id: string; leadsSortedAt: Date | null
 export const loadWorkspaceData = cache(async () => {
   // Everything at once: over a hosted database each trip costs time, so there is only one.
   const id = await requireWorkspaceId();
-  const [workspace, loaded, tags, stages, templates, used] = await Promise.all([
+  const [workspace, loaded, tags, stages, templates, used, aiApps] = await Promise.all([
     getWorkspace(),
     getPeople(id),
     getTags(id),
     getStages(id),
     getTemplates(id),
     usedToday(id),
+    aiAppsOf(id),
   ]);
   let everyone = loaded;
   if (!workspace.leadsSortedAt) {
     await sortLeadsOnce(workspace);
     everyone = await getPeople(id);
   }
-  const account = accountOf(workspace, used);
+  const account = accountOf(workspace, used, aiApps);
   const people = everyone.filter((p) => p.lead !== false);
   const others = everyone.filter((p) => p.lead === false);
   return { workspace, people, others, tags, stages, templates, account };

@@ -175,6 +175,8 @@ export interface Account {
   notifyReplies: boolean;
   /** Sent today plus anything still queued for the helper. */
   sentToday: number;
+  /** AI apps connected to AILI (Claude, ChatGPT), so they can draft replies. */
+  aiApps: string[];
   /** Connection requests: the daily limit and how many went today and this week. */
   invites: {
     cap: number;

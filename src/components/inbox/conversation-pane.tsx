@@ -495,7 +495,7 @@ export function ConversationPane({
                 requestAnimationFrame(() => document.getElementById("reply")?.focus());
               }}
             />
-            {isLead && <DraftWithAi personName={person.name} compact />}
+            {isLead && <DraftWithAi personName={person.name} apps={account.aiApps} />}
             <div className="relative flex-1">
               <label htmlFor="reply" className="sr-only">
                 Your message
