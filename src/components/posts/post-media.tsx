@@ -32,24 +32,52 @@ function storedName(file: File): string {
   return file.type === PDF_TYPE && !/\.pdf$/i.test(name) ? `${name}.pdf` : name;
 }
 
+/** Files this size or smaller go through AILI (Vercel takes up to 4.5 MB); bigger ones straight to Blob. */
+const THROUGH_AILI_MAX = 4 * 1024 * 1024;
+
+/** Gives up on an upload that has not finished in time, instead of saying "Adding" for ever. */
+function timeLimit(file: File) {
+  const controller = new AbortController();
+  const ms = 60_000 + (file.size / (1024 * 1024)) * 10_000;
+  const timer = setTimeout(() => controller.abort(), ms);
+  return { signal: controller.signal, done: () => clearTimeout(timer) };
+}
+
 async function uploadFile(postId: string, file: File, store: MediaStoreMode) {
-  if (store === "blob") {
-    const blob = await upload(`posts/${postId}/${storedName(file)}`, file, {
-      access: "public",
-      handleUploadUrl: "/api/media/upload",
-      clientPayload: JSON.stringify({ postId }),
-      contentType: file.type,
-      multipart: file.size > 20 * 1024 * 1024,
+  const limit = timeLimit(file);
+  try {
+    if (store === "blob" && file.size > THROUGH_AILI_MAX) {
+      const send = (access: "public" | "private") =>
+        upload(`posts/${postId}/${storedName(file)}`, file, {
+          access,
+          handleUploadUrl: "/api/media/upload",
+          clientPayload: JSON.stringify({ postId }),
+          contentType: file.type,
+          multipart: file.size > 20 * 1024 * 1024,
+          abortSignal: limit.signal,
+        });
+      // The Blob store is public or private; try the other when one is refused.
+      const blob = await send("public").catch((err) => {
+        if (limit.signal.aborted) throw err;
+        return send("private");
+      });
+      await attachMedia(postId, { url: blob.url, name: file.name, contentType: file.type, size: file.size });
+      return;
+    }
+    const res = await fetch(`/api/media/file?postId=${encodeURIComponent(postId)}&name=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      headers: { "content-type": file.type },
+      body: file,
+      signal: limit.signal,
     });
-    await attachMedia(postId, { url: blob.url, name: file.name, contentType: file.type, size: file.size });
-    return;
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "That file did not upload.");
+  } catch (err) {
+    if (limit.signal.aborted) throw new Error(`${file.name} took too long to upload. Check your internet and try again.`);
+    console.error("Upload failed", err);
+    throw err;
+  } finally {
+    limit.done();
   }
-  const res = await fetch(`/api/media/local?postId=${encodeURIComponent(postId)}&name=${encodeURIComponent(file.name)}`, {
-    method: "POST",
-    headers: { "content-type": file.type },
-    body: file,
-  });
-  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "That file did not upload.");
 }
 
 /** The "Images or carousel" part of a post: pick, add, order and remove its files. */
