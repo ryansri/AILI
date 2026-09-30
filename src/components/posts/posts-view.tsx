@@ -52,6 +52,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { MediaPanel, MediaPreview, type MediaStoreMode } from "./post-media";
 
 /*
  * Posts: everything written here or in Claude or ChatGPT. Posts publish on
@@ -103,6 +104,7 @@ export function PostsView({
   timerRunning,
   commentDelay,
   timeZone,
+  mediaStore,
   initialId,
   newDraft,
 }: {
@@ -115,6 +117,8 @@ export function PostsView({
   commentDelay: number;
   /** The account's time zone, e.g. Australia/Sydney. */
   timeZone: string;
+  /** Where post images go: Vercel Blob, a local folder (development), or nowhere yet. */
+  mediaStore: MediaStoreMode;
   initialId?: string;
   /** Open the editor on a new post or article straight away, e.g. from an empty plan slot. */
   newDraft?: { kind: "post" | "article"; entryId?: string; title?: string; body?: string };
@@ -230,6 +234,8 @@ export function PostsView({
           <Editor
             key={editing.id ?? `new-${editing.kind}`}
             editing={editing}
+            media={posts.find((p) => p.id === editing.id)?.media ?? []}
+            mediaStore={mediaStore}
             commentDelay={commentDelay}
             onDone={(id) => {
               // A new one lands in Drafts or Articles; show it there.
@@ -246,6 +252,7 @@ export function PostsView({
             authorName={authorName}
             authorInitials={authorInitials}
             commentDelay={commentDelay}
+            mediaStore={mediaStore}
             onEdit={() =>
               setEditing({
                 id: selected.id,
@@ -384,7 +391,19 @@ function PostingStatus({
   );
 }
 
-function Editor({ editing, commentDelay, onDone }: { editing: Editing; commentDelay: number; onDone: (id?: string) => void }) {
+function Editor({
+  editing,
+  media,
+  mediaStore,
+  commentDelay,
+  onDone,
+}: {
+  editing: Editing;
+  media: PostView["media"];
+  mediaStore: MediaStoreMode;
+  commentDelay: number;
+  onDone: (id?: string) => void;
+}) {
   const [title, setTitle] = useState(editing.title);
   const [body, setBody] = useState(editing.body);
   const [firstComment, setFirstComment] = useState(editing.firstComment);
@@ -465,6 +484,14 @@ function Editor({ editing, commentDelay, onDone }: { editing: Editing; commentDe
               </p>
             </div>
           )}
+          {isPost &&
+            (editing.id ? (
+              <div className="mt-2">
+                <MediaPanel postId={editing.id} media={media} store={mediaStore} />
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">Images or a PDF carousel? Save first, then add them.</p>
+            ))}
         </div>
       </div>
     </div>
@@ -583,6 +610,7 @@ function Detail({
   authorName,
   authorInitials,
   commentDelay,
+  mediaStore,
   onEdit,
   onMoved,
 }: {
@@ -591,6 +619,7 @@ function Detail({
   authorName: string;
   authorInitials: string;
   commentDelay: number;
+  mediaStore: MediaStoreMode;
   onEdit: () => void;
   onMoved: (tab: Tab) => void;
 }) {
@@ -814,30 +843,38 @@ function Detail({
             </div>
           </article>
         ) : (
-          <article className="flex w-full max-w-[560px] flex-col gap-3 rounded-xl border bg-background px-5 py-4">
-            <div className="flex items-center gap-2.5">
-              <span className="flex size-11 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
-                {authorInitials}
-              </span>
-              <div className="min-w-0">
-                <div className="text-md font-semibold">{authorName}</div>
-                <div className="text-xs text-muted-foreground" suppressHydrationWarning>
-                  {post.status === "published" ? when(post.publishedAt) : post.status === "scheduled" ? when(post.scheduledAt) : "Not posted yet"}
+          <>
+            {editable && (
+              <div className="w-full max-w-[560px] rounded-xl border bg-background px-5 py-4">
+                <MediaPanel postId={post.id} media={post.media} store={mediaStore} />
+              </div>
+            )}
+            <article className="flex w-full max-w-[560px] flex-col gap-3 rounded-xl border bg-background px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-11 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
+                  {authorInitials}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-md font-semibold">{authorName}</div>
+                  <div className="text-xs text-muted-foreground" suppressHydrationWarning>
+                    {post.status === "published" ? when(post.publishedAt) : post.status === "scheduled" ? when(post.scheduledAt) : "Not posted yet"}
+                  </div>
                 </div>
               </div>
-            </div>
-            <p className="text-md leading-relaxed whitespace-pre-wrap">{post.body}</p>
-            <div className="flex justify-between border-t pt-2.5 text-xs text-muted-foreground">
-              <span>
-                {post.body.length.toLocaleString()} / {POST_MAX_CHARS.toLocaleString()} characters
-                {post.source !== "AILI" ? ` · from ${post.source}` : ""}
-              </span>
-              <span>How it will look on LinkedIn</span>
-            </div>
-            {post.firstComment.trim() && (
-              <FirstComment post={post} authorInitials={authorInitials} commentDelay={commentDelay} />
-            )}
-          </article>
+              <p className="text-md leading-relaxed whitespace-pre-wrap">{post.body}</p>
+              <MediaPreview media={post.media} />
+              <div className="flex justify-between border-t pt-2.5 text-xs text-muted-foreground">
+                <span>
+                  {post.body.length.toLocaleString()} / {POST_MAX_CHARS.toLocaleString()} characters
+                  {post.source !== "AILI" ? ` · from ${post.source}` : ""}
+                </span>
+                <span>How it will look on LinkedIn</span>
+              </div>
+              {post.firstComment.trim() && (
+                <FirstComment post={post} authorInitials={authorInitials} commentDelay={commentDelay} />
+              )}
+            </article>
+          </>
         )}
       </div>
 

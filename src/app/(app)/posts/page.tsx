@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getWorkspace } from "@/lib/data";
 import { loadPlan } from "@/lib/content-plan";
 import { linkedinConfigured } from "@/lib/linkedin-posting";
+import { mediaStore } from "@/lib/media-store";
 import { linkedInPostingOf, timeZoneOf, timerStatus, toPostView } from "@/lib/posts";
 import { ContentShell } from "@/components/content/content-shell";
 import { PlanView } from "@/components/content/plan-view";
@@ -37,7 +38,10 @@ export default async function ContentPage({ searchParams }: PageProps<"/posts">)
   const [rows, timer, entry] = await Promise.all([
     db.post.findMany({
       where: { workspaceId: workspace.id },
-      include: { planEntry: { select: { day: true, time: true } } },
+      include: {
+        planEntry: { select: { day: true, time: true } },
+        media: { select: { id: true, kind: true, name: true, size: true, deletedAt: true, position: true } },
+      },
       orderBy: { updatedAt: "desc" },
     }),
     timerStatus(),
@@ -54,6 +58,7 @@ export default async function ContentPage({ searchParams }: PageProps<"/posts">)
         timerRunning={timer.running}
         commentDelay={workspace.firstCommentDelay}
         timeZone={timeZoneOf(workspace)}
+        mediaStore={mediaStore()}
         initialId={one("post")}
         newDraft={
           newKind === "post" || newKind === "article"

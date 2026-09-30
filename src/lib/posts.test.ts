@@ -16,6 +16,8 @@ vi.mock("server-only", () => ({}));
 const { db } = await import("./db");
 const { seal } = await import("./secret-box");
 const { publishPost, publishDuePosts, postFirstComment } = await import("./posts");
+const { cleanupPublishedMedia, deleteAllMedia } = await import("./media-server");
+const { saveLocal, readMedia } = await import("./media-store");
 
 type Call = { url: string; body: Record<string, unknown> };
 let calls: Call[] = [];
@@ -113,5 +115,36 @@ describe.skipIf(!hasDb)("first comment", () => {
     failComments = false;
     await postFirstComment(w.id, post.id);
     expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).commentStatus).toBe("posted");
+  });
+});
+
+describe.skipIf(!hasDb)("post images", () => {
+  async function postWithImage(workspaceId: string, data: { status: string; publishedAt?: Date }) {
+    const post = await db.post.create({ data: { workspaceId, body: "With a picture", ...data } });
+    const url = await saveLocal(`test-${post.id}`, new Uint8Array([1, 2, 3]));
+    const media = await db.postMedia.create({
+      data: { workspaceId, postId: post.id, kind: "image", url, name: "a.png", contentType: "image/png", size: 3 },
+    });
+    return { post, media };
+  }
+
+  it("deletes a published post's files the day after, and keeps the rest", async () => {
+    const w = await workspace(0);
+    const now = new Date();
+    const old = await postWithImage(w.id, { status: "published", publishedAt: new Date(now.getTime() - 25 * 3600_000) });
+    const fresh = await postWithImage(w.id, { status: "published", publishedAt: new Date(now.getTime() - 3600_000) });
+    const failed = await postWithImage(w.id, { status: "failed" });
+
+    await cleanupPublishedMedia(now);
+
+    const gone = await db.postMedia.findUniqueOrThrow({ where: { id: old.media.id } });
+    expect(gone.deletedAt).not.toBeNull();
+    await expect(readMedia(old.media.url)).rejects.toThrow();
+    for (const kept of [fresh, failed]) {
+      expect((await db.postMedia.findUniqueOrThrow({ where: { id: kept.media.id } })).deletedAt).toBeNull();
+      expect(await readMedia(kept.media.url)).toEqual(new Uint8Array([1, 2, 3]));
+      await deleteAllMedia(kept.post.id);
+      await expect(readMedia(kept.media.url)).rejects.toThrow();
+    }
   });
 });

@@ -338,6 +338,8 @@ model Post {
   /// No longer used: plan rows (PlanEntry) link to posts now. Kept so old rows stay readable.
   slotDay     String?
   planEntry   PlanEntry?
+  /// Images or a PDF carousel to post with it
+  media       PostMedia[]
   /// Posted as a comment under the post once it is live, e.g. the link. Empty for none.
   firstComment      String    @default("")
   /// pending | posting | posted | failed; null when there is no first comment yet.
@@ -439,4 +441,29 @@ model PlanEntry {
   updatedAt   DateTime  @updatedAt
 
   @@index([workspaceId, day])
+}
+
+/// An image or PDF that goes out with a post. The file is in blob storage
+/// (or a local folder in development) until the day after the post is
+/// published, then deleted; the row stays so AILI can say it was removed.
+model PostMedia {
+  id          String    @id @default(cuid())
+  workspaceId String
+  postId      String
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  /// "image" or "document" (a PDF, shown on LinkedIn as a carousel)
+  kind        String
+  /// Where the file is: a blob URL, or "local:<name>" in development
+  url         String
+  name        String    @default("")
+  contentType String    @default("")
+  size        Int       @default(0)
+  position    Int       @default(0)
+  alt         String    @default("")
+  /// Set once the file is deleted from storage
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([postId])
+  @@index([workspaceId])
 }

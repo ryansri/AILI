@@ -3,6 +3,8 @@ import type { Post as PostRow } from "@prisma/client";
 import { db } from "./db";
 import { open, seal } from "./secret-box";
 import { commentOnLinkedInPost, LinkedInPostError, linkedInPostUrl, publishLinkedInPost, refreshLinkedIn } from "./linkedin-posting";
+import { cleanupPublishedMedia, mediaForLinkedIn, toMediaViews } from "./media-server";
+import type { MediaView } from "./media";
 import { COMMENT_MAX_CHARS, POST_MAX_CHARS } from "./linkedin-text";
 import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
 
@@ -36,11 +38,18 @@ export interface PostView {
   overdue: boolean;
   /** The plan row it was written for: its day and time ("09:00" when the plan has none). */
   planned?: { day: string; time: string };
+  /** Its images, in order, or its PDF carousel. */
+  media: MediaView[];
   createdAt: string;
   updatedAt: string;
 }
 
-export function toPostView(p: PostRow & { planEntry?: { day: string | null; time: string | null } | null }): PostView {
+export function toPostView(
+  p: PostRow & {
+    planEntry?: { day: string | null; time: string | null } | null;
+    media?: Parameters<typeof toMediaViews>[0];
+  },
+): PostView {
   return {
     id: p.id,
     kind: p.kind === "article" ? "article" : "post",
@@ -60,6 +69,7 @@ export function toPostView(p: PostRow & { planEntry?: { day: string | null; time
     commentError: p.commentError ?? undefined,
     overdue: p.status === "scheduled" && (p.scheduledAt?.getTime() ?? Infinity) < Date.now() - 2 * 60_000,
     planned: p.planEntry?.day ? { day: p.planEntry.day, time: p.planEntry.time ?? "09:00" } : undefined,
+    media: toMediaViews(p.media ?? []),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };
@@ -160,7 +170,7 @@ export async function publishPost(workspaceId: string, postId: string): Promise<
   if (claimed.count === 0) throw new Error("This post is already being published.");
   try {
     const { token, author } = await postingToken(workspaceId);
-    const urn = await publishLinkedInPost(token, author, post.body);
+    const urn = await publishLinkedInPost(token, author, post.body, await mediaForLinkedIn(post));
     const now = new Date();
     const w = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { firstCommentDelay: true } });
     const hasComment = Boolean(post.firstComment.trim() && urn);
@@ -256,6 +266,8 @@ export async function publishDuePosts({ fromTimer = false, now = new Date() } = 
   for (const post of comments) {
     await postFirstComment(post.workspaceId, post.id).catch(() => {});
   }
+  // The day after a post is out, its images and PDFs leave AILI's storage.
+  await cleanupPublishedMedia(now).catch(() => {});
   return { published, failed };
 }
 

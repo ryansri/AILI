@@ -122,29 +122,30 @@ function explain(status: number, detail: string, what: "post" | "comment"): Link
 }
 
 /**
- * POSTs to LinkedIn's versioned REST API, trying older versions when one has
- * retired. Returns the id LinkedIn gives the new item.
+ * Calls LinkedIn's versioned REST API, trying older versions when one has
+ * retired. Returns the response once LinkedIn accepts it.
  */
-async function restCreate(accessToken: string, path: string, payload: unknown, what: "post" | "comment"): Promise<string> {
-  const body = JSON.stringify(payload);
+async function restRequest(
+  accessToken: string,
+  method: "GET" | "POST",
+  path: string,
+  payload: unknown,
+  what: "post" | "comment",
+): Promise<Response> {
+  const body = payload === undefined ? undefined : JSON.stringify(payload);
   let lastError: LinkedInPostError | null = null;
   for (const version of versions()) {
     const res = await fetch(`https://api.linkedin.com/rest/${path}`, {
-      method: "POST",
+      method,
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+        ...(body ? { "Content-Type": "application/json" } : {}),
         "LinkedIn-Version": version,
         "X-Restli-Protocol-Version": "2.0.0",
       },
       body,
     });
-    if (res.ok) {
-      const header = res.headers.get("x-restli-id") ?? res.headers.get("x-linkedin-id");
-      if (header) return header;
-      const data = (await res.json().catch(() => ({}))) as { $URN?: string; id?: string };
-      return data.$URN ?? data.id ?? "";
-    }
+    if (res.ok) return res;
     const detail = await res.text().catch(() => "");
     lastError = explain(res.status, detail, what);
     // An inactive version: try the month before. Anything else is a real answer.
@@ -154,8 +155,63 @@ async function restCreate(accessToken: string, path: string, payload: unknown, w
   throw lastError ?? new LinkedInPostError(`LinkedIn did not publish the ${what}.`);
 }
 
-/** Publishes a text post to the member's feed. Returns the new post's urn. */
-export function publishLinkedInPost(accessToken: string, authorUrn: string, text: string): Promise<string> {
+/** Creates something (a post, a comment) and returns the id LinkedIn gives it. */
+async function restCreate(accessToken: string, path: string, payload: unknown, what: "post" | "comment"): Promise<string> {
+  const res = await restRequest(accessToken, "POST", path, payload, what);
+  const header = res.headers.get("x-restli-id") ?? res.headers.get("x-linkedin-id");
+  if (header) return header;
+  const data = (await res.json().catch(() => ({}))) as { $URN?: string; id?: string };
+  return data.$URN ?? data.id ?? "";
+}
+
+/** Pictures or a PDF to go with a post. A PDF shows on LinkedIn as a swipeable carousel. */
+export type LinkedInMedia =
+  | { kind: "images"; images: { bytes: Uint8Array; alt?: string }[] }
+  | { kind: "document"; bytes: Uint8Array; title: string };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Uploads one image or PDF to LinkedIn and returns its urn: LinkedIn gives
+ * an upload address, the file goes there, then AILI waits until LinkedIn has
+ * processed it (documents take a few seconds).
+ */
+async function uploadAsset(accessToken: string, owner: string, kind: "images" | "documents", bytes: Uint8Array): Promise<string> {
+  const res = await restRequest(accessToken, "POST", `${kind}?action=initializeUpload`, { initializeUploadRequest: { owner } }, "post");
+  const data = (await res.json().catch(() => ({}))) as { value?: { uploadUrl?: string; image?: string; document?: string } };
+  const uploadUrl = data.value?.uploadUrl;
+  const urn = data.value?.image ?? data.value?.document;
+  if (!uploadUrl || !urn) throw new LinkedInPostError("LinkedIn did not accept the upload. Try again in a minute.");
+  const put = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/octet-stream" },
+    body: bytes as BodyInit,
+  });
+  if (!put.ok) throw explain(put.status, await put.text().catch(() => ""), "post");
+  for (let i = 0; i < 12; i++) {
+    const check = await restRequest(accessToken, "GET", `${kind}/${encodeURIComponent(urn)}`, undefined, "post");
+    const { status } = (await check.json().catch(() => ({}))) as { status?: string };
+    if (!status || status === "AVAILABLE") return urn;
+    if (/FAILED/.test(status)) throw new LinkedInPostError(`LinkedIn could not process the ${kind === "images" ? "image" : "PDF"}. Check the file and try again.`);
+    await sleep(2000);
+  }
+  return urn;
+}
+
+/** Publishes a post to the member's feed, with images or a PDF when given. Returns the new post's urn. */
+export async function publishLinkedInPost(accessToken: string, authorUrn: string, text: string, media?: LinkedInMedia): Promise<string> {
+  let content: Record<string, unknown> | undefined;
+  if (media?.kind === "images" && media.images.length > 0) {
+    const ids: { id: string; altText?: string }[] = [];
+    for (const img of media.images) {
+      const id = await uploadAsset(accessToken, authorUrn, "images", img.bytes);
+      ids.push(img.alt ? { id, altText: img.alt.slice(0, 4000) } : { id });
+    }
+    content = ids.length === 1 ? { media: ids[0] } : { multiImage: { images: ids } };
+  } else if (media?.kind === "document") {
+    const id = await uploadAsset(accessToken, authorUrn, "documents", media.bytes);
+    content = { media: { title: media.title.slice(0, 400) || "Carousel", id } };
+  }
   return restCreate(
     accessToken,
     "posts",
@@ -164,6 +220,7 @@ export function publishLinkedInPost(accessToken: string, authorUrn: string, text
       commentary: toCommentary(text),
       visibility: "PUBLIC",
       distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
+      ...(content ? { content } : {}),
       lifecycleState: "PUBLISHED",
       isReshareDisabledByAuthor: false,
     },

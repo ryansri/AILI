@@ -11,6 +11,7 @@ import { validTimeZone } from "./time-zone";
 import { clockFor } from "./content-plan";
 import { fillMatchingRow, followSchedule, linkPost } from "./plan-store";
 import { localDay } from "./plan";
+import { deleteAllMedia } from "./media-server";
 
 /*
  * Server actions for the Posts page and the AI and LinkedIn parts of Settings.
@@ -123,6 +124,8 @@ async function updateFirstCommentDelayImpl(minutes: number) {
 async function deletePostImpl(postId: string) {
   const { post } = await ownPost(postId);
   if (post.status === "publishing") throw new Error("It is being published right now.");
+  // Its images and PDFs go with it, from storage too.
+  await deleteAllMedia(post.id);
   await db.post.delete({ where: { id: post.id } });
   done();
 }

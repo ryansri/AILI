@@ -62,6 +62,64 @@ describe("LinkedIn posting", () => {
     await expect(publishLinkedInPost("tok", "urn:li:person:abc", "hi")).rejects.toThrow(/duplicate/);
   });
 
+  it("uploads one image and posts it as the post's media", async () => {
+    const calls = fakeLinkedIn([
+      Response.json({ value: { uploadUrl: "https://upload.example/1", image: "urn:li:image:A" } }),
+      new Response(null, { status: 201 }),
+      Response.json({ status: "AVAILABLE" }),
+      new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:share:7" } }),
+    ]);
+    const urn = await publishLinkedInPost("tok", "urn:li:person:abc", "hi", { kind: "images", images: [{ bytes: new Uint8Array([1, 2]) }] });
+    expect(urn).toBe("urn:li:share:7");
+    expect(calls[0].url).toBe("https://api.linkedin.com/rest/images?action=initializeUpload");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ initializeUploadRequest: { owner: "urn:li:person:abc" } });
+    expect(calls[1]).toMatchObject({ url: "https://upload.example/1", init: { method: "PUT" } });
+    expect(calls[2].url).toBe(`https://api.linkedin.com/rest/images/${encodeURIComponent("urn:li:image:A")}`);
+    expect(JSON.parse(String(calls[3].init.body)).content).toEqual({ media: { id: "urn:li:image:A" } });
+  });
+
+  it("posts several images as a multi-image post, in order", async () => {
+    const calls = fakeLinkedIn([
+      Response.json({ value: { uploadUrl: "https://upload.example/1", image: "urn:li:image:A" } }),
+      new Response(null, { status: 201 }),
+      Response.json({ status: "AVAILABLE" }),
+      Response.json({ value: { uploadUrl: "https://upload.example/2", image: "urn:li:image:B" } }),
+      new Response(null, { status: 201 }),
+      Response.json({ status: "AVAILABLE" }),
+      new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:share:8" } }),
+    ]);
+    await publishLinkedInPost("tok", "urn:li:person:abc", "hi", {
+      kind: "images",
+      images: [{ bytes: new Uint8Array([1]) }, { bytes: new Uint8Array([2]), alt: "A chart" }],
+    });
+    expect(JSON.parse(String(calls[6].init.body)).content).toEqual({
+      multiImage: { images: [{ id: "urn:li:image:A" }, { id: "urn:li:image:B", altText: "A chart" }] },
+    });
+  });
+
+  it("posts a PDF as a document (LinkedIn's carousel)", async () => {
+    const calls = fakeLinkedIn([
+      Response.json({ value: { uploadUrl: "https://upload.example/d", document: "urn:li:document:D" } }),
+      new Response(null, { status: 201 }),
+      Response.json({ status: "AVAILABLE" }),
+      new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:share:9" } }),
+    ]);
+    await publishLinkedInPost("tok", "urn:li:person:abc", "hi", { kind: "document", bytes: new Uint8Array([1]), title: "7 places" });
+    expect(calls[0].url).toBe("https://api.linkedin.com/rest/documents?action=initializeUpload");
+    expect(JSON.parse(String(calls[3].init.body)).content).toEqual({ media: { title: "7 places", id: "urn:li:document:D" } });
+  });
+
+  it("stops when LinkedIn cannot process a file", async () => {
+    fakeLinkedIn([
+      Response.json({ value: { uploadUrl: "https://upload.example/d", document: "urn:li:document:D" } }),
+      new Response(null, { status: 201 }),
+      Response.json({ status: "PROCESSING_FAILED" }),
+    ]);
+    await expect(
+      publishLinkedInPost("tok", "urn:li:person:abc", "hi", { kind: "document", bytes: new Uint8Array([1]), title: "x" }),
+    ).rejects.toThrow(/could not process the PDF/);
+  });
+
   it("builds the consent link and post address", () => {
     vi.stubEnv("LINKEDIN_CLIENT_ID", "cid");
     const url = new URL(linkedinAuthorizeUrl("https://aili.example.com/api/linkedin/callback", "st"));

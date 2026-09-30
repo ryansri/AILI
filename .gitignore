@@ -47,3 +47,6 @@ prisma/dev.db*
 src/generated/
 extension/dist/
 prisma/.auth-secret
+
+# post images and PDFs kept locally in development
+/.data/

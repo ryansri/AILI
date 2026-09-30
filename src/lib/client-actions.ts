@@ -6,6 +6,7 @@
 import { unwrap } from "./action-result";
 import * as actions from "./actions";
 import * as posts from "./post-actions";
+import * as media from "./media-actions";
 import * as plan from "./plan-actions";
 import * as companies from "./company-actions";
 import * as invites from "./invite-actions";
@@ -63,6 +64,9 @@ export const updateFirstCommentDelay = unwrap(posts.updateFirstCommentDelay);
 export const deletePost = unwrap(posts.deletePost);
 export const markArticlePublished = unwrap(posts.markArticlePublished);
 export const saveTimeZone = unwrap(posts.saveTimeZone);
+export const attachMedia = unwrap(media.attachMedia);
+export const removeMedia = unwrap(media.removeMedia);
+export const orderMedia = unwrap(media.orderMedia);
 export const disconnectLinkedInPosting = unwrap(posts.disconnectLinkedInPosting);
 export const disconnectAiApp = unwrap(posts.disconnectAiApp);
 
