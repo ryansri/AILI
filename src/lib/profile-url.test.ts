@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { postsUrl } from "./profile-url";
+import { chatUrl, postsUrl } from "./profile-url";
 
 describe("postsUrl", () => {
   it("finds their activity page from any form of the profile link", () => {
@@ -13,5 +13,12 @@ describe("postsUrl", () => {
     expect(postsUrl("")).toBeNull();
     expect(postsUrl("https://www.linkedin.com/company/emotive")).toBeNull();
     expect(postsUrl("https://example.com/in/simon")).toBeNull();
+  });
+});
+
+describe("chatUrl", () => {
+  it("opens the chat on LinkedIn, or their profile when AILI has no chat yet", () => {
+    expect(chatUrl("2-ZmY3YjE0==", "https://www.linkedin.com/in/sarah")).toBe("https://www.linkedin.com/messaging/thread/2-ZmY3YjE0==/");
+    expect(chatUrl(undefined, "https://www.linkedin.com/in/sarah")).toBe("https://www.linkedin.com/in/sarah");
   });
 });

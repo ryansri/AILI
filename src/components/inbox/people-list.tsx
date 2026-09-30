@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, CheckCheck, ChevronDown, ChevronRight, PanelLeft, Plus, Send, Star } from "lucide-react";
+import { Check, CheckCheck, ChevronDown, ChevronRight, Mic, PanelLeft, Plus, Send, Star } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/client-actions";
@@ -17,10 +17,11 @@ import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/compo
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
 import { needsConnect } from "@/lib/invites";
+import { isVoiceNote } from "@/lib/voice-note";
 import { PersonAvatar } from "@/components/person-avatar";
 import { SyncLineBar } from "./sync-line";
 
-function lastLine(row: Row): string {
+function lastLine(row: Row): React.ReactNode {
   const pending = row.person.pending[row.person.pending.length - 1];
   if (pending) return `You: ${pending.body}`;
   const msgs = row.person.messages;
@@ -41,6 +42,14 @@ function lastLine(row: Row): string {
         return "Accepted your request · say hello";
     }
     return needsConnect(row.person) ? "Next: send a connection request" : "Next: say hello";
+  }
+  if (isVoiceNote(last.body)) {
+    return (
+      <>
+        {last.direction === "out" && "You: "}
+        <Mic className="mb-0.5 inline size-3.5" /> Voice note
+      </>
+    );
   }
   return last.direction === "out" ? `You: ${last.body}` : last.body;
 }

@@ -12,8 +12,10 @@ import {
   CircleHelp,
   ClipboardPaste,
   Clock3,
+  ExternalLink,
   FolderInput,
   Info,
+  Mic,
   MoreHorizontal,
   Newspaper,
   RotateCcw,
@@ -28,7 +30,8 @@ import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveT
 import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { followUpNote, relativeTime, shortDate, shortTime } from "@/lib/next-step";
-import { postsUrl } from "@/lib/profile-url";
+import { chatUrl, postsUrl } from "@/lib/profile-url";
+import { isVoiceNote } from "@/lib/voice-note";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -403,7 +406,24 @@ export function ConversationPane({
                       !mine && joinsNext && "rounded-bl-md",
                     )}
                   >
-                    {m.body}
+                    {isVoiceNote(m.body) ? (
+                      <a
+                        href={chatUrl(person.conversationId, person.linkedinUrl)}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Opens this chat on LinkedIn, in a new tab"
+                        className="group inline-flex items-center gap-2 font-medium"
+                      >
+                        <Mic className="size-4 shrink-0" />
+                        Voice note
+                        <span className="inline-flex items-center gap-1 text-xs font-normal opacity-70 group-hover:underline group-hover:opacity-100">
+                          Play on LinkedIn
+                          <ExternalLink className="size-3" />
+                        </span>
+                      </a>
+                    ) : (
+                      m.body
+                    )}
                   </div>
                 </div>
                 {(m.followUp || (lastMine && (m.onLinkedIn || seen))) && (
