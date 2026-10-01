@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export function OPTIONS(request: Request) {
  * and one to withdraw (the user clicked each), and whether it is time to read
  * your sent requests and newest connections from LinkedIn.
  */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const stale = new Date(Date.now() - STALE_CLAIM_MS);
@@ -59,3 +59,5 @@ export async function GET(request: Request) {
     { headers: corsHeaders(request) },
   );
 }
+
+export const GET = helperRoute(handleGET);

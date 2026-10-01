@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,7 @@ export function OPTIONS(request: Request) {
 }
 
 /** The helper reports the outcome of one delivery. */
-export async function POST(request: Request, ctx: RouteContext<"/api/helper/outbox/[id]">) {
+async function handlePOST(request: Request, ctx: RouteContext<"/api/helper/outbox/[id]">) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const { id } = await ctx.params;
@@ -80,3 +80,5 @@ export async function POST(request: Request, ctx: RouteContext<"/api/helper/outb
   revalidatePath("/today");
   return NextResponse.json({ ok: true }, { headers: corsHeaders(request) });
 }
+
+export const POST = helperRoute(handlePOST);

@@ -65,6 +65,8 @@ export interface SyncResult {
   newReplies: NewReply[];
   /** People new to AILI whose conversation you started recently. */
   startedByYou: StartedByYou[];
+  /** Conversations that could not be saved; the rest still are. */
+  failed: number;
 }
 
 const COMPANY_SPLIT = /\s+(?:at|@)\s+/i;
@@ -176,7 +178,7 @@ export function validatePayload(input: unknown): SyncPayload | null {
 }
 
 export async function applySync(workspaceId: string, payload: SyncPayload): Promise<SyncResult> {
-  const result: SyncResult = { peopleCreated: 0, peopleUpdated: 0, messagesAdded: 0, skippedGroups: 0, newReplies: [], startedByYou: [] };
+  const result: SyncResult = { peopleCreated: 0, peopleUpdated: 0, messagesAdded: 0, skippedGroups: 0, newReplies: [], startedByYou: [], failed: 0 };
 
   for (const conv of payload.conversations) {
     const others = conv.participants.filter((p) => p.urn !== payload.memberUrn);
@@ -184,118 +186,135 @@ export async function applySync(workspaceId: string, payload: SyncPayload): Prom
       result.skippedGroups += 1;
       continue;
     }
-    const other = others[0];
-    const { headline, company } = splitHeadline(other.headline ?? "");
-
-    const existing = await db.person.findFirst({
-      where: { workspaceId, OR: [{ linkedinUrn: other.urn }, { conversationId: conv.id }] },
-    });
-
-    let personId: string;
-    let isLead: boolean;
-    if (existing) {
-      personId = existing.id;
-      isLead = existing.lead;
-      await db.person.update({
-        where: { id: existing.id },
-        data: {
-          linkedinUrn: other.urn,
-          conversationId: conv.id,
-          // Fill blanks from LinkedIn, never overwrite what the user typed.
-          // A headline stored whole by an earlier import (it still has LinkedIn's
-          // "|" separators) is re-split now.
-          name: existing.name || other.name,
-          headline: !existing.headline || (existing.source === "linkedin" && existing.headline.includes("|")) ? headline : existing.headline,
-          company: existing.company || company,
-          publicId: existing.publicId ?? other.publicId,
-          pictureUrl: existing.pictureUrl || other.pictureUrl || "",
-          linkedinUrl: existing.linkedinUrl || (other.publicId ? `https://www.linkedin.com/in/${other.publicId}` : ""),
-          connectedAt: existing.connectedAt ?? new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
-        },
-      });
-      result.peopleUpdated += 1;
-    } else {
-      const first = firstMessage(conv.messages, payload.memberUrn);
-      const ask = shouldAskLead(first);
-      const created = await db.person.create({
-        data: {
-          workspaceId,
-          name: other.name,
-          headline,
-          company,
-          publicId: other.publicId,
-          pictureUrl: other.pictureUrl ?? "",
-          linkedinUrl: other.publicId ? `https://www.linkedin.com/in/${other.publicId}` : "",
-          linkedinUrn: other.urn,
-          conversationId: conv.id,
-          source: "linkedin",
-          stage: "conversation",
-          // Everyone synced starts in Other: messaging someone does not make them a lead.
-          // For a conversation you just started, AILI asks instead (see leads.ts).
-          lead: false,
-          askLead: ask,
-          connectedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
-          stageChangedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
-        },
-      });
-      personId = created.id;
-      isLead = created.lead;
-      result.peopleCreated += 1;
-      if (ask && first) result.startedByYou.push({ personId, name: created.name, sentAt: first.sentAt });
-    }
-
-    if (conv.seenAt) {
-      // Their read receipt only moves forward.
-      await db.person.updateMany({
-        where: { id: personId, OR: [{ seenAt: null }, { seenAt: { lt: new Date(conv.seenAt) } }] },
-        data: { seenAt: new Date(conv.seenAt) },
-      });
-    }
-
-    for (const m of conv.messages) {
-      const direction = m.senderUrn === payload.memberUrn ? "out" : "in";
-      const known = await db.message.findUnique({ where: { externalId: m.id } });
-      if (known) continue;
-
-      if (direction === "out") {
-        // A message we sent through the outbox is already stored without an id.
-        const twin = await db.message.findFirst({
-          where: {
-            personId,
-            direction: "out",
-            externalId: null,
-            sentAt: { gte: new Date(m.sentAt - 10 * 60 * 1000), lte: new Date(m.sentAt + 10 * 60 * 1000) },
-          },
-          orderBy: { sentAt: "desc" },
-        });
-        if (twin && sameBody(twin.body, m.body)) {
-          await db.message.update({ where: { id: twin.id }, data: { externalId: m.id, sentAt: new Date(m.sentAt) } });
-          continue;
-        }
-      }
-
-      await db.message.create({
-        data: {
-          personId,
-          direction,
-          body: m.body,
-          sentAt: new Date(m.sentAt),
-          source: "helper",
-          externalId: m.id,
-        },
-      });
-      result.messagesAdded += 1;
-      // Desktop notifications are for leads; Other just shows the new message in AILI.
-      if (direction === "in" && isLead) result.newReplies.push({ personId, name: other.name, body: m.body, sentAt: m.sentAt });
-    }
-
-    // Anything new means the snooze is over and early stages move on.
-    const person = await db.person.findUniqueOrThrow({ where: { id: personId } });
-    const hasInbound = conv.messages.some((m) => m.senderUrn !== payload.memberUrn);
-    if (hasInbound && ["warming", "requested", "connected"].includes(person.stage)) {
-      await db.person.update({ where: { id: personId }, data: { stage: "conversation", stageChangedAt: new Date() } });
+    // One conversation that can't be saved must not stop the rest.
+    try {
+      await applyConversation(workspaceId, payload.memberUrn, conv, others[0], result);
+    } catch (err) {
+      result.failed += 1;
+      console.error(`Sync: conversation ${conv.id} not saved`, err);
     }
   }
 
   return result;
+}
+
+async function applyConversation(
+  workspaceId: string,
+  memberUrn: string,
+  conv: SyncConversation,
+  other: SyncParticipant,
+  result: SyncResult,
+): Promise<void> {
+  const { headline, company } = splitHeadline(other.headline ?? "");
+
+  // The person with their LinkedIn id first: taking the id for someone else
+  // (matched by the conversation) would clash with them.
+  const existing =
+    (await db.person.findFirst({ where: { workspaceId, linkedinUrn: other.urn } })) ??
+    (await db.person.findFirst({ where: { workspaceId, conversationId: conv.id } }));
+
+  let personId: string;
+  let isLead: boolean;
+  if (existing) {
+    personId = existing.id;
+    isLead = existing.lead;
+    await db.person.update({
+      where: { id: existing.id },
+      data: {
+        linkedinUrn: other.urn,
+        conversationId: conv.id,
+        // Fill blanks from LinkedIn, never overwrite what the user typed.
+        // A headline stored whole by an earlier import (it still has LinkedIn's
+        // "|" separators) is re-split now.
+        name: existing.name || other.name,
+        headline: !existing.headline || (existing.source === "linkedin" && existing.headline.includes("|")) ? headline : existing.headline,
+        company: existing.company || company,
+        publicId: existing.publicId ?? other.publicId,
+        pictureUrl: existing.pictureUrl || other.pictureUrl || "",
+        linkedinUrl: existing.linkedinUrl || (other.publicId ? `https://www.linkedin.com/in/${other.publicId}` : ""),
+        connectedAt: existing.connectedAt ?? new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
+      },
+    });
+    result.peopleUpdated += 1;
+  } else {
+    const first = firstMessage(conv.messages, memberUrn);
+    const ask = shouldAskLead(first);
+    const created = await db.person.create({
+      data: {
+        workspaceId,
+        name: other.name,
+        headline,
+        company,
+        publicId: other.publicId,
+        pictureUrl: other.pictureUrl ?? "",
+        linkedinUrl: other.publicId ? `https://www.linkedin.com/in/${other.publicId}` : "",
+        linkedinUrn: other.urn,
+        conversationId: conv.id,
+        source: "linkedin",
+        stage: "conversation",
+        // Everyone synced starts in Other: messaging someone does not make them a lead.
+        // For a conversation you just started, AILI asks instead (see leads.ts).
+        lead: false,
+        askLead: ask,
+        connectedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
+        stageChangedAt: new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
+      },
+    });
+    personId = created.id;
+    isLead = created.lead;
+    result.peopleCreated += 1;
+    if (ask && first) result.startedByYou.push({ personId, name: created.name, sentAt: first.sentAt });
+  }
+
+  if (conv.seenAt) {
+    // Their read receipt only moves forward.
+    await db.person.updateMany({
+      where: { id: personId, OR: [{ seenAt: null }, { seenAt: { lt: new Date(conv.seenAt) } }] },
+      data: { seenAt: new Date(conv.seenAt) },
+    });
+  }
+
+  for (const m of conv.messages) {
+    const direction = m.senderUrn === memberUrn ? "out" : "in";
+    const known = await db.message.findUnique({ where: { externalId: m.id } });
+    if (known) continue;
+
+    if (direction === "out") {
+      // A message we sent through the outbox is already stored without an id.
+      const twin = await db.message.findFirst({
+        where: {
+          personId,
+          direction: "out",
+          externalId: null,
+          sentAt: { gte: new Date(m.sentAt - 10 * 60 * 1000), lte: new Date(m.sentAt + 10 * 60 * 1000) },
+        },
+        orderBy: { sentAt: "desc" },
+      });
+      if (twin && sameBody(twin.body, m.body)) {
+        await db.message.update({ where: { id: twin.id }, data: { externalId: m.id, sentAt: new Date(m.sentAt) } });
+        continue;
+      }
+    }
+
+    await db.message.create({
+      data: {
+        personId,
+        direction,
+        body: m.body,
+        sentAt: new Date(m.sentAt),
+        source: "helper",
+        externalId: m.id,
+      },
+    });
+    result.messagesAdded += 1;
+    // Desktop notifications are for leads; Other just shows the new message in AILI.
+    if (direction === "in" && isLead) result.newReplies.push({ personId, name: other.name, body: m.body, sentAt: m.sentAt });
+  }
+
+  // Anything new means the snooze is over and early stages move on.
+  const person = await db.person.findUniqueOrThrow({ where: { id: personId } });
+  const hasInbound = conv.messages.some((m) => m.senderUrn !== memberUrn);
+  if (hasInbound && ["warming", "requested", "connected"].includes(person.stage)) {
+    await db.person.update({ where: { id: personId }, data: { stage: "conversation", stageChangedAt: new Date() } });
+  }
 }

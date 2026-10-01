@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { cleanText, markInviteSent, markInviteWithdrawn } from "@/lib/invite-store";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export function OPTIONS(request: Request) {
  * The helper reports one connection request: sent (with LinkedIn's id for it),
  * refused, withdrawn, or a withdraw that did not go through.
  */
-export async function POST(request: Request, ctx: RouteContext<"/api/helper/invites/[id]">) {
+async function handlePOST(request: Request, ctx: RouteContext<"/api/helper/invites/[id]">) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const { id } = await ctx.params;
@@ -57,3 +57,5 @@ export async function POST(request: Request, ctx: RouteContext<"/api/helper/invi
   revalidatePath("/people");
   return NextResponse.json({ ok: true }, { headers: corsHeaders(request) });
 }
+
+export const POST = helperRoute(handlePOST);

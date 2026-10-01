@@ -2,7 +2,7 @@ import { after, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isLinkedInImage } from "@/lib/helper-sync";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { publishDuePosts } from "@/lib/posts";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export function OPTIONS(request: Request) {
 }
 
 /** Pairing check: tells the helper which account it is talking to. */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   return NextResponse.json(
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 }
 
 /** Heartbeat. state: "ok" | "logged_out" | "error". */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const body = (await request.json().catch(() => ({}))) as {
@@ -77,3 +77,6 @@ export async function POST(request: Request) {
   after(() => publishDuePosts().catch((err) => console.error("Publishing scheduled posts failed", err)));
   return NextResponse.json({ ok: true, resync }, { headers: corsHeaders(request) });
 }
+
+export const GET = helperRoute(handleGET);
+export const POST = helperRoute(handlePOST);

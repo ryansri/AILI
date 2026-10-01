@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getPeople } from "@/lib/data";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { isLinkedInImage } from "@/lib/helper-sync";
 import { pickLookups, profileIdentity } from "@/lib/profile-lookup";
 
@@ -16,7 +16,7 @@ export function OPTIONS(request: Request) {
  * company and profile photo. Two at most per request; each person is looked
  * up once.
  */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
 
@@ -61,7 +61,7 @@ function clean(value: unknown, max: number): string {
  * title and company unless the user has edited the person by hand, and keeps
  * the latest profile photo (LinkedIn's photo links expire, so a fresh one wins).
  */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
 
@@ -91,3 +91,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true, updated }, { headers: corsHeaders(request) });
 }
+
+export const GET = helperRoute(handleGET);
+export const POST = helperRoute(handlePOST);

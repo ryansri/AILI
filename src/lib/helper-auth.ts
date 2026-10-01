@@ -29,3 +29,25 @@ export function corsHeaders(request: Request): HeadersInit {
 export function preflight(request: Request) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
+
+/**
+ * Wraps a helper route so a failure comes back as a short reason the
+ * helper's popup shows ("AILI hit a problem (sync): …") and is logged in
+ * Vercel, instead of a bare 500.
+ */
+export function helperRoute<A extends unknown[]>(handler: (request: Request, ...rest: A) => Promise<Response>) {
+  return async (request: Request, ...rest: A): Promise<Response> => {
+    try {
+      return await handler(request, ...rest);
+    } catch (err) {
+      const where = new URL(request.url).pathname.replace(/^\/api\/helper\//, "");
+      console.error(`Helper ${where} failed`, err);
+      // Database errors run to many lines; the last one says what went wrong.
+      const why = err instanceof Error ? (err.message.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "").slice(0, 200) : "";
+      return NextResponse.json(
+        { error: `AILI hit a problem (${where}): ${why || "unknown error"}` },
+        { status: 500, headers: corsHeaders(request) },
+      );
+    }
+  };
+}

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getStages } from "@/lib/data";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { isLinkedInImage } from "@/lib/helper-sync";
 import { TAG_COLORS } from "@/lib/types";
 
@@ -62,7 +62,7 @@ const brief = (p: { id: string; name: string; stage: string; lead: boolean }) =>
   lead: p.lead,
 });
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const params = new URL(request.url).searchParams;
@@ -114,7 +114,7 @@ async function tagByName(workspaceId: string, label: string) {
   return db.tag.create({ data: { workspaceId, label, color }, select: { id: true } });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const body = ((await request.json().catch(() => null)) ?? {}) as AddBody;
@@ -201,3 +201,6 @@ export async function POST(request: Request) {
   revalidatePath("/inbox");
   return NextResponse.json({ id: person.id, existed: false, stage, tagId: tag?.id }, { headers: corsHeaders(request) });
 }
+
+export const GET = helperRoute(handleGET);
+export const POST = helperRoute(handlePOST);

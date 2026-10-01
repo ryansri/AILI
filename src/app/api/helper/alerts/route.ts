@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getPeople } from "@/lib/data";
 import { alertsQueue, nudgeDue } from "@/lib/alerts";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { memberIdOf } from "@/lib/invites";
 import { localDay } from "@/lib/plan";
 import { timeZoneOf } from "@/lib/posts";
@@ -19,7 +19,7 @@ export function OPTIONS(request: Request) {
  * waiting for the bell: how many today, and the first one, so a notice for a
  * single person can open their profile straight away.
  */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const timeZone = timeZoneOf(workspace);
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
  * from the reminder. { memberId | publicId }: the helper saw you tap the bell
  * on someone's profile; if they are in AILI, their post alerts are on.
  */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const body = ((await request.json().catch(() => null)) ?? {}) as { opened?: unknown; memberId?: unknown; publicId?: unknown };
@@ -72,3 +72,6 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ person: { id: person.id, name: person.name, fresh } }, { headers: corsHeaders(request) });
 }
+
+export const GET = helperRoute(handleGET);
+export const POST = helperRoute(handlePOST);

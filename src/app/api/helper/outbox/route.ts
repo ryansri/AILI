@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export function OPTIONS(request: Request) {
  * The helper asks for messages to deliver. Hands out at most one at a time so
  * sends stay spaced out, and marks it "sending" so no other poll takes it.
  */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
 
@@ -47,3 +47,5 @@ export async function GET(request: Request) {
     { headers: corsHeaders(request) },
   );
 }
+
+export const GET = helperRoute(handleGET);

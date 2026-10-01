@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export function OPTIONS(request: Request) {
   return preflight(request);
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const body = (await request.json().catch(() => null)) as { personId?: unknown; lead?: unknown } | null;
@@ -32,3 +32,5 @@ export async function POST(request: Request) {
   revalidatePath("/today");
   return NextResponse.json({ ok: true }, { headers: corsHeaders(request) });
 }
+
+export const POST = helperRoute(handlePOST);

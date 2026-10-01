@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { corsHeaders, preflight, unauthorized, workspaceFromRequest } from "@/lib/helper-auth";
+import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { applyNetwork, readNetworkReport } from "@/lib/invite-store";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export function OPTIONS(request: Request) {
  * you sent on LinkedIn itself. The answer lists leads who just accepted, for a
  * desktop notice when those are on.
  */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const report = readNetworkReport(await request.json().catch(() => null));
@@ -27,3 +27,5 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ accepted: workspace.notifyAccepts ? accepted : [] }, { headers: corsHeaders(request) });
 }
+
+export const POST = helperRoute(handlePOST);
