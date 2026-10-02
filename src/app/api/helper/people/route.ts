@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { clip } from "@/lib/clip";
 import { db } from "@/lib/db";
 import { getStages } from "@/lib/data";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
@@ -27,7 +28,7 @@ export function OPTIONS(request: Request) {
 }
 
 function clean(value: unknown, max: number): string {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
+  return typeof value === "string" ? clip(value.replace(/\s+/g, " ").trim(), max) : "";
 }
 
 function cleanPublicId(value: unknown): string {

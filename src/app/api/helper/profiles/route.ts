@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clip } from "@/lib/clip";
 import { db } from "@/lib/db";
 import { getPeople } from "@/lib/data";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
@@ -53,7 +54,7 @@ interface LookupResult {
 }
 
 function clean(value: unknown, max: number): string {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
+  return typeof value === "string" ? clip(value.replace(/\s+/g, " ").trim(), max) : "";
 }
 
 /**

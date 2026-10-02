@@ -1,4 +1,5 @@
 import "server-only";
+import { clip } from "./clip";
 import { db } from "./db";
 
 /*
@@ -132,7 +133,7 @@ export function repliesToNotify(replies: NewReply[], now: number = Date.now()): 
   return replies
     .filter((r) => now - r.sentAt < NOTIFY_WITHIN_MS)
     .sort((a, b) => b.sentAt - a.sentAt)
-    .map((r) => ({ ...r, body: r.body.slice(0, 200) }));
+    .map((r) => ({ ...r, body: clip(r.body, 200) }));
 }
 
 /** Message bodies match when equal after collapsing whitespace. */
@@ -161,9 +162,9 @@ export function validatePayload(input: unknown): SyncPayload | null {
         .filter((x): x is SyncParticipant => Boolean(x) && typeof x.urn === "string" && typeof x.name === "string")
         .map((x) => ({
           urn: x.urn,
-          name: x.name.slice(0, 120),
-          headline: typeof x.headline === "string" ? x.headline.slice(0, 200) : undefined,
-          publicId: typeof x.publicId === "string" ? x.publicId.slice(0, 120) : undefined,
+          name: clip(x.name, 120),
+          headline: typeof x.headline === "string" ? clip(x.headline, 200) : undefined,
+          publicId: typeof x.publicId === "string" ? clip(x.publicId, 120) : undefined,
           pictureUrl: typeof x.pictureUrl === "string" ? x.pictureUrl.slice(0, 500) : undefined,
         })),
       messages: c.messages
@@ -171,7 +172,7 @@ export function validatePayload(input: unknown): SyncPayload | null {
           (m): m is SyncMessage =>
             Boolean(m) && typeof m.id === "string" && typeof m.senderUrn === "string" && typeof m.body === "string" && typeof m.sentAt === "number",
         )
-        .map((m) => ({ id: m.id, senderUrn: m.senderUrn, body: m.body.slice(0, 8000), sentAt: m.sentAt })),
+        .map((m) => ({ id: m.id, senderUrn: m.senderUrn, body: clip(m.body, 8000), sentAt: m.sentAt })),
     });
   }
   return { memberUrn: p.memberUrn, displayName: typeof p.displayName === "string" ? p.displayName : undefined, conversations };
