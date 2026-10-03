@@ -5,7 +5,7 @@ import { run } from "./action-result";
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
-import { checkCommentText, checkPostText, checkScheduleTime, postFirstComment, publishPost } from "./posts";
+import { addFirstComment, cancelFirstComment, checkCommentText, checkPostText, checkScheduleTime, postFirstComment, publishPost } from "./posts";
 import { FIRST_COMMENT_DELAYS } from "./linkedin-text";
 import { validTimeZone } from "./time-zone";
 import { clockFor } from "./content-plan";
@@ -113,6 +113,19 @@ async function retryFirstCommentImpl(postId: string) {
   done();
 }
 
+/** A first comment on a live post: now (no time) or at a time (ISO). */
+async function addFirstCommentImpl(postId: string, text: string, at?: string) {
+  const { workspace, post } = await ownPost(postId);
+  await addFirstComment(workspace.id, post.id, text, at ? new Date(at) : null);
+  done();
+}
+
+async function cancelFirstCommentImpl(postId: string) {
+  const { workspace, post } = await ownPost(postId);
+  await cancelFirstComment(workspace.id, post.id);
+  done();
+}
+
 /** Settings: how many minutes after a post goes live its first comment follows. */
 async function updateFirstCommentDelayImpl(minutes: number) {
   if (!FIRST_COMMENT_DELAYS.includes(minutes)) throw new Error("Pick one of the listed times.");
@@ -216,4 +229,12 @@ export async function disconnectLinkedInPosting(...args: Parameters<typeof disco
 
 export async function disconnectAiApp(...args: Parameters<typeof disconnectAiAppImpl>) {
   return run(() => disconnectAiAppImpl(...args));
+}
+
+export async function addFirstCommentToPost(...args: Parameters<typeof addFirstCommentImpl>) {
+  return run(() => addFirstCommentImpl(...args));
+}
+
+export async function cancelFirstCommentOnPost(...args: Parameters<typeof cancelFirstCommentImpl>) {
+  return run(() => cancelFirstCommentImpl(...args));
 }

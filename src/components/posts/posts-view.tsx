@@ -24,6 +24,8 @@ import { articleHtml, articlePlainText, wordCount } from "@/lib/article-html";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "@/lib/linkedin-text";
 import { formatWhen, toWallInput, wallTimeToDate } from "@/lib/time-zone";
 import {
+  addFirstCommentToPost,
+  cancelFirstCommentOnPost,
   deletePost,
   markArticlePublished,
   publishPostNow,
@@ -578,6 +580,34 @@ function FirstComment({ post, authorInitials, commentDelay }: { post: PostView; 
           <span className={state.className} suppressHydrationWarning>
             {state.text}
           </span>
+          {(post.commentStatus === "pending" || post.commentStatus === "failed") && post.status === "published" && (
+            <>
+              {post.commentStatus === "pending" && (
+                <>
+                  <CommentTimePicker post={post} label="Change time" />
+                  <span className="text-muted-foreground">·</span>
+                </>
+              )}
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                disabled={pending}
+                onClick={() =>
+                  start(async () => {
+                    try {
+                      await cancelFirstCommentOnPost(post.id);
+                      toast.success("First comment cancelled.");
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "That did not work.");
+                    }
+                  })
+                }
+              >
+                Cancel
+              </Button>
+            </>
+          )}
           {post.commentStatus === "failed" && (
             <Button
               variant="link"
@@ -599,6 +629,103 @@ function FirstComment({ post, authorInitials, commentDelay }: { post: PostView; 
             </Button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Picks when a live post's first comment goes out, then schedules it. */
+function CommentTimePicker({ post, text, label, onDone }: { post: PostView; text?: string; label: string; onDone?: () => void }) {
+  const zone = useContext(ZoneContext);
+  const when = useWhen();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(() =>
+    post.commentAt && post.commentStatus === "pending"
+      ? toWallInput(new Date(post.commentAt), zone)
+      : toWallInput(new Date(Date.now() + 90 * 60_000), zone).slice(0, 14) + "00",
+  );
+  const [pending, start] = useTransition();
+  const comment = text ?? post.firstComment;
+  function save() {
+    const at = wallTimeToDate(value, zone);
+    if (!at) return;
+    start(async () => {
+      try {
+        await addFirstCommentToPost(post.id, comment, at.toISOString());
+        toast.success(`First comment scheduled for ${when(at.toISOString())}.`);
+        setOpen(false);
+        onDone?.();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "That did not save.");
+      }
+    });
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        {text === undefined ? (
+          <Button variant="link" size="sm" className="h-auto p-0 text-xs">
+            {label}
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" disabled={!comment.trim() || comment.length > COMMENT_MAX_CHARS}>
+            <CalendarClock />
+            {label}
+          </Button>
+        )}
+      </PopoverTrigger>
+      <PopoverContent align="end" className="flex w-72 flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="comment-at">Post the comment at</Label>
+          <Input id="comment-at" type="datetime-local" value={value} onChange={(e) => setValue(e.target.value)} />
+          <span className="text-xs text-muted-foreground">Your time ({zone.replace(/_/g, " ")}).</span>
+        </div>
+        <Button disabled={pending || !value} onClick={save}>
+          {pending && <Loader2 className="animate-spin" />}
+          Schedule
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** A published post with no first comment: write one, then post it now or at a time. */
+function AddFirstComment({ post }: { post: PostView }) {
+  const [text, setText] = useState("");
+  const [pending, start] = useTransition();
+  const over = text.length > COMMENT_MAX_CHARS;
+  function postNow() {
+    start(async () => {
+      try {
+        await addFirstCommentToPost(post.id, text);
+        toast.success("First comment posted on LinkedIn.");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "LinkedIn did not post it.");
+      }
+    });
+  }
+  return (
+    <div className="flex w-full max-w-[560px] flex-col gap-3 rounded-xl border bg-background px-5 py-4">
+      <Label htmlFor="add-first-comment" className="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        <MessageCircle className="size-3.5" />
+        Add a first comment
+      </Label>
+      <Textarea
+        id="add-first-comment"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="A link or extra detail, posted under your post."
+        className="min-h-[72px] text-md leading-relaxed"
+      />
+      <div className="flex items-center gap-2">
+        <span className={cn("mr-auto text-xs text-muted-foreground", over && "font-medium text-red-600")}>
+          {over ? `${text.length.toLocaleString()} / ${COMMENT_MAX_CHARS.toLocaleString()} characters` : "Goes under your post on LinkedIn."}
+        </span>
+        <CommentTimePicker post={post} text={text} label="Schedule" onDone={() => setText("")} />
+        <Button size="sm" disabled={pending || !text.trim() || over} onClick={postNow}>
+          {pending ? <Loader2 className="animate-spin" /> : <Send />}
+          Post now
+        </Button>
       </div>
     </div>
   );
@@ -849,6 +976,7 @@ function Detail({
                 <MediaPanel postId={post.id} media={post.media} store={mediaStore} />
               </div>
             )}
+            {post.status === "published" && post.url && !post.firstComment.trim() && <AddFirstComment post={post} />}
             <article className="flex w-full max-w-[560px] flex-col gap-3 rounded-xl border bg-background px-5 py-4">
               <div className="flex items-center gap-2.5">
                 <span className="flex size-11 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">

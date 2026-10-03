@@ -218,6 +218,44 @@ export async function postFirstComment(workspaceId: string, postId: string): Pro
   }
 }
 
+/**
+ * A first comment for a post that is already live: posted now (at null) or
+ * at a time. Only for posts AILI published, since only those does AILI know
+ * on LinkedIn; and only while the post has no comment out yet. A scheduled
+ * one can be set again, to change its text or time.
+ */
+export async function addFirstComment(workspaceId: string, postId: string, text: string, at: Date | null): Promise<PostRow> {
+  const post = await db.post.findFirst({ where: { id: postId, workspaceId } });
+  if (!post) throw new Error("That post is not in AILI any more.");
+  if (post.kind !== "post" || post.status !== "published") throw new Error("Only a published post gets a comment this way.");
+  if (!post.linkedinUrn) throw new Error("AILI did not publish this post, so it cannot comment on it. Add the comment on LinkedIn.");
+  if (post.commentStatus === "posted" || post.commentStatus === "posting") {
+    throw new Error("It already has a first comment. Change it on LinkedIn.");
+  }
+  const comment = text.trim();
+  if (!comment) throw new Error("Write the comment first.");
+  checkCommentText(comment);
+  if (at) checkScheduleTime(at);
+  const saved = await db.post.update({
+    where: { id: post.id },
+    data: { firstComment: comment, commentStatus: "pending", commentAt: at ?? new Date(), commentError: null },
+  });
+  if (!at) {
+    await postFirstComment(workspaceId, post.id);
+    return db.post.findUniqueOrThrow({ where: { id: post.id } });
+  }
+  return saved;
+}
+
+/** Takes back a first comment that has not gone out yet. */
+export async function cancelFirstComment(workspaceId: string, postId: string): Promise<void> {
+  const cancelled = await db.post.updateMany({
+    where: { id: postId, workspaceId, commentStatus: { in: ["pending", "failed"] } },
+    data: { firstComment: "", commentStatus: null, commentAt: null, commentError: null },
+  });
+  if (cancelled.count === 0) throw new Error("It has already gone out. Change it on LinkedIn.");
+}
+
 export const TIMER_KEY = "posts-timer";
 
 /**

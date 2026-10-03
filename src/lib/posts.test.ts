@@ -15,7 +15,7 @@ process.env.AUTH_SECRET = "test-secret-test-secret-test-secret";
 vi.mock("server-only", () => ({}));
 const { db } = await import("./db");
 const { seal } = await import("./secret-box");
-const { publishPost, publishDuePosts, postFirstComment } = await import("./posts");
+const { publishPost, publishDuePosts, postFirstComment, addFirstComment, cancelFirstComment } = await import("./posts");
 const { cleanupPublishedMedia, deleteAllMedia } = await import("./media-server");
 const { saveLocal, readMedia } = await import("./media-store");
 
@@ -146,5 +146,54 @@ describe.skipIf(!hasDb)("post images", () => {
       await deleteAllMedia(kept.post.id);
       await expect(readMedia(kept.media.url)).rejects.toThrow();
     }
+  });
+});
+
+describe.skipIf(!hasDb)("a first comment on a live post", () => {
+  async function livePost(urn: string | null = "urn:li:share:1") {
+    const w = await workspace(5);
+    const post = await db.post.create({
+      data: { workspaceId: w.id, body: "Hello", status: "published", publishedAt: new Date(), linkedinUrn: urn },
+    });
+    return { w, post };
+  }
+
+  it("posts it now", async () => {
+    const { w, post } = await livePost();
+    const saved = await addFirstComment(w.id, post.id, "Link: https://example.com", null);
+    expect(saved.commentStatus).toBe("posted");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain("/comments");
+    await expect(addFirstComment(w.id, post.id, "Another", null)).rejects.toThrow("already has a first comment");
+  });
+
+  it("posts it at the chosen time, which can change or be cancelled until then", async () => {
+    const { w, post } = await livePost();
+    const at = new Date(Date.now() + 60 * 60_000);
+    await addFirstComment(w.id, post.id, "Later", at);
+    await publishDuePosts({ now: new Date(Date.now() + 30 * 60_000) });
+    expect(calls).toHaveLength(0);
+
+    const later = new Date(Date.now() + 2 * 60 * 60_000);
+    const moved = await addFirstComment(w.id, post.id, "Later still", later);
+    expect(moved.commentAt?.getTime()).toBe(later.getTime());
+    await publishDuePosts({ now: new Date(Date.now() + 3 * 60 * 60_000) });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toMatchObject({ message: { text: "Later still" } });
+    await expect(cancelFirstComment(w.id, post.id)).rejects.toThrow("already gone out");
+  });
+
+  it("cancels one not yet out", async () => {
+    const { w, post } = await livePost();
+    await addFirstComment(w.id, post.id, "Later", new Date(Date.now() + 60 * 60_000));
+    await cancelFirstComment(w.id, post.id);
+    const after = await db.post.findUniqueOrThrow({ where: { id: post.id } });
+    expect(after.commentStatus).toBeNull();
+    expect(after.firstComment).toBe("");
+  });
+
+  it("says no for a post AILI did not publish", async () => {
+    const { w, post } = await livePost(null);
+    await expect(addFirstComment(w.id, post.id, "Hi", null)).rejects.toThrow("AILI did not publish this post");
   });
 });

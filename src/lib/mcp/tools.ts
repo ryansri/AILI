@@ -4,7 +4,7 @@ import { db } from "../db";
 import { getStages } from "../data";
 import { linkedInPostUrl } from "../linkedin-posting";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "../linkedin-text";
-import { checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
+import { addFirstComment, checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
 import { formatWhen, offsetLabel, parseWhen } from "../time-zone";
 import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel } from "../plan";
 import { clockFor, loadPlan, type EntryView } from "../content-plan";
@@ -428,7 +428,9 @@ const updatePost: Tool = {
   title: "Change a post",
   description:
     "Change a draft, scheduled or failed post in AILI: its text, its time, or publish it now. " +
-    "unschedule: true moves a scheduled post back to drafts. post_id comes from list_posts or create_post.",
+    "unschedule: true moves a scheduled post back to drafts. post_id comes from list_posts or create_post. " +
+    "A published post's text cannot change, but if it has no first comment yet, first_comment adds one: " +
+    "posted now, or at schedule_at. Show the user the comment and the time first.",
   inputSchema: {
     type: "object",
     properties: {
@@ -446,8 +448,27 @@ const updatePost: Tool = {
     const post = await db.post.findFirst({ where: { id: text(args.post_id), workspaceId: ctx.workspaceId } });
     if (!post) throw new ToolError("No such post in AILI. Use list_posts to find it.");
     if (post.kind === "article") throw new ToolError("That is an article. Articles are published by the user in LinkedIn from the Posts page.");
+    if (post.status === "published" && typeof args.first_comment === "string" && !text(args.text).trim()) {
+      // A live post: its first comment can still be added, now or at a time.
+      const when = text(args.schedule_at);
+      const tz = timeZoneOf(await workspace(ctx));
+      const at = when ? parseWhen(when, tz) : null;
+      if (when && !at) throw new ToolError(`"${when}" is not a time. Use a date and time such as 2026-09-30T09:00 (the user's time zone is ${tz}).`);
+      let saved;
+      try {
+        saved = await addFirstComment(ctx.workspaceId, post.id, args.first_comment, at);
+      } catch (err) {
+        throw new ToolError(err instanceof Error ? err.message : "The first comment did not go.");
+      }
+      revalidatePath("/posts");
+      return saved.commentStatus === "posted"
+        ? "First comment posted under the post on LinkedIn."
+        : saved.commentStatus === "failed"
+          ? `LinkedIn did not post the comment: ${saved.commentError ?? "it refused"}. The user can try again from ${ctx.origin}/posts.`
+          : `First comment scheduled for ${formatWhen(saved.commentAt!, tz)} (${tz}).`;
+    }
     if (post.status === "published" || post.status === "publishing") {
-      throw new ToolError("It is already published, so it cannot change here. Edit it on LinkedIn.");
+      throw new ToolError("It is already published, so its text cannot change here. Edit it on LinkedIn. A first comment can still be added if it has none.");
     }
     const newText = text(args.text).trim();
     const at = await scheduleFrom(ctx, args);
