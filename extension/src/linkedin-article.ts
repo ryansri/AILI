@@ -7,6 +7,10 @@
  * LinkedIn's editor is not a documented surface, so this looks for the
  * fields by their roles and placeholders and falls back to telling the user
  * to paste: AILI already put the article on the clipboard.
+ *
+ * Once the title is in, LinkedIn saves a draft and redraws the editor, which
+ * wipes text put in before that. So the text goes in after the editor has
+ * settled, and is put back if a redraw wipes it.
  */
 
 interface PendingArticle {
@@ -36,12 +40,23 @@ function findTitle(): HTMLElement | null {
   return candidates.find(visible) ?? null;
 }
 
+// LinkedIn's messaging pop-up has its own text box; never type the article there.
+const NOT_THE_EDITOR = '[class*="msg-overlay"], [class*="msg-form"], aside, nav, header';
+
 function findBody(title: HTMLElement | null): HTMLElement | null {
   const candidates = [
     ...document.querySelectorAll<HTMLElement>(
       '.ql-editor, [contenteditable="true"][role="textbox"], [contenteditable="true"][aria-multiline="true"], div[contenteditable="true"]',
     ),
-  ].filter((el) => el !== title && !title?.contains(el) && visible(el));
+  ].filter(
+    (el) =>
+      el !== title &&
+      !title?.contains(el) &&
+      !el.closest(NOT_THE_EDITOR) &&
+      // The text box comes after the title.
+      (!title || Boolean(title.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) &&
+      visible(el),
+  );
   // The body is the biggest editable area on the page.
   return candidates.sort((a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height)[0] ?? null;
 }
@@ -57,6 +72,22 @@ function setTitle(el: HTMLElement, title: string) {
     document.execCommand("selectAll");
     document.execCommand("insertText", false, title);
   }
+}
+
+function titleText(el: HTMLElement): string {
+  return (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement ? el.value : (el.textContent ?? "")).trim();
+}
+
+/** The article's text is in the box (not just a stray line). */
+function hasArticle(el: HTMLElement | null, article: PendingArticle): boolean {
+  const need = Math.min(40, Math.floor(article.text.trim().length / 2));
+  return Boolean(el) && (el!.textContent ?? "").trim().length >= Math.max(1, need);
+}
+
+/** Waits for LinkedIn to save the draft and redraw: the address changes, or a few seconds pass. */
+async function settle(from: string) {
+  for (let i = 0; i < 16 && location.href === from; i++) await sleep(250);
+  await sleep(1500);
 }
 
 function pasteBody(el: HTMLElement, article: PendingArticle): boolean {
@@ -115,8 +146,30 @@ async function run() {
   }
 
   const titled = Boolean(title && article.title);
-  if (title && article.title) setTitle(title, article.title);
-  const filled = body ? pasteBody(body, article) : false;
+  if (title && article.title) {
+    const from = location.href;
+    setTitle(title, article.title);
+    await settle(from);
+  }
+
+  // Put the text in, then watch for a while: if a redraw wipes it, put it back.
+  let pastes = 0;
+  let steady = 0;
+  for (let i = 0; i < 30 && steady < 5; i++) {
+    title = findTitle() ?? title;
+    if (title && article.title && !titleText(title)) setTitle(title, article.title);
+    body = findBody(title);
+    if (hasArticle(body, article)) steady++;
+    else {
+      steady = 0;
+      if (body && pastes < 4) {
+        pasteBody(body, article);
+        pastes++;
+      }
+    }
+    await sleep(700);
+  }
+  const filled = hasArticle(findBody(findTitle()), article);
   if (filled && titled) {
     say("AILI filled in your article. Check it, then click Publish or Schedule.", true);
   } else if (filled) {
