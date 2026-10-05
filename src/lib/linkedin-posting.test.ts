@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const { publishLinkedInPost, linkedinAuthorizeUrl, linkedInPostUrl } = await import("./linkedin-posting");
+const { publishLinkedInPost, linkedinAuthorizeUrl, linkedInPostUrl, commentOnLinkedInPost } = await import("./linkedin-posting");
 
 type Call = { url: string; init: RequestInit };
 
@@ -127,5 +127,26 @@ describe("LinkedIn posting", () => {
     expect(url.searchParams.get("scope")).toBe("openid profile w_member_social");
     expect(url.searchParams.get("client_id")).toBe("cid");
     expect(linkedInPostUrl("urn:li:share:5")).toBe("https://www.linkedin.com/feed/update/urn:li:share:5/");
+  });
+});
+
+describe("commenting under a post", () => {
+  const refused = () => new Response('{"message":"Not enough permissions to access: partnerApiSocialActions.CREATE"}', { status: 403 });
+
+  it("tries LinkedIn's older address when the new one refuses", async () => {
+    const calls = fakeLinkedIn([refused(), new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:comment:(urn:li:share:1,9)" } })]);
+    const urn = await commentOnLinkedInPost("tok", "urn:li:person:abc", "urn:li:share:1", "Link here");
+    expect(urn).toBe("urn:li:comment:(urn:li:share:1,9)");
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.linkedin.com/rest/socialActions/urn%3Ali%3Ashare%3A1/comments",
+      "https://api.linkedin.com/v2/socialActions/urn%3Ali%3Ashare%3A1/comments",
+    ]);
+  });
+
+  it("says plainly when LinkedIn will not let the app comment, with LinkedIn's reason", async () => {
+    fakeLinkedIn([refused(), refused()]);
+    await expect(commentOnLinkedInPost("tok", "urn:li:person:abc", "urn:li:share:1", "Link here")).rejects.toThrow(
+      /does not let this app post comments yet.*Copy the comment.*partnerApiSocialActions/,
+    );
   });
 });

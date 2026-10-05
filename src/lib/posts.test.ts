@@ -110,7 +110,7 @@ describe.skipIf(!hasDb)("first comment", () => {
     expect(published.status).toBe("published");
     const failed = await db.post.findUniqueOrThrow({ where: { id: post.id } });
     expect(failed.commentStatus).toBe("failed");
-    expect(failed.commentError).toMatch(/refused the comment/);
+    expect(failed.commentError).toMatch(/does not let this app post comments/);
 
     failComments = false;
     await postFirstComment(w.id, post.id);

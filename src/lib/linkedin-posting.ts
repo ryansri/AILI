@@ -102,6 +102,8 @@ export class LinkedInPostError extends Error {
     message: string,
     /** Reconnecting LinkedIn would fix it. */
     readonly reconnect = false,
+    /** LinkedIn's HTTP status, when it answered. */
+    readonly status?: number,
   ) {
     super(message);
   }
@@ -113,6 +115,7 @@ function explain(status: number, detail: string, what: "post" | "comment"): Link
     return new LinkedInPostError(
       `LinkedIn refused the ${what}. Check the LinkedIn app has the Share on LinkedIn product, then reconnect.`,
       true,
+      403,
     );
   }
   if (status === 422 && /duplicate/i.test(detail)) return new LinkedInPostError(`LinkedIn says this ${what} is a duplicate of a recent one.`);
@@ -229,12 +232,45 @@ export async function publishLinkedInPost(accessToken: string, authorUrn: string
 }
 
 /** Adds a comment, as the member, under one of their posts (the "first comment"). Returns the comment's id. */
-export function commentOnLinkedInPost(accessToken: string, authorUrn: string, postUrn: string, text: string): Promise<string> {
-  return restCreate(
-    accessToken,
-    `socialActions/${encodeURIComponent(postUrn)}/comments`,
-    { actor: authorUrn, object: postUrn, message: { text } },
-    "comment",
+/**
+ * Comments under a post. LinkedIn's versioned API often keeps comments for
+ * apps it has approved (its Community Management API), so when it refuses,
+ * the older v2 address is tried, which may take the app's posting permission.
+ * If both refuse, the error says so in plain words, with LinkedIn's reason.
+ */
+export async function commentOnLinkedInPost(accessToken: string, authorUrn: string, postUrn: string, text: string): Promise<string> {
+  try {
+    return await restCreate(
+      accessToken,
+      `socialActions/${encodeURIComponent(postUrn)}/comments`,
+      { actor: authorUrn, object: postUrn, message: { text } },
+      "comment",
+    );
+  } catch (err) {
+    if (!(err instanceof LinkedInPostError) || err.status !== 403) throw err;
+  }
+  const res = await fetch(`https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postUrn)}/comments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", "X-Restli-Protocol-Version": "2.0.0" },
+    body: JSON.stringify({ actor: authorUrn, object: postUrn, message: { text } }),
+  });
+  if (res.ok) {
+    const header = res.headers.get("x-restli-id") ?? res.headers.get("x-linkedin-id");
+    if (header) return header;
+    const data = (await res.json().catch(() => ({}))) as { $URN?: string; id?: string };
+    return data.$URN ?? data.id ?? "";
+  }
+  const detail = await res.text().catch(() => "");
+  if (res.status !== 403) throw explain(res.status, detail, "comment");
+  let said = "";
+  try {
+    said = String((JSON.parse(detail) as { message?: string }).message ?? "").slice(0, 160);
+  } catch {}
+  throw new LinkedInPostError(
+    "LinkedIn does not let this app post comments yet (commenting needs LinkedIn's approval). " +
+      `Copy the comment and paste it under your post.${said ? ` LinkedIn said: ${said}` : ""}`,
+    false,
+    403,
   );
 }
 

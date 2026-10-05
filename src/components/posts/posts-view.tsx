@@ -574,7 +574,7 @@ function FirstComment({ post, authorInitials, commentDelay }: { post: PostView; 
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="rounded-lg rounded-tl-none bg-muted px-3 py-2 text-md leading-relaxed whitespace-pre-wrap">{post.firstComment}</div>
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           <MessageCircle className="size-3.5 text-muted-foreground" />
           <span className="text-muted-foreground">First comment ·</span>
           <span className={state.className} suppressHydrationWarning>
@@ -606,6 +606,30 @@ function FirstComment({ post, authorInitials, commentDelay }: { post: PostView; 
               >
                 Cancel
               </Button>
+            </>
+          )}
+          {post.commentStatus === "failed" && (
+            <>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(post.firstComment)
+                    .then(() => toast.success("Comment copied. Paste it under your post on LinkedIn."))
+                    .catch(() => toast.error("Could not copy. Select the comment and copy it."))
+                }
+              >
+                Copy comment
+              </Button>
+              {post.url && (
+                <a href={post.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium underline-offset-2 hover:underline">
+                  Open post
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+              <span className="text-muted-foreground">·</span>
             </>
           )}
           {post.commentStatus === "failed" && (
