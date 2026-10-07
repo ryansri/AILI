@@ -29,6 +29,8 @@ export interface NextStep {
 export const CADENCE = {
   followUp1Days: 4,
   followUp2Days: 9,
+  /** Follow-up 2 never comes sooner than this many days after follow-up 1. */
+  minGapDays: 3,
   /** Days after follow-up 2 with no reply before we call it quiet. */
   quietAfterDays: 5,
 } as const;
@@ -146,7 +148,7 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
   const run = messages.slice(runStart);
   const firstOut = new Date(run[0].sentAt);
   const lastOut = new Date(last.sentAt);
-  const followUpsSent = run.filter((m) => m.followUp).length;
+  const followUpsSent = followUpsIn(run);
   const silentDays = daysBetween(lastOut, now);
 
   if (followUpsSent === 0) {
@@ -163,7 +165,10 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
   }
 
   if (followUpsSent === 1) {
-    const dueAt = addDays(firstOut, CADENCE.followUp2Days);
+    // Nine days after the first message, and never sooner than a few days after follow-up 1.
+    const byPlan = addDays(firstOut, CADENCE.followUp2Days);
+    const byGap = addDays(lastOut, CADENCE.minGapDays);
+    const dueAt = byGap > byPlan ? byGap : byPlan;
     const dueNow = isDueNow(dueAt, now);
     return {
       kind: dueNow ? "chase" : "waiting",
@@ -186,6 +191,24 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
     dueNow,
     followUp: "decide",
   };
+}
+
+/** A message sent this long after your previous one is a new touch, not part of the same burst. */
+const NEW_TOUCH_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * How many follow-ups you have sent in an unanswered run of your messages.
+ * Messages sent from AILI are marked as follow-ups; ones sent on LinkedIn
+ * itself (a voice note from your phone, say) are not, so any message that
+ * comes a while after your previous one counts too.
+ */
+export function followUpsIn(run: { sentAt: string; followUp?: number | null }[]): number {
+  let count = 0;
+  for (let i = 1; i < run.length; i++) {
+    const gap = new Date(run[i].sentAt).getTime() - new Date(run[i - 1].sentAt).getTime();
+    if (run[i].followUp || gap >= NEW_TOUCH_MS) count++;
+  }
+  return count;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

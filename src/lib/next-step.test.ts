@@ -74,6 +74,30 @@ describe("nextStep", () => {
     expect(s.step).toBe("Follow-up 2");
   });
 
+  it("counts a message sent on LinkedIn itself, like a voice note, as the follow-up", () => {
+    const p = person({
+      messages: [
+        { id: "1", direction: "out", sentAt: daysAgo(5), body: "hi" },
+        { id: "2", direction: "out", sentAt: daysAgo(0, 8), body: "[Sent a voice message]" },
+      ],
+    });
+    const s = nextStep(p, now);
+    expect(s.kind).toBe("waiting");
+    expect(s.followUp).toBe(2);
+    // Follow-up 2 a few days after it, not tomorrow.
+    expect(s.dueAt.getTime()).toBeGreaterThanOrEqual(new Date(daysAgo(0, 8)).getTime() + 3 * DAY);
+  });
+
+  it("does not count a second message sent straight after the first", () => {
+    const p = person({
+      messages: [
+        { id: "1", direction: "out", sentAt: daysAgo(4, 9), body: "hi" },
+        { id: "2", direction: "out", sentAt: daysAgo(4, 10), body: "[Sent a voice message]" },
+      ],
+    });
+    expect(nextStep(p, now).step).toBe("Follow-up 1");
+  });
+
   it("calls it quiet after two follow-ups and five silent days", () => {
     const p = person({
       messages: [
