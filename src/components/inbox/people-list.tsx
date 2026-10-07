@@ -1,24 +1,25 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Check, CheckCheck, ChevronDown, ChevronRight, Mic, PanelLeft, Plus, Send, Star } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Check, CheckCheck, ChevronDown, ChevronRight, Mic, PanelLeft, Plus, Search, Send, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/client-actions";
 import { followUpNote, relativeTime } from "@/lib/next-step";
-import { bucketOf, type Condition, type Group, type Row, type View } from "@/lib/rows";
+import { activeConditions, bucketOf, type Condition, type Group, type Row, type View } from "@/lib/rows";
 import type { HelperStatus, StageDef, Tag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PersonDialog } from "@/components/people/person-dialog";
 import { CountBadge } from "@/components/count-badge";
-import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
+import { HeaderAction, PageHeader } from "@/components/page-header";
+import { Input } from "@/components/ui/input";
 import { FilterPopover } from "./filter-popover";
 import { SnoozeMenu } from "./snooze-menu";
-import { needsConnect } from "@/lib/invites";
+import { CONNECTION_CHOICES, needsConnect } from "@/lib/invites";
 import { isVoiceNote } from "@/lib/voice-note";
-import { PersonAvatar } from "@/components/person-avatar";
+import { ConnectionDot, PersonAvatar } from "@/components/person-avatar";
 import { SyncLineBar } from "./sync-line";
 
 function lastLine(row: Row): React.ReactNode {
@@ -137,7 +138,9 @@ export function PeopleList({
   selectedId,
   onSelect,
   query,
+  onQuery,
   conditions,
+  onConditions,
   helper,
   onMessageAll,
 }: {
@@ -149,7 +152,9 @@ export function PeopleList({
   selectedId: string | null;
   onSelect: (id: string) => void;
   query: string;
+  onQuery: (q: string) => void;
   conditions: Condition[];
+  onConditions: (c: Condition[]) => void;
   helper: HelperStatus;
   /** Tag and stage views: write one message for everyone shown. */
   onMessageAll?: () => void;
@@ -171,7 +176,8 @@ export function PeopleList({
 
   return (
     <section aria-label="Conversations" className="flex w-[360px] shrink-0 flex-col bg-background">
-      <SyncLineBar helper={helper} />
+      <SearchBox value={query} onChange={onQuery} />
+      <ConnectionChips conditions={conditions} onConditions={onConditions} shown={visible} />
       {view.kind === "other" && (
         <p className="border-b bg-muted/40 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
           <span className="font-medium text-foreground">
@@ -286,21 +292,20 @@ export function PeopleList({
         {visible === 0 && <EmptyState view={view} narrowed={narrowed} total={total} />}
       </div>
 
+      <SyncLineBar helper={helper} />
     </section>
   );
 }
 
 /**
  * The header over the sidebar and the list together: the sidebar toggle,
- * "Inbox", a small breadcrumb naming the view (Inbox › Waiting), then search,
- * filter and add.
+ * "Inbox", a small breadcrumb naming the view (Inbox › Waiting), then filter
+ * and add. Search is a box at the top of the list.
  */
 export function InboxHeader({
   viewName,
   sidebarOpen,
   onToggleSidebar,
-  query,
-  onQuery,
   conditions,
   onConditions,
   statusCounts,
@@ -311,8 +316,6 @@ export function InboxHeader({
   viewName: string;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
-  query: string;
-  onQuery: (q: string) => void;
   conditions: Condition[];
   onConditions: (c: Condition[]) => void;
   statusCounts: Parameters<typeof FilterPopover>[0]["counts"];
@@ -321,7 +324,6 @@ export function InboxHeader({
   onCreated: (id: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
-  const search = useHeaderSearch(query);
   return (
     <>
       <PageHeader
@@ -339,14 +341,8 @@ export function InboxHeader({
             onClick={onToggleSidebar}
           />
         }
-        search={
-          search.open ? (
-            <HeaderSearch value={query} onChange={onQuery} placeholder="Search people" open onOpenChange={search.setOpen} />
-          ) : undefined
-        }
         actions={
           <>
-            <HeaderSearch value={query} onChange={onQuery} open={false} onOpenChange={search.setOpen} />
             <FilterPopover conditions={conditions} onChange={onConditions} tags={tags} stages={stages} counts={statusCounts} />
             <HeaderAction icon={Plus} label="Add person" onClick={() => setAdding(true)} />
           </>
@@ -354,5 +350,86 @@ export function InboxHeader({
       />
       <PersonDialog open={adding} onOpenChange={setAdding} tags={tags} stages={stages} onSaved={onCreated} />
     </>
+  );
+}
+
+/** Always there at the top of the list: click and type. "/" jumps to it. */
+function SearchBox({ value, onChange }: { value: string; onChange: (q: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (e.key !== "/" || t?.closest("input, textarea, [contenteditable=true]")) return;
+      e.preventDefault();
+      ref.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="relative shrink-0 border-b px-3 py-2.5">
+      <Search className="pointer-events-none absolute top-1/2 left-5.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        ref={ref}
+        type="search"
+        aria-label="Search conversations"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            onChange("");
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder="Search name, company or message"
+        className="h-9 pr-8 pl-8"
+      />
+      {value && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => onChange("")}
+          className="absolute top-1/2 right-5 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** A chip per Connection filter that is on, with how many it shows; ✕ takes it off. */
+function ConnectionChips({
+  conditions,
+  onConditions,
+  shown,
+}: {
+  conditions: Condition[];
+  onConditions: (c: Condition[]) => void;
+  shown: number;
+}) {
+  const on = activeConditions(conditions).filter((c) => c.field === "connection");
+  if (on.length === 0) return null;
+  return (
+    <div className="flex shrink-0 flex-wrap gap-1.5 border-b px-3 py-2">
+      {on.map((c) => {
+        const choice = CONNECTION_CHOICES.find((x) => x.key === c.value);
+        return (
+          <span key={c.id} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-muted pr-1 pl-2.5 text-xs">
+            {choice && <ConnectionDot state={choice.key} />}
+            {c.op === "is_not" ? "Not: " : ""}
+            {choice?.label ?? c.value} · {shown}
+            <button
+              type="button"
+              aria-label="Remove this filter"
+              onClick={() => onConditions(conditions.filter((x) => x.id !== c.id))}
+              className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        );
+      })}
+    </div>
   );
 }

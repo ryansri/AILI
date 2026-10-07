@@ -17,12 +17,12 @@ export function useExtensionGone(helper: HelperStatus): boolean {
   return Boolean(helper.lastSeenAt) && !helper.outdated && presence.browser === "chromium" && presence.state === "missing";
 }
 
-/** The line at the top of the inbox list: what sync is doing, or what to fix. */
+/** The footer of the inbox list: what sync is doing, or what to fix. */
 export function SyncLineBar({ helper }: { helper: HelperStatus }) {
   const gone = useExtensionGone(helper);
   if (gone) {
     return (
-      <div role="status" className="flex shrink-0 items-start gap-2 border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
+      <div role="status" className="flex shrink-0 items-start gap-2 border-t bg-amber-50 px-4 py-2 text-xs text-amber-900">
         <AlertCircle className="mt-px size-3.5 shrink-0 text-amber-600" />
         <span className="min-w-0">
           <span className="font-semibold">The AILI extension is off or missing.</span> Turn it on in
@@ -44,7 +44,7 @@ export function SyncLineBar({ helper }: { helper: HelperStatus }) {
     <div
       role="status"
       className={cn(
-        "flex shrink-0 items-center gap-2 border-b px-4 py-2 text-xs",
+        "flex shrink-0 items-center gap-2 border-t px-4 py-2.5 text-xs",
         line.tone === "warn" ? "bg-amber-50 text-amber-900" : "text-muted-foreground",
       )}
       suppressHydrationWarning

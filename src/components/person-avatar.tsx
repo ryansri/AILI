@@ -61,3 +61,14 @@ export function PersonAvatar({ person, className, link = true }: { person: Perso
     </a>
   );
 }
+
+const DOT = {
+  connected: "border-emerald-500",
+  pending: "border-amber-400",
+  not: "border-stone-300 dark:border-stone-600",
+};
+
+/** A small ring in the photo ring's colour, for filter menus. */
+export function ConnectionDot({ state }: { state: keyof typeof DOT }) {
+  return <span aria-hidden="true" className={cn("inline-block size-3 shrink-0 rounded-full border-2", DOT[state])} />;
+}

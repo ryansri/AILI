@@ -212,6 +212,13 @@ export type ConnectionState = "connected" | "pending" | "not";
  * (LinkedIn's "1st") when you can message them, not connected when the next
  * step is a request. The same rule as the conversation's Connect card.
  */
+/** The three connection states, as the filters name them (the ring round each photo shows the same). */
+export const CONNECTION_CHOICES: { key: ConnectionState; label: string }[] = [
+  { key: "not", label: "Not connected, no request" },
+  { key: "pending", label: "Request sent, waiting" },
+  { key: "connected", label: "Connected" },
+];
+
 export function connectionOf(
   p: Pick<Person, "connection" | "conversationId" | "messages" | "connectedAt"> & { invite?: { status: string } },
 ): ConnectionState {

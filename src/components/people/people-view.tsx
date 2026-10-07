@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } from "@/lib/client-actions";
 import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
 import { buildFunnel, notMessaged, type Funnel } from "@/lib/funnel";
-import { waitingDays, type InviteFacts } from "@/lib/invites";
+import { CONNECTION_CHOICES, connectionOf, waitingDays, type ConnectionState, type InviteFacts } from "@/lib/invites";
 import { lastTouch, leadNext } from "@/lib/lead-next";
 import type { Template } from "@/lib/templates";
 import { stageLabel, type Account, type Person, type StageDef, type Tag } from "@/lib/types";
@@ -25,7 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
 import { CountBadge } from "@/components/count-badge";
 import { TagChip, TagDot } from "@/components/tag-chip";
-import { PersonAvatar } from "@/components/person-avatar";
+import { ConnectionDot, PersonAvatar } from "@/components/person-avatar";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 import { ImportDialog } from "./import-dialog";
 import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./company-view";
@@ -162,6 +162,7 @@ export function PeopleView({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [tagId, setTagId] = useState(ALL);
+  const [conn, setConn] = useState<ConnectionState | typeof ALL>(ALL);
   const [pick, setPick] = useState<Pick>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<{ company: string } | null>(null);
@@ -189,20 +190,29 @@ export function PeopleView({
   const companyRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return companies.filter((g) => {
+      if (conn !== ALL && !g.people.some((p) => connectionOf(p) === conn)) return false;
       if (pick?.kind === "stage" && g.stage !== pick.key) return false;
       if (pick?.kind === "notMessaged" && !g.people.some(notMessaged)) return false;
       if (q && !`${g.name} ${g.people.map((p) => `${p.name} ${p.jobTitle} ${p.company} ${p.headline}`).join(" ")}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [companies, pick, query]);
+  }, [companies, pick, query, conn]);
   const guessed = companyRows.filter((g) => g.guessed).slice(0, 3);
   const opened = openCompany === null ? null : (companies.find((g) => g.key === openCompany) ?? null);
   const renamed = renaming === null ? null : (companies.find((g) => g.key === renaming) ?? null);
   const companyNames = useMemo(() => companies.filter((g) => g.key).map((g) => g.name), [companies]);
 
+  // How many are in each connection state, for the Connection menu.
+  const connCounts = useMemo(() => {
+    const counts: Record<string, number> = { not: 0, pending: 0, connected: 0 };
+    for (const p of scope) counts[connectionOf(p)]++;
+    return counts;
+  }, [scope]);
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = scope.filter((p) => {
+      if (conn !== ALL && connectionOf(p) !== conn) return false;
       if (pick?.kind === "stage" && p.stage !== pick.key) return false;
       if (pick?.kind === "notMessaged" && !notMessaged(p)) return false;
       if (q && !`${p.name} ${p.jobTitle} ${p.company} ${p.headline}`.toLowerCase().includes(q)) return false;
@@ -210,7 +220,7 @@ export function PeopleView({
     });
     const time = (iso: string | undefined) => (iso ? new Date(iso).getTime() : 0);
     return list.sort((a, b) => time(lastTouch(b).at) - time(lastTouch(a).at));
-  }, [scope, pick, query]);
+  }, [scope, pick, query, conn]);
 
   const shownIds = rows.map((p) => p.id);
   const chosen = shownIds.filter((id) => selected.has(id));
@@ -342,8 +352,49 @@ export function PeopleView({
               Show everyone
             </Button>
           )}
+          <div className="ml-auto flex items-center gap-1">
+            <Select value={conn} onValueChange={(v) => setConn(v as ConnectionState | typeof ALL)}>
+              <SelectTrigger
+                size="sm"
+                aria-label="Connection"
+                className={cn(
+                  "min-w-40",
+                  conn !== ALL && "border-foreground bg-foreground text-background dark:bg-foreground [&_svg]:text-background",
+                )}
+              >
+                <SelectValue>
+                  {conn === ALL ? (
+                    "All connections"
+                  ) : (
+                    <>
+                      <ConnectionDot state={conn} />
+                      {CONNECTION_CHOICES.find((c) => c.key === conn)?.label} · {rows.length}
+                    </>
+                  )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value={ALL}>
+                  All connections
+                  <span className="ml-auto pl-3 text-muted-foreground tabular-nums">{scope.length}</span>
+                </SelectItem>
+                {CONNECTION_CHOICES.map((c) => (
+                  <SelectItem key={c.key} value={c.key}>
+                    <ConnectionDot state={c.key} />
+                    {c.label}
+                    <span className="ml-auto pl-3 text-muted-foreground tabular-nums">{connCounts[c.key]}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {conn !== ALL && (
+              <Button variant="ghost" size="icon-sm" aria-label="Show all connections" onClick={() => setConn(ALL)}>
+                <X />
+              </Button>
+            )}
+          </div>
           <Select value={tagId} onValueChange={setTagId}>
-            <SelectTrigger size="sm" aria-label="Tag" className="ml-auto min-w-32">
+            <SelectTrigger size="sm" aria-label="Tag" className="min-w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">

@@ -44,6 +44,20 @@ describe("sortRows", () => {
 });
 
 describe("matchesConditions", () => {
+  it("filters by connection: not connected, request sent, connected", () => {
+    const row = (over: Partial<Person>): Row => {
+      const p = person(over);
+      return { person: p, step: nextStep(p, now) };
+    };
+    const fresh = row({ name: "Fresh", connection: "no" });
+    const asked = row({ name: "Asked", connection: "no", invite: { status: "sent" } as Person["invite"] });
+    const talking = rows[1];
+    const is = (value: string) => [{ id: "c", field: "connection" as const, op: "is" as const, value }];
+    expect([fresh, asked, talking].filter((r) => matchesConditions(r, is("not"))).map((r) => r.person.name)).toEqual(["Fresh"]);
+    expect([fresh, asked, talking].filter((r) => matchesConditions(r, is("pending"))).map((r) => r.person.name)).toEqual(["Asked"]);
+    expect([fresh, asked, talking].filter((r) => matchesConditions(r, is("connected"))).map((r) => r.person.name)).toEqual(["New Nia"]);
+  });
+
   const [old, nia, max] = rows;
   it("filters by status, tag, stage and starred", () => {
     expect(matchesConditions(nia, [{ id: "a", field: "status", op: "is", value: "reply" }])).toBe(true);

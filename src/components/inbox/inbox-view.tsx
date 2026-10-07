@@ -54,6 +54,12 @@ function viewTitle(view: View, tags: Tag[], stages: StageDef[]): string {
   }
 }
 
+/** What the search box looks through: who they are, and what was said. */
+function searchText(r: Row): string {
+  const p = r.person;
+  return `${p.name} ${p.jobTitle} ${p.company} ${p.headline} ${p.messages.map((m) => m.body).join(" ")}`.toLowerCase();
+}
+
 export function InboxView({
   people,
   others,
@@ -144,7 +150,7 @@ export function InboxView({
     const q = query.trim().toLowerCase();
     return (view.kind === "other" ? otherRows : rows).filter((r) => {
       if (!matchesConditions(r, conditions)) return false;
-      if (q && !`${r.person.name} ${r.person.jobTitle} ${r.person.company} ${r.person.headline}`.toLowerCase().includes(q)) return false;
+      if (q && !searchText(r).includes(q)) return false;
       return true;
     });
   }, [rows, otherRows, view.kind, conditions, query]);
@@ -225,8 +231,6 @@ export function InboxView({
           viewName={viewTitle(view, tags, stages)}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          query={query}
-          onQuery={setQuery}
           conditions={conditions}
           onConditions={setConditions}
           statusCounts={statusCounts}
@@ -256,7 +260,9 @@ export function InboxView({
             selectedId={selected?.person.id ?? null}
             onSelect={setSelectedId}
             query={query}
+            onQuery={setQuery}
             conditions={conditions}
+            onConditions={setConditions}
             helper={account.helper}
             onMessageAll={view.kind === "tag" || view.kind === "stage" ? () => setMessageAll(true) : undefined}
           />

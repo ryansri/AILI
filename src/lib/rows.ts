@@ -1,3 +1,4 @@
+import { connectionOf } from "./invites";
 import { KIND_ORDER, lastActivity, type NextStep, type StatusKind } from "./next-step";
 import type { Person, Stage } from "./types";
 
@@ -40,14 +41,14 @@ export function sortRows(list: Row[], sort: Sort): Row[] {
 // Filter conditions, Airtable style: "where Status is Reply needed and Tag is Agencies"
 // ---------------------------------------------------------------------------
 
-export type FilterField = "status" | "tag" | "stage" | "starred";
+export type FilterField = "status" | "tag" | "stage" | "starred" | "connection";
 export type FilterOp = "is" | "is_not";
 
 export interface Condition {
   id: string;
   field: FilterField;
   op: FilterOp;
-  /** StatusKind, tag id, Stage id, or "yes" | "no" for starred. Empty means not set yet. */
+  /** StatusKind, tag id, Stage id, "yes" | "no" for starred, or a ConnectionState. Empty means not set yet. */
   value: string;
 }
 
@@ -56,6 +57,7 @@ export const FILTER_FIELDS: { id: FilterField; label: string }[] = [
   { id: "tag", label: "Tag" },
   { id: "stage", label: "Stage" },
   { id: "starred", label: "Starred" },
+  { id: "connection", label: "Connection" },
 ];
 
 function matchesOne(row: Row, c: Condition): boolean {
@@ -73,6 +75,9 @@ function matchesOne(row: Row, c: Condition): boolean {
       break;
     case "starred":
       hit = Boolean(row.person.starred) === (c.value === "yes");
+      break;
+    case "connection":
+      hit = connectionOf(row.person) === c.value;
       break;
     default:
       hit = true;

@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select";
 import { STATUS, StatusDot } from "@/components/status-dot";
 import { TagDot } from "@/components/tag-chip";
+import { ConnectionDot } from "@/components/person-avatar";
+import { CONNECTION_CHOICES } from "@/lib/invites";
 
 const STATUS_ORDER: StatusKind[] = ["reply", "chase", "quiet", "waiting", "stale"];
 
@@ -178,6 +180,13 @@ function ValueSelect({
           stages.map((s) => (
             <SelectItem key={s.key} value={s.key} className="text-xs">
               {s.label}
+            </SelectItem>
+          ))}
+        {c.field === "connection" &&
+          CONNECTION_CHOICES.map((choice) => (
+            <SelectItem key={choice.key} value={choice.key} className="text-xs">
+              <ConnectionDot state={choice.key} />
+              {choice.label}
             </SelectItem>
           ))}
         {c.field === "starred" && (
