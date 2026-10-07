@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { ExternalLink, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
-import { updateNotes, updateStage } from "@/lib/client-actions";
+import { addTouch, removeTouch, updateNotes, updateStage } from "@/lib/client-actions";
 import type { StageDef, Tag } from "@/lib/types";
 import { StatusMenu } from "@/components/status-pill";
 import { TagChip } from "@/components/tag-chip";
@@ -15,6 +15,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { PersonDialog } from "@/components/people/person-dialog";
 import type { Row } from "@/lib/rows";
 import { PersonAvatar } from "@/components/person-avatar";
+import { WarmthChip } from "@/components/warmth-chip";
+import { relativeTime } from "@/lib/next-step";
+import { warmthOf, warmupLine } from "@/lib/warmth";
+import type { WarmupEvent } from "@/lib/types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -150,6 +154,8 @@ export function DetailsPanel({
         </Field>
       )}
 
+      {person.lead !== false && <WarmupField row={row} />}
+
       <Field label="Notes">
         <Textarea
           value={notes}
@@ -181,5 +187,71 @@ export function DetailsPanel({
         <Shortcut keys={["S"]} label="snooze" />
       </div>
     </aside>
+  );
+}
+
+const EVENT_WORDS: Record<WarmupEvent["kind"], (first: string) => string> = {
+  comment: () => "You commented on their post",
+  reply: (first) => `${first} replied to your comment`,
+  engage: (first) => `${first} engaged with your post`,
+};
+
+/** The warm-up story: warmth, what happened (newest first), and taps for what the helper missed. */
+function WarmupField({ row }: { row: Row }) {
+  const { person } = row;
+  const [pending, start] = useTransition();
+  const first = person.name.trim().split(/\s+/)[0] || person.name;
+  const events = (person.warmup ?? []).slice(0, 8);
+  const line = warmupLine(person);
+  function tap(fn: () => Promise<unknown>, done: string) {
+    start(async () => {
+      try {
+        await fn();
+        if (done) toast.success(done);
+      } catch {
+        toast.error("That did not save.");
+      }
+    });
+  }
+  return (
+    <Field label="Warm-up">
+      <div className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <WarmthChip warmth={warmthOf(person)} />
+          {line && <span className="text-2xs text-muted-foreground">{line}</span>}
+        </div>
+        {events.length > 0 ? (
+          <ol className="flex flex-col gap-2">
+            {events.map((e, i) => (
+              <li key={`${e.at}-${i}`} className="flex flex-col gap-0.5 rounded-lg border bg-background px-2.5 py-2">
+                <span className="font-medium text-foreground">{EVENT_WORDS[e.kind](first)}</span>
+                {e.text && <span className="line-clamp-2 text-muted-foreground">&ldquo;{e.text}&rdquo;</span>}
+                <span className="text-2xs text-muted-foreground" suppressHydrationWarning>
+                  {relativeTime(e.at) === "now" ? "just now" : `${relativeTime(e.at)} ago`}
+                  {e.source === "notification" ? " · from your notifications" : e.source === "helper" ? " · seen by the helper" : ""}
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="leading-relaxed text-muted-foreground">
+            Nothing yet. Comment on their posts on LinkedIn; the helper notices, and their replies show up here.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          <Button size="xs" variant="outline" disabled={pending} onClick={() => tap(() => addTouch(person.id, "comment"), "Comment counted.")}>
+            I commented
+          </Button>
+          <Button size="xs" variant="outline" disabled={pending} onClick={() => tap(() => addTouch(person.id, "reply"), "Reply counted.")}>
+            They replied
+          </Button>
+          {events.length > 0 && events[0].source === "manual" && (
+            <Button size="xs" variant="ghost" className="text-muted-foreground" disabled={pending} onClick={() => tap(() => removeTouch(person.id, events[0].kind === "reply" ? "reply" : "comment"), "")}>
+              Undo
+            </Button>
+          )}
+        </div>
+      </div>
+    </Field>
   );
 }

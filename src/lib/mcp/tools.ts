@@ -172,6 +172,7 @@ const getConversation: Tool = {
           messages: { orderBy: { sentAt: "desc" }, take: 80 },
           tags: { include: { tag: true } },
           outbox: { where: { status: { in: ["queued", "sending"] } } },
+          touches: { orderBy: { createdAt: "desc" }, take: 6 },
         },
       }),
       getStages(ctx.workspaceId),
@@ -193,7 +194,17 @@ const getConversation: Tool = {
     const messages = [...person.messages].reverse();
     const lines = messages.map((m) => `[${formatWhen(m.sentAt, tz)}] ${m.direction === "in" ? first : "You"}: ${m.body}`);
     const note = person.messages.length === 80 ? "(Showing the latest 80 messages.)\n" : "";
-    return `${head.join("\n")}\n\nMessages (${tz}):\n${note}${lines.join("\n") || "No messages yet."}`;
+    // Warm-up on LinkedIn, so a first message can mention it.
+    const said = (t: { text: string }) => (t.text ? `: "${clip(oneLine(t.text), 160)}"` : "");
+    const warm = person.touches.map((t) =>
+      t.kind === "reply"
+        ? `[${formatWhen(t.createdAt, tz)}] ${first} replied to your comment${said(t)}`
+        : t.kind === "engage"
+          ? `[${formatWhen(t.createdAt, tz)}] ${first} engaged with your post${said(t)}`
+          : `[${formatWhen(t.createdAt, tz)}] You commented on ${first}'s post${said(t)}`,
+    );
+    const warmup = warm.length ? `\n\nWarm-up on LinkedIn (latest first):\n${warm.join("\n")}` : "";
+    return `${head.join("\n")}${warmup}\n\nMessages (${tz}):\n${note}${lines.join("\n") || "No messages yet."}`;
   },
 };
 

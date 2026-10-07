@@ -20,7 +20,10 @@
  * Settings). Clicking one opens that conversation in AILI.
  *
  * It also notices, without changing anything, when you tap the bell on
- * someone's LinkedIn profile, so AILI can tick off their post alerts.
+ * someone's LinkedIn profile, so AILI can tick off their post alerts, and when
+ * you comment on someone's post. Every 15 minutes it reads your LinkedIn
+ * notifications for replies to your comments and likes on your posts: the
+ * warm-up AILI shows beside each lead.
  *
  * It never sends anything on its own. The queues only hold what a human
  * clicked (Send, Connect, Withdraw), and AILI caps them per day.
@@ -39,7 +42,9 @@ import {
   reportOutbox,
   reportSeen,
   reportStatus,
+  reportTouches,
   takeLookups,
+  takeNotificationPaths,
   takeAlertsNudge,
   takeInvites,
   takeOutbox,
@@ -47,8 +52,9 @@ import {
   type AcceptedToNotify,
   type LeadToAsk,
   type ReplyToNotify,
+  type WarmupToNotify,
 } from "./aili";
-import { LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
+import { LinkedInError, getLinkedInCookies, jitter, voyagerFetch } from "./linkedin/client";
 import {
   fetchConversationsPage,
   fetchCurrentPosition,
@@ -64,7 +70,7 @@ import {
   withdrawInvitation,
   type InboxCategory,
 } from "./linkedin/api";
-import { bellTapFrom, type ConversationSummary, type PlainMessage } from "./linkedin/normalize";
+import { bellTapFrom, commentFrom, parseNotifications, type ConversationSummary, type PlainMessage } from "./linkedin/normalize";
 import { getBackfill, getPairing, getStatus, getSyncedAt, setBackfill, setStatus, setSyncedAt, type Pairing } from "./storage";
 import { AILI_TAB_PATTERNS } from "./config";
 
@@ -113,8 +119,11 @@ chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     // Requests from a LinkedIn tab only: the helper's own calls have no tab.
     if (details.tabId < 0) return undefined;
-    const memberId = bellTapFrom(details.url, details.method, bodyText(details.requestBody));
+    const body = bodyText(details.requestBody);
+    const memberId = bellTapFrom(details.url, details.method, body);
     if (memberId) void onBellTap(memberId);
+    const comment = commentFrom(details.url, details.method, body);
+    if (comment) void onComment(details.tabId, comment).catch(() => {});
     return undefined;
   },
   { urls: ["https://www.linkedin.com/voyager/api/*"] },
@@ -209,6 +218,8 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
       await lookupProfiles(pairing);
       await checkSeen(pairing, me.memberUrn);
     }
+    // Replies to your comments and likes on your posts, from your notifications.
+    if (backfill.category === "done" && tick % 15 === 3) await readNotifications(pairing, memberIdOf(me.memberUrn)).catch(() => {});
     // The morning reminder: AILI decides when; asking every 5 minutes is plenty.
     if (tick % 5 === 1) await remindAlerts(pairing).catch(() => {});
 
@@ -709,4 +720,102 @@ async function openFromNotification(id: string): Promise<void> {
   if ((prefix !== "aili" && prefix !== "ask" && prefix !== "hello") || !url) return;
   await chrome.tabs.create({ url });
   chrome.notifications.clear(id);
+}
+
+/* ------------------------------------------------------------- warm-up */
+
+const lastComment = new Map<string, number>();
+
+/**
+ * Runs in the LinkedIn tab where you just commented: whose post it was (their
+ * /in/ address) and its first words. Reads the page only.
+ */
+function postAuthorOnPage(postUrn: string): { publicId: string; postText: string } | null {
+  const id = postUrn.split(":").pop() ?? "";
+  const post =
+    document.querySelector(`[data-urn="${postUrn}"], [data-id="${postUrn}"], [data-activity-urn="${postUrn}"]`) ??
+    (id ? document.querySelector(`[data-urn*="${id}"], [data-id*="${id}"]`) : null);
+  const inLink = (root: ParentNode | null) => {
+    const a = root?.querySelector<HTMLAnchorElement>(
+      '.update-components-actor__meta-link, .update-components-actor a[href*="/in/"], a.app-aware-link[href*="/in/"], a[href*="/in/"]',
+    );
+    return /\/in\/([^/?#]+)/.exec(a?.getAttribute("href") ?? "")?.[1] ?? "";
+  };
+  let publicId = inLink(post);
+  // On someone's own activity page, the posts are theirs.
+  if (!publicId) publicId = /^\/in\/([^/]+)\/recent-activity/.exec(location.pathname)?.[1] ?? "";
+  if (!publicId) return null;
+  const text = (post?.querySelector(".update-components-text, .feed-shared-update-v2__description") as HTMLElement | null)?.innerText ?? "";
+  return { publicId: decodeURIComponent(publicId), postText: text.replace(/\s+/g, " ").trim().slice(0, 120) };
+}
+
+/** You just commented on a post: tell AILI whose, if they are in AILI. */
+async function onComment(tabId: number, comment: { postUrn: string; text: string }): Promise<void> {
+  if (Date.now() - (lastComment.get(comment.postUrn) ?? 0) < 15_000) return;
+  lastComment.set(comment.postUrn, Date.now());
+  const [pairing, status] = await Promise.all([getPairing(), getStatus()]);
+  if (!pairing) return;
+  const [found] = await chrome.scripting.executeScript({ target: { tabId }, func: postAuthorOnPage, args: [comment.postUrn] });
+  const author = found?.result as { publicId: string; postText: string } | null | undefined;
+  // Your own post (a reply to someone's comment on it) is not warm-up.
+  if (!author?.publicId || author.publicId === status.publicId) return;
+  await reportTouches(pairing, {
+    touches: [
+      {
+        kind: "comment",
+        publicId: author.publicId,
+        text: comment.text || (author.postText ? `On: ${author.postText}` : ""),
+        externalId: `comment:${comment.postUrn}:${Date.now()}`,
+        at: Date.now(),
+      },
+    ],
+  });
+}
+
+/**
+ * Reads your latest LinkedIn notifications and sends AILI the replies to your
+ * comments and the likes or comments on your posts. Where to read them comes
+ * from AILI, so a change on LinkedIn's side can be fixed without a new helper.
+ */
+async function readNotifications(pairing: Pairing, myId: string): Promise<void> {
+  const paths = (await takeNotificationPaths(pairing)).filter((p) => /^\/[\w./?=&%:(),-]+$/.test(p));
+  let lastError = "No notification address worked";
+  for (const path of paths) {
+    const res = await voyagerFetch(path);
+    if (res.status === 401 || res.status === 429 || res.status >= 500) throw new LinkedInError(`Notifications returned ${res.status}`, res.status);
+    if (!res.ok) {
+      lastError = `Notifications returned ${res.status}`;
+      continue;
+    }
+    const { touches, cards } = parseNotifications(await res.json().catch(() => null), myId);
+    if (cards === 0) {
+      lastError = "No notification cards found";
+      continue;
+    }
+    const notify = await reportTouches(pairing, { touches, read: { cards } });
+    if (notify.length) await showWarmup(pairing, notify);
+    return;
+  }
+  await reportTouches(pairing, { touches: [], read: { cards: 0, error: lastError } }).catch(() => {});
+}
+
+/** "Sarah replied to your comment": a good time to message. */
+async function showWarmup(pairing: Pairing, items: WarmupToNotify[]): Promise<void> {
+  const base = pairing.serverUrl.replace(/\/$/, "");
+  for (const t of items) {
+    const first = t.name.split(" ")[0];
+    await new Promise<void>((resolve) =>
+      chrome.notifications.create(
+        `aili|${base}/inbox?person=${encodeURIComponent(t.personId)}|warm${Date.now()}`,
+        {
+          type: "basic",
+          iconUrl: "icon-128.png",
+          title: t.kind === "reply" ? `${first} replied to your comment` : `${first} engaged with your post`,
+          message: t.text ? `"${t.text}" · A good time to message.` : "A good time to message.",
+          priority: 1,
+        },
+        () => resolve(),
+      ),
+    );
+  }
 }

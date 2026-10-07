@@ -35,7 +35,7 @@ const personInclude = {
   outbox: { where: { status: { in: ["queued", "sending", "failed"] } }, orderBy: { createdAt: "asc" as const } },
   // The latest connection request is all the screens need.
   invites: { orderBy: { createdAt: "desc" as const }, take: 1 },
-  touches: { orderBy: { createdAt: "desc" as const }, take: 20, select: { createdAt: true } },
+  touches: { orderBy: { createdAt: "desc" as const }, take: 30, select: { createdAt: true, kind: true, text: true, source: true } },
 } satisfies Prisma.PersonInclude;
 
 type PersonRow = Prisma.PersonGetPayload<{ include: typeof personInclude }>;
@@ -77,7 +77,13 @@ function toPerson(row: PersonRow): Person {
     alertsAt: row.alertsAt?.toISOString(),
     alertsOpenedAt: row.alertsOpenedAt?.toISOString(),
     alertsLaterAt: row.alertsLaterAt?.toISOString(),
-    touches: row.touches.map((t) => t.createdAt.toISOString()),
+    touches: row.touches.filter((t) => t.kind === "comment").map((t) => t.createdAt.toISOString()),
+    warmup: row.touches.map((t) => ({
+      kind: t.kind === "reply" || t.kind === "engage" ? t.kind : "comment",
+      at: t.createdAt.toISOString(),
+      text: t.text,
+      source: t.source,
+    })),
     tagIds: row.tags.map((t) => t.tagId),
     notes: row.notes,
     starred: row.starred,

@@ -83,6 +83,17 @@ export interface InviteView {
   withdrawnAt?: string;
 }
 
+/** One warm-up moment on LinkedIn, before or beside the messages. */
+export interface WarmupEvent {
+  /** comment: you commented on their post. reply: they replied to your comment. engage: they liked or commented on your post. */
+  kind: "comment" | "reply" | "engage";
+  at: string; // ISO
+  /** A short bit of what was said, or which post. */
+  text: string;
+  /** manual (tapped in AILI), helper (seen as you commented) or notification. */
+  source: string;
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -128,8 +139,10 @@ export interface Person {
   alertsOpenedAt?: string; // ISO
   /** Later: not asked again until the next day. */
   alertsLaterAt?: string; // ISO
-  /** Warm-up touches: when you said you commented on their posts, latest first. */
+  /** Warm-up touches: when you commented on their posts, latest first. */
   touches?: string[];
+  /** The warm-up story: your comments, their replies and likes, latest first. */
+  warmup?: WarmupEvent[];
   /** When the person was added to AILI. */
   createdAt?: string; // ISO
   /** When the person last moved stage. */

@@ -308,10 +308,18 @@ model Touch {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   personId    String
   person      Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
-  /// "comment" for now.
+  /// "comment": you commented on their post. "reply": they replied to your
+  /// comment. "engage": they liked or commented on your post.
   kind        String    @default("comment")
+  /// "manual" (tapped in AILI), "helper" (seen as you commented) or "notification".
+  source      String    @default("manual")
+  /// A short bit of what was said, or the post it was on.
+  text        String    @default("")
+  /// LinkedIn's id for what happened, so the helper never records it twice.
+  externalId  String?
   createdAt   DateTime  @default(now())
 
+  @@unique([workspaceId, externalId])
   @@index([personId])
 }
 

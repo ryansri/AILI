@@ -31,6 +31,7 @@ import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { followUpNote, relativeTime, shortDate, shortTime } from "@/lib/next-step";
 import { chatUrl, postsUrl } from "@/lib/profile-url";
+import { warmthMove } from "@/lib/warmth";
 import { isVoiceNote } from "@/lib/voice-note";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -94,6 +95,18 @@ function MyAvatar({ account }: { account: Account }) {
 }
 
 /** Under the last message, while they haven't answered: when to follow up. */
+/** The warm-up move, when it beats the usual next step: message someone who just replied to your comment, ask for a call. */
+function WarmTip({ row, needed }: { row: Row; needed: number }) {
+  const move = warmthMove(row.person, needed);
+  // Not connected yet: the Connect box above already counts the warm-up.
+  if (!move || move.short === "Connect now" || move.short.startsWith("Comment again")) return null;
+  return (
+    <li className="mx-auto mt-5 max-w-md rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs leading-relaxed text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+      <span className="font-semibold">{move.short}.</span> {move.long}
+    </li>
+  );
+}
+
 function FollowUpLine({ row }: { row: Row }) {
   const note = followUpNote(row.step);
   if (!note) return null;
@@ -530,6 +543,7 @@ export function ConversationPane({
             </li>
           ))}
           {isLead && hydrated && person.pending.length === 0 && <FollowUpLine row={row} />}
+          {isLead && hydrated && person.pending.length === 0 && <WarmTip row={row} needed={account.alerts.touchesToConnect} />}
           {messages.length === 0 && person.pending.length === 0 && !showConnect && person.invite?.status !== "accepted" && (
             <li className="text-center text-xs text-muted-foreground">No messages yet. Send the first one.</li>
           )}

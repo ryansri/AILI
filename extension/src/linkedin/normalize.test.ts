@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { extractConversationId, extractProfileId, linkedInVariables, raw } from "./encode";
 import {
+  commentFrom,
+  parseNotifications,
   extractCurrentPosition,
   extractPicture,
   extractProfile,
@@ -336,5 +338,64 @@ describe("the bell on a profile", () => {
     expect(bellTapFrom("https://www.linkedin.com/voyager/api/feed/subscriptions", "POST", '{"entity":"urn:li:fsd_profile:ACoAALaura22","subscribed":false}')).toBe("");
     expect(bellTapFrom("https://www.linkedin.com/voyager/api/voyagerFeedDashFollowingStates/urn:li:fsd_profile:ACoAAJaimes1", "GET", "")).toBe("");
     expect(bellTapFrom("https://www.linkedin.com/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage", "POST", '{"recipients":["urn:li:fsd_profile:ACoAAJaimes1"]}')).toBe("");
+  });
+});
+
+describe("commentFrom", () => {
+  it("spots you posting a comment and which post it is on", () => {
+    const body = JSON.stringify({ threadUrn: "urn:li:activity:7381234567890123456", commentary: { text: "Great point, \"spot on\"" } });
+    expect(commentFrom("https://www.linkedin.com/voyager/api/voyagerSocialDashNormComments?decorationId=x", "POST", body)).toEqual({
+      postUrn: "urn:li:activity:7381234567890123456",
+      text: 'Great point, "spot on"',
+    });
+  });
+
+  it("leaves likes, edits and reads alone", () => {
+    const body = JSON.stringify({ threadUrn: "urn:li:activity:7381234567890123456" });
+    expect(commentFrom("https://www.linkedin.com/voyager/api/voyagerSocialDashReactions", "POST", body)).toBeNull();
+    expect(commentFrom("https://www.linkedin.com/voyager/api/voyagerSocialDashNormComments?action=edit", "POST", body)).toBeNull();
+    expect(commentFrom("https://www.linkedin.com/voyager/api/voyagerSocialDashNormComments", "GET", body)).toBeNull();
+  });
+});
+
+describe("parseNotifications", () => {
+  it("finds replies to your comments and likes on your posts, and who did them", () => {
+    const raw = {
+      included: [
+        {
+          $type: "com.linkedin.voyager.dash.identity.notifications.Card",
+          entityUrn: "urn:li:fsd_notificationCard:(1)",
+          publishedAt: 1791400000000,
+          headline: { text: "Sarah Mitchell replied to your comment." },
+          contentPrimaryText: { text: "Exactly this. Reconciliations eat our week." },
+          "*headerImage": "urn:li:fsd_profile:SARAH123",
+        },
+        { $type: "com.linkedin.voyager.dash.identity.profile.Profile", entityUrn: "urn:li:fsd_profile:SARAH123" },
+        {
+          $type: "com.linkedin.voyager.dash.identity.notifications.Card",
+          entityUrn: "urn:li:fsd_notificationCard:(2)",
+          headline: { text: "Tom Mills and 3 others reacted to your post." },
+          actor: "urn:li:fsd_profile:TOMMILLS9",
+        },
+        {
+          $type: "com.linkedin.voyager.dash.identity.notifications.Card",
+          entityUrn: "urn:li:fsd_notificationCard:(3)",
+          headline: { text: "You appeared in 12 searches this week." },
+          actor: "urn:li:fsd_profile:ME000000",
+        },
+      ],
+    };
+    const { touches, cards } = parseNotifications(raw, "ME000000");
+    expect(cards).toBe(3);
+    expect(touches).toEqual([
+      {
+        kind: "reply",
+        memberId: "SARAH123",
+        text: "Exactly this. Reconciliations eat our week.",
+        externalId: "urn:li:fsd_notificationCard:(1)",
+        at: 1791400000000,
+      },
+      { kind: "engage", memberId: "TOMMILLS9", text: "Tom Mills and 3 others reacted to your post.", externalId: "urn:li:fsd_notificationCard:(2)", at: undefined },
+    ]);
   });
 });

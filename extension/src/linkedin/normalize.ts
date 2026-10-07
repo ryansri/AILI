@@ -512,3 +512,95 @@ export function bellTapFrom(url: string, method: string, body: string): string {
   if (OFF_WORDS.test(text)) return "";
   return PROFILE_IN.exec(text)?.[1] ?? "";
 }
+
+/* ------------------------------------------------------------- warm-up */
+
+const POST_URN = /urn:li:(?:activity|ugcPost|share):\d{6,}/;
+
+/**
+ * Whether a request LinkedIn's own page just sent (seen, not changed) looks
+ * like you posting a comment: a new comment that names the post it is on.
+ * Returns that post's id and the start of what you wrote, or null.
+ */
+export function commentFrom(url: string, method: string, body: string): { postUrn: string; text: string } | null {
+  if (!/^POST$/i.test(method)) return null;
+  let path = url;
+  try {
+    path = decodeURIComponent(url);
+  } catch {}
+  if (!/comment/i.test(path) || /reaction|like|delete|remove|edit|update|dismiss/i.test(path)) return null;
+  let text = body;
+  try {
+    text = decodeURIComponent(body);
+  } catch {}
+  const postUrn = POST_URN.exec(text)?.[0] ?? POST_URN.exec(path)?.[0];
+  if (!postUrn) return null;
+  const said = /"text"\s*:\s*"((?:[^"\\]|\\.){1,400})"/.exec(text)?.[1];
+  let words = "";
+  if (said) {
+    try {
+      words = JSON.parse(`"${said}"`) as string;
+    } catch {
+      words = said;
+    }
+  }
+  return { postUrn, text: words.replace(/\s+/g, " ").trim().slice(0, 200) };
+}
+
+export interface NotificationTouch {
+  kind: "reply" | "engage";
+  memberId: string;
+  text: string;
+  externalId: string;
+  at?: number;
+}
+
+/** Strings worth reading on a notification card: the headline and what was said. */
+function cardTexts(card: Loose): string[] {
+  const out: string[] = [];
+  for (const key of ["headline", "subHeadline", "contentPrimaryText", "contentSecondaryText", "content"]) {
+    const v = card[key];
+    if (typeof v === "string") out.push(v);
+    else if (v && typeof v.text === "string") out.push(v.text);
+  }
+  return out;
+}
+
+const REPLY = /replied to your comment|mentioned you in a comment|replied to you/i;
+const ON_YOURS = /(commented on|reacted to|liked|loves?|celebrat|support|finds?.{0,20}(insightful|funny)|reposted).{0,40}your (post|comment|article|repost)/i;
+
+/**
+ * Replies to your comments, and likes or comments on your posts, from a page
+ * of your LinkedIn notifications. Each names who did it (their member id), so
+ * AILI can find them. Anything else in your notifications is left alone.
+ */
+export function parseNotifications(raw: unknown, myId: string): { touches: NotificationTouch[]; cards: number } {
+  const included = ((raw as VoyagerResponse)?.included ?? []) as Loose[];
+  const byUrn = new Map<string, Loose>();
+  for (const e of included) if (typeof e?.entityUrn === "string") byUrn.set(e.entityUrn, e);
+  const cards = included.filter((e) => typeof e?.$type === "string" && /notification/i.test(e.$type) && /card/i.test(e.$type));
+  const touches: NotificationTouch[] = [];
+  for (const card of cards) {
+    const texts = cardTexts(card);
+    const headline = texts[0] ?? "";
+    const kind = REPLY.test(headline) ? "reply" : ON_YOURS.test(headline) ? "engage" : null;
+    if (!kind) continue;
+    // Who: the first profile named on the card, or on what it points to, that is not you.
+    const linked = Object.entries(card)
+      .filter(([k, v]) => k.startsWith("*") && typeof v === "string")
+      .map(([, v]) => byUrn.get(v as string))
+      .filter(Boolean);
+    const blob = JSON.stringify([card, ...linked]);
+    const ids = [...blob.matchAll(/fsd_profile:([\w-]{6,})/g)].map((m) => m[1]).filter((id) => id !== myId);
+    if (!ids.length) continue;
+    const at = typeof card.publishedAt === "number" ? card.publishedAt : undefined;
+    touches.push({
+      kind,
+      memberId: ids[0],
+      text: (kind === "reply" ? (texts[1] ?? headline) : headline).replace(/\s+/g, " ").trim().slice(0, 200),
+      externalId: String(card.entityUrn ?? card.objectUrn ?? `${ids[0]}:${at ?? headline}`),
+      at,
+    });
+  }
+  return { touches, cards: cards.length };
+}

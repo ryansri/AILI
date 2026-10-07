@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, Bell, Building2, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
+import { Archive, Bell, Building2, CalendarDays, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } from "@/lib/client-actions";
@@ -26,6 +26,9 @@ import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/compo
 import { CountBadge } from "@/components/count-badge";
 import { TagChip, TagDot } from "@/components/tag-chip";
 import { ConnectionDot, PersonAvatar } from "@/components/person-avatar";
+import { WarmthChip } from "@/components/warmth-chip";
+import { WarmupWeek } from "./warmup-week";
+import { warmthMove, warmthOf, warmupLine } from "@/lib/warmth";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 import { ImportDialog } from "./import-dialog";
 import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./company-view";
@@ -35,7 +38,7 @@ import { PostAlertsPanel, usePostAlerts } from "./post-alerts";
 
 const ALL = "all";
 
-type View = "people" | "companies";
+type View = "people" | "companies" | "week";
 
 /** What the table shows: everyone, one step of the funnel, or the connected who have no message yet. */
 type Pick = { kind: "stage"; key: string } | { kind: "notMessaged" } | null;
@@ -68,7 +71,7 @@ function useView(): View {
     readView,
     () => "",
   );
-  return raw === "companies" ? "companies" : "people";
+  return raw === "companies" || raw === "week" ? raw : "people";
 }
 
 /** The early stages the ring on the photo already shows. Past them, the stage shows by the name. */
@@ -263,6 +266,7 @@ export function PeopleView({
 
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
   const staleDays = account.invites.staleDays;
+  const needed = account.alerts.touchesToConnect;
   const isStale = (p: Person) => p.invite?.status === "sent" && waitingDays(p.invite.sentAt, now) > staleDays;
   const withdrawable = chosenPeople.filter((p) => ["queued", "sending", "sent", "failed"].includes(p.invite?.status ?? ""));
   const showRequests = !byCompany && pick?.kind === "stage" && pick.key === "requested";
@@ -329,6 +333,7 @@ export function PeopleView({
               [
                 ["people", "People", User],
                 ["companies", "Companies", Building2],
+                ["week", "This week", CalendarDays],
               ] as const
             ).map(([key, label, Icon]) => (
               <button
@@ -432,7 +437,9 @@ export function PeopleView({
           </>
         )}
 
-        {!byCompany && (
+        {view === "week" && <WarmupWeek people={scope} needed={needed} />}
+
+        {view === "people" && (
         <Table>
           <TableHeader>
             <TableRow>
@@ -444,6 +451,7 @@ export function PeopleView({
                 />
               </TableHead>
               <TableHead className="pl-4">Person</TableHead>
+              <TableHead>Warmth</TableHead>
               <TableHead>Next</TableHead>
               <TableHead>Tags</TableHead>
               <TableHead className="pr-6">Last touch</TableHead>
@@ -452,7 +460,10 @@ export function PeopleView({
           <TableBody>
             {rows.map((p) => {
               const on = selected.has(p.id);
-              const next = leadNext(p, staleDays, now);
+              const move = warmthMove(p, needed, now);
+              const usual = leadNext(p, staleDays, now);
+              const next = move && p.stage !== "lost" ? { text: move.short, due: move.due } : usual;
+              const line = warmupLine(p);
               return (
                 <TableRow
                   key={p.id}
@@ -481,7 +492,14 @@ export function PeopleView({
                       </div>
                     </div>
                   </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                      <WarmthChip warmth={warmthOf(p)} />
+                      {line && <span className="text-xs whitespace-nowrap text-muted-foreground">{line}</span>}
+                    </div>
+                  </TableCell>
                   <TableCell
+                    title={move?.long}
                     className={cn("text-md", next?.due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground/80")}
                     suppressHydrationWarning
                   >
@@ -505,7 +523,7 @@ export function PeopleView({
           </TableBody>
         </Table>
         )}
-        {!byCompany && rows.length === 0 && (
+        {view === "people" && rows.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">
             {people.length === 0 ? "No one yet. Import a list or add your first person." : "No one here."}
           </div>

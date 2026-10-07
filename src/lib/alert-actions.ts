@@ -43,18 +43,18 @@ async function setAlertsImpl(personId: string, state: "on" | "impossible" | "lat
   refresh();
 }
 
-/** "I commented": one warm-up touch. */
-async function addTouchImpl(personId: string) {
+/** "I commented" (or "They replied"): one warm-up touch, tapped in AILI. */
+async function addTouchImpl(personId: string, kind: "comment" | "reply" = "comment") {
   const { workspace } = await ownPerson(personId);
-  await db.touch.create({ data: { workspaceId: workspace.id, personId } });
+  await db.touch.create({ data: { workspaceId: workspace.id, personId, kind: kind === "reply" ? "reply" : "comment" } });
   await db.person.update({ where: { id: personId }, data: { lastActionAt: new Date() } });
   refresh();
 }
 
-/** Takes back the latest touch (a mis-click). */
-async function removeTouchImpl(personId: string) {
+/** Takes back the latest touch of that kind (a mis-click). */
+async function removeTouchImpl(personId: string, kind: "comment" | "reply" = "comment") {
   await ownPerson(personId);
-  const latest = await db.touch.findFirst({ where: { personId }, orderBy: { createdAt: "desc" } });
+  const latest = await db.touch.findFirst({ where: { personId, kind }, orderBy: { createdAt: "desc" } });
   if (latest) await db.touch.delete({ where: { id: latest.id } });
   refresh();
 }

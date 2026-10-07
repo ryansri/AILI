@@ -247,3 +247,25 @@ export async function reportBellTap(pairing: Pairing, memberId: string): Promise
 export function reportAlertsOpened(pairing: Pairing, personId: string) {
   return call(pairing, "/api/helper/alerts", { method: "POST", body: JSON.stringify({ opened: personId }) });
 }
+
+export interface WarmupToNotify {
+  personId: string;
+  name: string;
+  kind: "reply" | "engage";
+  text: string;
+}
+
+/** Where to read your LinkedIn notifications; AILI keeps the list up to date. */
+export async function takeNotificationPaths(pairing: Pairing): Promise<string[]> {
+  const data = await call<{ notificationPaths?: unknown }>(pairing, "/api/helper/touches");
+  return Array.isArray(data?.notificationPaths) ? data.notificationPaths.filter((p): p is string => typeof p === "string") : [];
+}
+
+/** Warm-up seen on LinkedIn: your comments, and replies and likes from your notifications. */
+export async function reportTouches(
+  pairing: Pairing,
+  body: { touches: unknown[]; read?: { cards: number; error?: string } },
+): Promise<WarmupToNotify[]> {
+  const data = await call<{ notify?: WarmupToNotify[] }>(pairing, "/api/helper/touches", { method: "POST", body: JSON.stringify(body) });
+  return data?.notify ?? [];
+}

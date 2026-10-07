@@ -270,7 +270,9 @@ export function ConnectPanel({
 
   const needed = account.alerts.touchesToConnect;
   const touches = person.touches?.length ?? 0;
-  const warm = touches >= needed;
+  // They replied to your comment or engaged with your post: warm, whatever the count.
+  const answered = (person.warmup ?? []).find((e) => e.kind !== "comment");
+  const warm = touches >= needed || Boolean(answered);
   const link = "underline-offset-2 hover:text-foreground hover:underline";
 
   if (state === "connect") {
@@ -287,6 +289,13 @@ export function ConnectPanel({
         {tooSoon ? (
           <span className="flex-1 text-amber-700" suppressHydrationWarning>
             You withdrew one on {shortDate(new Date(invite!.withdrawnAt!))}. LinkedIn lets you ask again from {shortDate(reaskFrom!)}.
+          </span>
+        ) : answered ? (
+          <span className="flex-1">
+            <span className="font-semibold text-foreground">
+              {first} {answered.kind === "reply" ? "replied to your comment" : "engaged with your post"}.
+            </span>{" "}
+            A good time to connect.
           </span>
         ) : warm ? (
           <span className="flex-1">
