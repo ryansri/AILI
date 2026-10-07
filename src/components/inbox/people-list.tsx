@@ -55,6 +55,13 @@ function lastLine(row: Row): React.ReactNode {
   return last.direction === "out" ? `You: ${last.body}` : last.body;
 }
 
+/** Where someone you just wrote to goes when you move on. */
+function movedTo(row: Row): string {
+  if (row.person.lead === false) return "Other";
+  if (row.step.kind === "waiting") return "Waiting";
+  return row.step.kind === "stale" ? "Everyone" : "Needs you";
+}
+
 function lastTime(row: Row): string {
   const pending = row.person.pending[row.person.pending.length - 1];
   if (pending) return relativeTime(pending.createdAt);
@@ -137,6 +144,7 @@ export function PeopleList({
   total,
   selectedId,
   onSelect,
+  movedId,
   query,
   onQuery,
   conditions,
@@ -151,6 +159,8 @@ export function PeopleList({
   total: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Just written to and no longer in this view: kept in place, faded, until you move on. */
+  movedId?: string | null;
   query: string;
   onQuery: (q: string) => void;
   conditions: Condition[];
@@ -222,7 +232,8 @@ export function PeopleList({
                   {g.rows.map((row) => {
                     const active = row.person.id === selectedId;
                     const stale = row.step.kind === "stale";
-                    const canDone = row.step.kind !== "waiting" && !stale;
+                    const moved = row.person.id === movedId;
+                    const canDone = row.step.kind !== "waiting" && !stale && !moved;
                     return (
                       <li key={row.person.id} className="group relative border-b">
                         <button
@@ -232,7 +243,7 @@ export function PeopleList({
                           className={cn(
                             "flex w-full min-w-0 items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/40",
                             active && "bg-muted/60 shadow-[inset_3px_0_0_0_var(--color-foreground)] hover:bg-muted/60",
-                            stale && !active && "opacity-60",
+                            (stale || moved) && !active && "opacity-60",
                           )}
                         >
                           {/* Room for the photo, which is its own link on top (a link cannot sit in a button). */}
@@ -254,7 +265,14 @@ export function PeopleList({
                             <span className="text-xs text-muted-foreground" suppressHydrationWarning>
                               {lastTime(row)}
                             </span>
-                            {row.person.lead !== false && <FollowUp row={row} />}
+                            {moved ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                                <Check className="size-3" strokeWidth={2.5} />
+                                Sent · moves to {movedTo(row)}
+                              </span>
+                            ) : (
+                              row.person.lead !== false && <FollowUp row={row} />
+                            )}
                           </span>
                         </button>
                         <span className={cn("absolute top-3.5 left-4", stale && !active && "opacity-60")}>

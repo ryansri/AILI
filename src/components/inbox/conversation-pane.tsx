@@ -140,6 +140,7 @@ export function ConversationPane({
   onSnoozeOpenChange,
   detailsOpen,
   onToggleDetails,
+  onSent,
 }: {
   row: Row;
   account: Account;
@@ -150,6 +151,8 @@ export function ConversationPane({
   onSnoozeOpenChange: (open: boolean) => void;
   detailsOpen: boolean;
   onToggleDetails: () => void;
+  /** After a message is sent or queued: the inbox keeps this chat open and in place. */
+  onSent?: () => void;
 }) {
   const { person, step } = row;
   // Message times are the viewer's local time, so they are printed in the browser only.
@@ -234,6 +237,7 @@ export function ConversationPane({
         await queueSend({ personId: person.id, body, followUp, templateId });
         setDraft("");
         setTemplateId(undefined);
+        onSent?.();
         // Wake the Chrome helper so it sends now, not at its next minute.
         window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
       }, "");
@@ -661,6 +665,7 @@ export function ConversationPane({
         onSent={() => {
           setDraft("");
           setTemplateId(undefined);
+          onSent?.();
         }}
       />
       <LogReplyDialog open={logging} onOpenChange={setLogging} personId={person.id} personName={person.name} />

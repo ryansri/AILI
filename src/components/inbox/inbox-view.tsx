@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Account, Person, StageDef, Tag } from "@/lib/types";
@@ -10,9 +10,11 @@ import { nextStep, type StatusKind } from "@/lib/next-step";
 import {
   groupRows,
   inView,
+  keepInPlace,
   matchesConditions,
   needsYou,
   type Condition,
+  type Group,
   type Row,
   type View,
 } from "@/lib/rows";
@@ -98,6 +100,8 @@ export function InboxView({
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(initialPersonId);
+  // Who you just wrote to, and where their row was: it stays there until you move on.
+  const [held, setHeld] = useState<{ id: string; kind: Group["kind"]; index: number } | null>(null);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [messageAll, setMessageAll] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -155,7 +159,14 @@ export function InboxView({
     });
   }, [rows, otherRows, view.kind, conditions, query]);
 
-  const groups = useMemo(() => groupRows(narrowed.filter((r) => inView(r, view)), view), [narrowed, view]);
+  const baseGroups = useMemo(() => groupRows(narrowed.filter((r) => inView(r, view)), view), [narrowed, view]);
+  const heldRow = held ? (view.kind === "other" ? otherRows : rows).find((r) => r.person.id === held.id) : undefined;
+  const groups = useMemo(
+    () => (held && heldRow ? keepInPlace(baseGroups, heldRow, held, view) : baseGroups),
+    [baseGroups, held, heldRow, view],
+  );
+  // The held row once it no longer belongs here: drawn faded, saying where it goes.
+  const movedId = held && heldRow && !baseGroups.some((g) => g.rows.some((r) => r.person.id === held.id)) ? held.id : null;
   const inViewRows = useMemo(() => groups.flatMap((g) => g.rows), [groups]);
   // Rows you can see and move through with J and K: folded groups are skipped.
   const flat = useMemo(
@@ -166,7 +177,26 @@ export function InboxView({
   // Stay on the chosen person while they are in this view; otherwise fall to the first visible row.
   const selected = inViewRows.find((r) => r.person.id === selectedId) ?? flat[0] ?? null;
 
+  /** Open someone. Whoever was held in place after a send now moves on. */
+  const select = useCallback((id: string) => {
+    setSelectedId(id);
+    setHeld((h) => (h && h.id !== id ? null : h));
+  }, []);
+
+  /** After a send: keep this person's row where it is until you move on. */
+  function holdAfterSend(id: string) {
+    for (const g of groups) {
+      const index = g.rows.findIndex((r) => r.person.id === id);
+      if (index >= 0) {
+        setSelectedId(id);
+        setHeld({ id, kind: g.kind, index });
+        return;
+      }
+    }
+  }
+
   function pickView(next: View) {
+    setHeld(null);
     setView(next);
     setCollapsed(new Set());
   }
@@ -199,7 +229,7 @@ export function InboxView({
         if (!flat.length) return;
         const i = Math.max(0, flat.findIndex((r) => r.person.id === selected?.person.id));
         const next = flat[Math.min(flat.length - 1, Math.max(0, i + (key === "j" ? 1 : -1)))];
-        setSelectedId(next.person.id);
+        select(next.person.id);
         e.preventDefault();
       } else if (key === "r" && selected) {
         document.getElementById("reply")?.focus();
@@ -222,7 +252,7 @@ export function InboxView({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [flat, selected, detailsOpen, setDetailsOpen]);
+  }, [flat, selected, detailsOpen, setDetailsOpen, select]);
 
   return (
     <div className="flex h-full w-full">
@@ -258,7 +288,8 @@ export function InboxView({
             onToggleGroup={toggleGroup}
             total={view.kind === "other" ? otherRows.length : rows.length}
             selectedId={selected?.person.id ?? null}
-            onSelect={setSelectedId}
+            onSelect={select}
+            movedId={movedId}
             query={query}
             onQuery={setQuery}
             conditions={conditions}
@@ -293,6 +324,7 @@ export function InboxView({
             onSnoozeOpenChange={setSnoozeOpen}
             detailsOpen={detailsOpen}
             onToggleDetails={toggleDetails}
+            onSent={() => holdAfterSend(selected.person.id)}
           />
           {detailsOpen && (
             <DetailsPanel

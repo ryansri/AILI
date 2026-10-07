@@ -202,6 +202,29 @@ function groupsFor(view: View): { kind: Group["kind"]; title: string; band: bool
  * Replies, new connections and ungrouped lists are newest first. Follow-ups,
  * last tries and waiting are most overdue or soonest due first.
  */
+/**
+ * Keeps one row where it was in the list after it stopped belonging there
+ * (you just wrote to them, so they moved to Waiting): same group, same
+ * place, until you move on. The list does not jump while you are mid-chat.
+ */
+export function keepInPlace(groups: Group[], row: Row, at: { kind: Group["kind"]; index: number }, view: View): Group[] {
+  if (groups.some((g) => g.rows.some((r) => r.person.id === row.person.id))) return groups;
+  const defs = groupsFor(view);
+  const def = defs.find((d) => d.kind === at.kind);
+  if (!def) return groups;
+  const existing = groups.find((g) => g.kind === def.kind);
+  if (existing) {
+    return groups.map((g) => {
+      if (g !== existing) return g;
+      const rows = [...g.rows];
+      rows.splice(Math.min(at.index, rows.length), 0, row);
+      return { ...g, rows };
+    });
+  }
+  const order = defs.map((d) => d.kind);
+  return [...groups, { ...def, rows: [row] }].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+}
+
 export function groupRows(rows: Row[], view: View): Group[] {
   return groupsFor(view)
     .map((g) => {

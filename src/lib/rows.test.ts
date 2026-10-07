@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { nextStep } from "./next-step";
-import { bucketOf, groupRows, inView, matchesConditions, sortRows, type Row, type View } from "./rows";
+import { bucketOf, groupRows, inView, keepInPlace, matchesConditions, sortRows, type Row, type View } from "./rows";
 import type { Person } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -149,5 +149,20 @@ describe("views", () => {
       ["Older than 30 days", true],
     ]);
     expect(groups[1].rows.map((r) => r.person.name)).toEqual(["Old Olly"]);
+  });
+});
+
+describe("keepInPlace", () => {
+  const now: View = { kind: "now" };
+  it("keeps someone you just wrote to where they were, until you move on", () => {
+    const groups = groupRows(rows.filter((r) => inView(r, now)), now);
+    const nia = rows[1];
+    // Nia was first in "They replied"; after your reply she is waiting, so she drops out of Needs you.
+    const after = groupRows(rows.filter((r) => r !== nia && inView(r, now)), now);
+    const kept = keepInPlace(after, nia, { kind: groups[0].kind, index: 0 }, now);
+    expect(kept[0].kind).toBe(groups[0].kind);
+    expect(kept[0].rows[0].person.name).toBe("New Nia");
+    // Already there: nothing changes.
+    expect(keepInPlace(groups, nia, { kind: groups[0].kind, index: 0 }, now)).toBe(groups);
   });
 });
