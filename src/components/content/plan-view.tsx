@@ -47,7 +47,7 @@ import { ImportPlanDialog } from "./import-plan-dialog";
 import { AddRowDialog, MoveDialog, RhythmDialog } from "./plan-dialogs";
 import { PlanCalendar } from "./plan-calendar";
 import { PlanTable } from "./plan-table";
-import { ContentList, ScoreCard, StatusCounts, type StatusFilter } from "./plan-list";
+import { ContentList, LastWeek, ScoreCard, StatusCounts, type StatusFilter } from "./plan-list";
 import { PlanWeek, ReadyBar, WeekCounts, type StatusPick } from "./plan-week";
 import { PlanStart } from "./plan-start";
 import { downloadText, PILLAR_CLASS } from "./plan-ui";
@@ -188,6 +188,8 @@ export function PlanView({
   const [monday, setMonday] = useState(() => mondayOf(plan.today));
   const [pick, setPick] = useState<StatusPick | null>(null);
   const [status, setStatus] = useState<StatusFilter | null>(null);
+  // The list: this week and ahead (with last week's recap), or past weeks.
+  const [listTab, setListTab] = useState<"upcoming" | "past">("upcoming");
   const [pageFilter, setPageFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "post" | "article">("all");
   const [stats, setStats] = useState(false);
@@ -333,6 +335,7 @@ export function PlanView({
   const visible = entries.filter(
     (e) => (pageFilter === "all" || e.channel === pageFilter) && (typeFilter === "all" || e.kind === typeFilter),
   );
+  const pastWeeks = new Set(visible.filter((e) => e.day && e.day < mondayOf(today)).map((e) => mondayOf(e.day!))).size;
   const sunday = addDays(monday, 6);
   const week = visible.filter((e) => e.day && e.day >= monday && e.day <= sunday);
   const TITLES: Record<View, string> = { list: "", week: "Week grid", calendar: "Month calendar", table: "Edit rows in bulk" };
@@ -418,14 +421,41 @@ export function PlanView({
           <>
             <ScoreCard entries={visible} today={today} />
             <StatusCounts entries={visible} filter={status} onFilter={setStatus} />
+            <div role="tablist" aria-label="Weeks" className="flex gap-1 border-b">
+              {(
+                [
+                  ["upcoming", "Upcoming", 0],
+                  ["past", "Past", pastWeeks],
+                ] as const
+              ).map(([key, label, n]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={listTab === key}
+                  onClick={() => setListTab(key)}
+                  className={cn(
+                    "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-md transition-colors",
+                    listTab === key ? "border-foreground font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                  {n > 0 && <span className="text-xs font-normal text-muted-foreground">{n} {n === 1 ? "week" : "weeks"}</span>}
+                </button>
+              ))}
+            </div>
+            {listTab === "upcoming" && <LastWeek entries={visible} today={today} />}
             <ContentList
               entries={status ? visible.filter((e) => e.status === status) : visible}
+              past={listTab === "past"}
               today={today}
               timeZone={plan.timeZone}
               selectedId={selectedId}
               onSelect={setSelectedId}
               empty={
-                typeFilter === "article" && !status
+                listTab === "past"
+                  ? "Nothing in past weeks."
+                  : typeFilter === "article" && !status
                   ? "No articles planned yet. Add one with New, Plan row, and set its type to Article."
                   : "Nothing here."
               }
