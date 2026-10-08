@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { privacyOn } from "@/lib/privacy-server";
 import { revalidatePath } from "next/cache";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { applyNetwork, readNetworkReport } from "@/lib/invite-store";
@@ -25,7 +26,9 @@ async function handlePOST(request: Request) {
     revalidatePath("/people");
     revalidatePath("/today");
   }
-  return NextResponse.json({ accepted: workspace.notifyAccepts ? accepted : [] }, { headers: corsHeaders(request) });
+  // Recording mode: no pop-ups, so no real names on screen.
+  const quiet = await privacyOn(workspace.id);
+  return NextResponse.json({ accepted: workspace.notifyAccepts && !quiet ? accepted : [] }, { headers: corsHeaders(request) });
 }
 
 export const POST = helperRoute(handlePOST);

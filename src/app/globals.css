@@ -145,3 +145,15 @@
     background-position: 16px 0;
   }
 }
+
+/* Recording mode (Shift + H): lead details, already swapped for made-up ones, are blurred too. */
+[data-privacy="on"] [data-private],
+[data-privacy="on"] [data-slot="avatar"] {
+  filter: blur(5px);
+  user-select: none;
+}
+/* A placeholder can't be blurred, so its text is turned into a soft shadow. */
+[data-privacy="on"] [data-private-placeholder]::placeholder {
+  color: transparent;
+  text-shadow: 0 0 6px var(--muted-foreground);
+}

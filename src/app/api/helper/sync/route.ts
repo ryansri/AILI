@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { privacyOn } from "@/lib/privacy-server";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { applySync, myPictureFromSync, repliesToNotify, validatePayload } from "@/lib/helper-sync";
 
@@ -37,8 +38,10 @@ async function handlePOST(request: Request) {
   revalidatePath("/today");
   // The helper shows these as desktop notifications, if you have them turned on:
   // new replies, and "Add to Leads?" for new conversations you started.
-  const notify = workspace.notifyReplies ? repliesToNotify(result.newReplies) : [];
-  const ask = workspace.notifyReplies ? result.startedByYou : [];
+  // Recording mode: no pop-ups, so no real names on screen.
+  const quiet = await privacyOn(workspace.id);
+  const notify = workspace.notifyReplies && !quiet ? repliesToNotify(result.newReplies) : [];
+  const ask = workspace.notifyReplies && !quiet ? result.startedByYou : [];
   return NextResponse.json({ ...result, newReplies: undefined, startedByYou: undefined, notify, ask }, { headers: corsHeaders(request) });
 }
 

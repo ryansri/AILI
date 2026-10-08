@@ -1,4 +1,6 @@
 import "server-only";
+import { maskPerson } from "./privacy";
+import { privacyOn } from "./privacy-server";
 import { cache } from "react";
 import { Prisma, type Invite, type Workspace } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -340,14 +342,19 @@ export const loadWorkspaceData = cache(async () => {
     everyone = await getPeople(id);
   }
   const account = accountOf(workspace, used, aiApps);
+  // Recording mode: made-up details for everyone, swapped before anything leaves the server.
+  const hidden = await privacyOn(id);
+  if (hidden) everyone = everyone.map(maskPerson);
   const people = everyone.filter((p) => p.lead !== false);
   const others = everyone.filter((p) => p.lead === false);
-  return { workspace, people, others, tags, stages, templates, account };
+  return { workspace, people, others, tags, stages, templates, account, hidden };
 });
 
 /** Leads by company: the company names the user renamed, put together or kept apart. */
 export const getCompanyRules = cache(async (): Promise<CompanyRule[]> => {
   const id = await requireWorkspaceId();
+  // Recording mode: real company names stay out of the page.
+  if (await privacyOn(id)) return [];
   return db.companyName.findMany({ where: { workspaceId: id }, select: { raw: true, name: true } });
 });
 
@@ -359,5 +366,6 @@ export const getInviteFacts = cache(async (): Promise<InviteFacts[]> => {
     where: { workspaceId: id, OR: [{ sentAt: { gte: since } }, { status: { in: ["sent", "withdrawing"] } }] },
     select: { status: true, note: true, sentAt: true },
   });
-  return rows.map((r) => ({ status: r.status, note: r.note, sentAt: r.sentAt?.toISOString() }));
+  const hidden = await privacyOn(id);
+  return rows.map((r) => ({ status: r.status, note: hidden && r.note ? "(note)" : r.note, sentAt: r.sentAt?.toISOString() }));
 });

@@ -5,6 +5,7 @@ import { run } from "./action-result";
 import { rawKey } from "./companies";
 import { getWorkspace } from "./data";
 import { db } from "./db";
+import { notWhileRecording } from "./privacy-server";
 
 /*
  * Leads by company: the user's corrections to how company names are grouped.
@@ -41,6 +42,7 @@ async function save(workspaceId: string, pairs: { raw: string; name: string }[])
  */
 async function nameCompanyImpl(raws: string[], name: string) {
   const workspace = await getWorkspace();
+  await notWhileRecording(workspace.id);
   const list = names(raws);
   const to = clean(name);
   if (!to) {
@@ -54,6 +56,7 @@ async function nameCompanyImpl(raws: string[], name: string) {
 /** Each of these company names is its own company, as LinkedIn spells it. */
 async function keepCompaniesApartImpl(raws: string[]) {
   const workspace = await getWorkspace();
+  await notWhileRecording(workspace.id);
   await save(workspace.id, names(raws).map((raw) => ({ raw, name: raw })));
 }
 

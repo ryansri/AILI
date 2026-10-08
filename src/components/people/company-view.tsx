@@ -157,7 +157,7 @@ export function CompanyTable({
                     </span>
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className={cn("truncate text-md font-semibold", !g.key && "font-medium text-muted-foreground")}>{g.name}</span>
+                        <span data-private className={cn("truncate text-md font-semibold", !g.key && "font-medium text-muted-foreground")}>{g.name}</span>
                         {g.key && <StageWord stages={stages} stage={g.stage} />}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
@@ -183,7 +183,7 @@ export function CompanyTable({
                         <PersonAvatar person={p} className="size-7" />
                         <div className="min-w-0">
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className="truncate text-sm font-semibold">{p.name}</span>
+                            <span data-private className="truncate text-sm font-semibold">{p.name}</span>
                             <StageWord stages={stages} stage={p.stage} />
                           </div>
                           <div className="truncate text-xs text-muted-foreground">{p.jobTitle || p.headline}</div>
@@ -390,7 +390,7 @@ export function CompanyPanel({
                   {group.name.charAt(0).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <SheetTitle className="truncate text-lg">{group.name}</SheetTitle>
+                  <SheetTitle data-private className="truncate text-lg">{group.name}</SheetTitle>
                   <SheetDescription
                     className="truncate text-xs"
                     title={group.raws.some((r) => r !== group.name) ? `On LinkedIn as ${group.raws.join(", ")}` : undefined}
@@ -454,7 +454,7 @@ export function CompanyPanel({
                       <PersonAvatar person={p} className="size-8" link={false} />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5 text-md font-semibold">
-                          <span className="truncate">{p.name}</span>
+                          <span data-private className="truncate">{p.name}</span>
                           {deciderRank(title) >= 0 && (
                             <span className="shrink-0 rounded-full bg-foreground px-1.5 py-px text-2xs font-semibold text-background">Decision maker</span>
                           )}

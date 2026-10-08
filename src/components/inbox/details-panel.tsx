@@ -100,8 +100,8 @@ export function DetailsPanel({
       <div className="flex items-start gap-2.5">
         <PersonAvatar person={person} className="size-10" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-md font-semibold">{person.name}</div>
-          {where && <div className="truncate text-2xs text-muted-foreground">{where}</div>}
+          <div data-private className="truncate text-md font-semibold">{person.name}</div>
+          {where && <div data-private className="truncate text-2xs text-muted-foreground">{where}</div>}
           {person.linkedinUrl ? (
             <a
               href={person.linkedinUrl}
@@ -129,7 +129,7 @@ export function DetailsPanel({
 
       {person.headline && (
         <Field label="LinkedIn headline">
-          <p className="text-xs leading-relaxed text-muted-foreground">{person.headline}</p>
+          <p data-private className="text-xs leading-relaxed text-muted-foreground">{person.headline}</p>
         </Field>
       )}
 
@@ -158,6 +158,7 @@ export function DetailsPanel({
 
       <Field label="Notes">
         <Textarea
+          data-private
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           onBlur={saveNotes}
@@ -225,7 +226,7 @@ function WarmupField({ row }: { row: Row }) {
             {events.map((e, i) => (
               <li key={`${e.at}-${i}`} className="flex flex-col gap-0.5 rounded-lg border bg-background px-2.5 py-2">
                 <span className="font-medium text-foreground">{EVENT_WORDS[e.kind](first)}</span>
-                {e.text && <span className="line-clamp-2 text-muted-foreground">&ldquo;{e.text}&rdquo;</span>}
+                {e.text && <span data-private className="line-clamp-2 text-muted-foreground">&ldquo;{e.text}&rdquo;</span>}
                 <span className="text-2xs text-muted-foreground" suppressHydrationWarning>
                   {relativeTime(e.at) === "now" ? "just now" : `${relativeTime(e.at)} ago`}
                   {e.source === "notification" ? " · from your notifications" : e.source === "helper" ? " · seen by the helper" : ""}

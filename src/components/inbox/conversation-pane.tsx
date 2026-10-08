@@ -129,7 +129,7 @@ function AiTip({ apps, first }: { apps: string[]; first: string }) {
       <CircleHelp className="size-3 shrink-0" />
       {names.length > 0 ? (
         <span className="min-w-0 truncate">
-          Want help writing? Ask {names.join(" or ")}: &ldquo;Draft a reply to {first} in AILI.&rdquo; It appears here.
+          Want help writing? Ask {names.join(" or ")}: &ldquo;Draft a reply to <span data-private>{first}</span> in AILI.&rdquo; It appears here.
         </span>
       ) : (
         <span className="min-w-0 truncate">
@@ -276,8 +276,8 @@ export function ConversationPane({
               className="flex min-w-0 shrink items-center gap-3 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted"
             >
               <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold leading-tight">{person.name}</span>
-                <span className="block max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
+                <span data-private className="block truncate text-sm font-semibold leading-tight">{person.name}</span>
+                <span data-private className="block max-w-md truncate text-xs text-muted-foreground" title={subtitle}>
                   {subtitle || "No headline yet"}
                 </span>
               </span>
@@ -414,6 +414,7 @@ export function ConversationPane({
                       (mine ? <MyAvatar account={account} /> : <PersonAvatar person={person} className="size-7" />)}
                   </span>
                   <div
+                    data-private
                     className={cn(
                       "max-w-[56%] rounded-2xl px-3.5 py-2 text-md leading-[1.375rem] break-words whitespace-pre-wrap",
                       mine ? "bg-foreground text-background" : "bg-muted",
@@ -469,7 +470,7 @@ export function ConversationPane({
                 <span className={AVATAR_SLOT}>
                   <MyAvatar account={account} />
                 </span>
-                <div className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-muted-foreground">
+                <div data-private className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-muted-foreground">
                   {p.body}
                 </div>
               </div>
@@ -504,7 +505,7 @@ export function ConversationPane({
                 <span className={AVATAR_SLOT}>
                   <MyAvatar account={account} />
                 </span>
-                <div className="max-w-[56%] rounded-2xl border border-dashed border-red-300 bg-red-50/60 px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-foreground/80">
+                <div data-private className="max-w-[56%] rounded-2xl border border-dashed border-red-300 bg-red-50/60 px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-foreground/80">
                   {f.body}
                 </div>
               </div>
@@ -615,6 +616,7 @@ export function ConversationPane({
                   }
                 }}
                 placeholder={followUp ? `Follow-up ${followUp} to ${first}` : `Write to ${first}`}
+                data-private-placeholder
                 className="min-h-10 resize-none rounded-2xl px-4 py-2.5 pr-24 text-md"
               />
               <span className="pointer-events-none absolute right-3.5 bottom-2.5 hidden items-center gap-1 text-2xs text-muted-foreground sm:flex">

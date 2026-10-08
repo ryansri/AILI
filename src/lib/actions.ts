@@ -9,6 +9,7 @@ import { PROTECTED_STAGE_KEYS } from "./stage-rules";
 import { fillTemplate } from "./templates";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
 import { isTagColor, type Stage, type TagColor } from "./types";
+import { notWhileRecording } from "./privacy-server";
 
 /*
  * Server actions. Every one resolves the logged-in workspace first and only
@@ -64,7 +65,8 @@ async function updateStageImpl(personId: string, stage: string) {
 }
 
 async function updateNotesImpl(personId: string, notes: string) {
-  await ownPerson(personId);
+  const { workspace } = await ownPerson(personId);
+  await notWhileRecording(workspace.id);
   await db.person.update({ where: { id: personId }, data: { notes: clean(notes, 5000), ...touched() } });
   refresh();
 }
@@ -125,6 +127,7 @@ async function logMessageImpl(input: {
   templateId?: string;
 }) {
   const { workspace, person } = await ownPerson(input.personId);
+  await notWhileRecording(workspace.id);
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
   const sentAt = input.sentAt ? new Date(input.sentAt) : new Date();
@@ -175,6 +178,7 @@ async function ownTemplateId(workspaceId: string, id: string | undefined): Promi
 
 async function queueSendImpl(input: { personId: string; body: string; followUp?: 1 | 2; templateId?: string }) {
   const { workspace, person } = await ownPerson(input.personId);
+  await notWhileRecording(workspace.id);
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
   if (!person.linkedinUrn) throw new Error("AILI does not know this person on LinkedIn yet. Send it by hand this time.");
@@ -393,7 +397,8 @@ async function createPersonImpl(input: PersonInput) {
 }
 
 async function updatePersonImpl(personId: string, input: PersonInput) {
-  await ownPerson(personId);
+  const { workspace } = await ownPerson(personId);
+  await notWhileRecording(workspace.id);
   const name = clean(input.name, 120);
   if (!name) throw new Error("Name is required");
   const linkedinUrl = clean(input.linkedinUrl, 300);
@@ -656,6 +661,7 @@ async function deleteTemplateImpl(id: string) {
  */
 async function queueBulkImpl(input: { personIds: string[]; body: string; templateId?: string }) {
   const workspace = await getWorkspace();
+  await notWhileRecording(workspace.id);
   const templateId = await ownTemplateId(workspace.id, input.templateId);
   const body = String(input.body ?? "").trim().slice(0, 8000);
   if (!body) throw new Error("Write a message first.");

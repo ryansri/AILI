@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { privacyOn } from "@/lib/privacy-server";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { NOTIFICATION_PATHS, readKey, recordTouches, validTouches } from "@/lib/warmup-sync";
 
@@ -42,7 +43,8 @@ async function handlePOST(request: Request) {
     revalidatePath("/people");
   }
   // A desktop notice for a lead who replied to your comment or engaged with your post.
-  const notify = workspace.notifyReplies ? fresh.filter((t) => t.lead && t.kind !== "comment").slice(0, 3) : [];
+  const quiet = await privacyOn(workspace.id);
+  const notify = workspace.notifyReplies && !quiet ? fresh.filter((t) => t.lead && t.kind !== "comment").slice(0, 3) : [];
   return NextResponse.json({ recorded: fresh.length, notify }, { headers: corsHeaders(request) });
 }
 

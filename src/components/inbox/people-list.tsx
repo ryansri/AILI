@@ -21,6 +21,7 @@ import { CONNECTION_CHOICES, needsConnect } from "@/lib/invites";
 import { isVoiceNote } from "@/lib/voice-note";
 import { ConnectionDot, PersonAvatar } from "@/components/person-avatar";
 import { SyncLineBar } from "./sync-line";
+import { LinkedInMark } from "@/components/linkedin-bits";
 
 function lastLine(row: Row): React.ReactNode {
   const pending = row.person.pending[row.person.pending.length - 1];
@@ -253,13 +254,13 @@ export function PeopleList({
                               {bucketOf(row) === "replied" && (
                                 <span aria-label="Replied" className="-mr-0.5 size-2 shrink-0 rounded-full bg-blue-500" />
                               )}
-                              <span className="truncate text-sm font-semibold">{row.person.name}</span>
+                              <span data-private className="truncate text-sm font-semibold">{row.person.name}</span>
                               {row.person.starred && (
                                 <Star aria-label="Starred" className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
                               )}
                               <Chip row={row} />
                             </div>
-                            <div className="truncate text-md text-foreground/70">{lastLine(row)}</div>
+                            <div data-private className="truncate text-md text-foreground/70">{lastLine(row)}</div>
                           </div>
                           <span className="flex shrink-0 flex-col items-end gap-1 self-start pt-0.5">
                             <span className="text-xs text-muted-foreground" suppressHydrationWarning>
@@ -278,15 +279,15 @@ export function PeopleList({
                         <span className={cn("absolute top-3.5 left-4", stale && !active && "opacity-60")}>
                           <PersonAvatar person={row.person} className="size-10" />
                         </span>
-                        {/* Done and snooze are for leads, as Other has no next step. The photo opens LinkedIn. */}
-                        {row.person.lead !== false && (
+                        {/* Done and snooze are for leads, as Other has no next step. */}
+                        {(row.person.lead !== false || row.person.linkedinUrl) && (
                           <div
                             className={cn(
                               "absolute top-1/2 right-3 flex -translate-y-1/2 gap-0.5 rounded-full border bg-background p-0.5 shadow-sm [&_button]:rounded-full",
                               "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
                             )}
                           >
-                            {canDone && (
+                            {row.person.lead !== false && canDone && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button variant="ghost" size="icon-xs" aria-label="Mark done" onClick={() => done(row)}>
@@ -296,7 +297,21 @@ export function PeopleList({
                                 <TooltipContent side="bottom">Done (E)</TooltipContent>
                               </Tooltip>
                             )}
-                            <SnoozeMenu personId={row.person.id} snoozed={Boolean(row.person.snoozedUntil)} size="icon-xs" />
+                            {row.person.lead !== false && (
+                              <SnoozeMenu personId={row.person.id} snoozed={Boolean(row.person.snoozedUntil)} size="icon-xs" />
+                            )}
+                            {row.person.linkedinUrl && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon-xs" aria-label="Open LinkedIn profile" asChild>
+                                    <a href={row.person.linkedinUrl} target="_blank" rel="noreferrer" className="rounded-full">
+                                      <LinkedInMark className="size-3.5 text-[8px]" />
+                                    </a>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">Open LinkedIn profile</TooltipContent>
+                              </Tooltip>
+                            )}
                           </div>
                         )}
                       </li>

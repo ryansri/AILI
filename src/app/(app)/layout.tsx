@@ -1,6 +1,7 @@
 import { Rail } from "@/components/shell/rail";
 import { AutoRefresh } from "@/components/shell/auto-refresh";
 import { TimeZoneSync } from "@/components/shell/time-zone-sync";
+import { PrivacyKeys } from "@/components/shell/privacy-keys";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -13,7 +14,7 @@ import { nextStep } from "@/lib/next-step";
 import { needsYou } from "@/lib/rows";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
-  const [{ workspace, people, others, account }, reminder] = await Promise.all([
+  const [{ workspace, people, others, account, hidden }, reminder] = await Promise.all([
     loadWorkspaceData(),
     getWorkspaceForReminder(),
   ]);
@@ -25,7 +26,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const needsYouCount = people.filter((p) => needsYou(nextStep(p, now).kind)).length;
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-full">
+      {/* Recording mode blurs what is marked data-private (and every photo); see globals.css. */}
+      <div className="flex h-full" data-privacy={hidden ? "on" : undefined}>
         <Rail
           initials={workspace.initials}
           pictureUrl={account.pictureUrl}
@@ -38,6 +40,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
         </main>
         <AutoRefresh />
+        <PrivacyKeys />
         <TimeZoneSync saved={workspace.timeZone} auto={workspace.timeZoneAuto} />
       </div>
     </TooltipProvider>

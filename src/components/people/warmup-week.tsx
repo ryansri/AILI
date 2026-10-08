@@ -66,11 +66,11 @@ export function WarmupWeek({ people, needed }: { people: Person[]; needed: numbe
               onClick={() => router.push(`/inbox?person=${person.id}`)}
               className="grid w-full grid-cols-[minmax(0,1.3fr)_140px_minmax(0,2fr)_150px] items-center gap-4 border-t px-5 py-3 text-left text-sm transition-colors hover:bg-muted/40"
             >
-              <span className="truncate font-semibold">{person.name}</span>
+              <span data-private className="truncate font-semibold">{person.name}</span>
               <span>
                 <WarmthChip warmth={warmth} />
               </span>
-              <span className="truncate text-muted-foreground">{move.long}</span>
+              <span data-private className="truncate text-muted-foreground">{move.long}</span>
               <span className={cn("font-semibold", move.due && "text-amber-700 dark:text-amber-400")}>{move.short}</span>
             </button>
           ))

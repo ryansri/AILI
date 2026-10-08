@@ -479,14 +479,14 @@ export function PeopleView({
                       <PersonAvatar person={p} className="size-8" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-md font-semibold">{p.name}</span>
+                          <span data-private className="text-md font-semibold">{p.name}</span>
                           {!RING_STAGES.has(p.stage) && (
                             <span className="rounded-md bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground">
                               {stageLabel(stages, p.stage)}
                             </span>
                           )}
                         </div>
-                        <div className="max-w-72 truncate text-xs text-muted-foreground">
+                        <div data-private className="max-w-72 truncate text-xs text-muted-foreground">
                           {[p.jobTitle || p.headline, p.company].filter(Boolean).join(" · ")}
                         </div>
                       </div>

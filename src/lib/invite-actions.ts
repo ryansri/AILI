@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { run } from "./action-result";
 import { getWorkspace, invitesSince } from "./data";
 import { db } from "./db";
+import { notWhileRecording } from "./privacy-server";
 import { INVITE_CAPS, NOTE_MAX, STALE_DAYS } from "./invites";
 
 /*
@@ -26,6 +27,7 @@ const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 async function queueInviteImpl(personId: string, note: string) {
   const workspace = await getWorkspace();
+  await notWhileRecording(workspace.id);
   const person = await db.person.findFirst({ where: { id: personId, workspaceId: workspace.id } });
   if (!person) throw new Error("Not found");
   const who = firstName(person.name);

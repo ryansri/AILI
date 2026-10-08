@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { privacyOn } from "@/lib/privacy-server";
 import { getPeople } from "@/lib/data";
 import { alertsQueue, nudgeDue } from "@/lib/alerts";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
@@ -23,7 +24,7 @@ async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
   const timeZone = timeZoneOf(workspace);
-  if (!nudgeDue(workspace, timeZone)) return NextResponse.json({ nudge: null }, { headers: corsHeaders(request) });
+  if (!nudgeDue(workspace, timeZone) || (await privacyOn(workspace.id))) return NextResponse.json({ nudge: null }, { headers: corsHeaders(request) });
 
   await db.workspace.update({ where: { id: workspace.id }, data: { alertsNudgedOn: localDay(new Date(), timeZone) } });
   const queue = alertsQueue(await getPeople(workspace.id), workspace.alertsPerDay, timeZone);
@@ -70,7 +71,9 @@ async function handlePOST(request: Request) {
     revalidatePath("/people");
     revalidatePath("/inbox");
   }
-  return NextResponse.json({ person: { id: person.id, name: person.name, fresh } }, { headers: corsHeaders(request) });
+  // Recording mode: ticked off quietly, no pop-up with their name.
+  const quiet = await privacyOn(workspace.id);
+  return NextResponse.json({ person: { id: person.id, name: person.name, fresh: fresh && !quiet } }, { headers: corsHeaders(request) });
 }
 
 export const GET = helperRoute(handleGET);
