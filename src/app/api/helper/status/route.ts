@@ -21,7 +21,7 @@ async function handleGET(request: Request) {
   );
 }
 
-/** Heartbeat. state: "ok" | "logged_out" | "error". */
+/** Heartbeat. state: "ok" | "logged_out" | "error" | "resting" (overnight, nothing asked of LinkedIn). */
 async function handlePOST(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
@@ -37,7 +37,7 @@ async function handlePOST(request: Request) {
   const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : null);
   const version = typeof body.version === "string" && /^\d+\.\d+\.\d+$/.test(body.version) ? body.version : null;
   const picture = isLinkedInImage(body.pictureUrl) ? body.pictureUrl : undefined;
-  const state = ["ok", "logged_out", "error"].includes(body.state ?? "") ? body.state! : "error";
+  const state = ["ok", "logged_out", "error", "resting"].includes(body.state ?? "") ? body.state! : "error";
   await db.workspace.update({
     where: { id: workspace.id },
     data: {
@@ -72,7 +72,7 @@ async function handlePOST(request: Request) {
   }
   revalidatePath("/inbox");
   revalidatePath("/settings", "layout");
-  // While Chrome is open the helper checks in every minute: a free chance to
+  // While Chrome is open the helper checks in every 15 minutes: a free chance to
   // publish scheduled posts on time, on top of the timer.
   after(() => publishDuePosts().catch((err) => console.error("Publishing scheduled posts failed", err)));
   return NextResponse.json({ ok: true, resync }, { headers: corsHeaders(request) });

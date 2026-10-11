@@ -16,8 +16,8 @@ export interface SyncLine {
   detail?: string;
 }
 
-/** After this long without a check-in, sync counts as stopped. The helper checks in every minute. */
-export const STOPPED_AFTER_MS = 5 * 60 * 1000;
+/** After this long without a check-in, sync counts as stopped. The helper checks in every 15 minutes. */
+export const STOPPED_AFTER_MS = 35 * 60 * 1000;
 
 const ago = (iso: string, now: Date) => {
   const t = relativeTime(iso, now);
@@ -33,9 +33,12 @@ export function syncLine(helper: HelperStatus, now: Date = new Date()): SyncLine
   if (helper.state === "logged_out") return { tone: "warn", title: "LinkedIn is logged out.", detail: "Log in to LinkedIn in Chrome to resume." };
   if (helper.pausedUntil) {
     const mins = Math.max(1, Math.ceil((new Date(helper.pausedUntil).getTime() - now.getTime()) / 60000));
-    return { tone: "warn", title: "LinkedIn asked to slow down.", detail: `Resumes in ${mins} min.` };
+    const back = mins < 90 ? `${mins} min` : `${Math.round(mins / 60)} hours`;
+    return { tone: "warn", title: "The helper is resting.", detail: `${helper.error ?? "LinkedIn asked it to slow down."} Back in ${back}.` };
   }
-  if (helper.state === "error") return { tone: "warn", title: "Sync hit a problem.", detail: helper.error ?? "It will try again within a minute." };
+  if (helper.state === "error") return { tone: "warn", title: "Sync hit a problem.", detail: helper.error ?? "It will try again in 15 minutes." };
+  // Overnight the helper leaves LinkedIn alone; Send still goes out when you click it.
+  if (helper.state === "resting") return { tone: "ok", title: "Resting until 7 am.", detail: "Messages you send still go out." };
   if (helper.importing) return { tone: "busy", title: "Importing", detail: `${helper.imported} so far` };
   return { tone: "ok", title: `Synced ${ago(helper.lastSeenAt, now)}` };
 }

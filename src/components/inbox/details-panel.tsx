@@ -236,7 +236,7 @@ function WarmupField({ row }: { row: Row }) {
           </ol>
         ) : (
           <p className="leading-relaxed text-muted-foreground">
-            Nothing yet. Comment on their posts on LinkedIn; the helper notices, and their replies show up here.
+            Nothing yet. Comment on their posts on LinkedIn; the helper notices. When they reply or like it, tap They replied.
           </p>
         )}
         <div className="flex flex-wrap gap-1.5">

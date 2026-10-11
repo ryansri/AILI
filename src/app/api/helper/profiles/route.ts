@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { clip } from "@/lib/clip";
 import { db } from "@/lib/db";
-import { getPeople } from "@/lib/data";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 import { isLinkedInImage } from "@/lib/helper-sync";
-import { pickLookups, profileIdentity } from "@/lib/profile-lookup";
 
 export const dynamic = "force-dynamic";
 
@@ -13,35 +11,14 @@ export function OPTIONS(request: Request) {
 }
 
 /**
- * The helper asks who to look up on LinkedIn for a current job title,
- * company and profile photo. Two at most per request; each person is looked
- * up once.
+ * Background profile lookups are off: reading profiles LinkedIn did not see
+ * you open is what got an account restricted. Always nothing to look up, so a
+ * helper from before 0.16 stops too. POST stays for those older helpers.
  */
 async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
-
-  const unchecked = await db.person.findMany({
-    where: {
-      workspaceId: workspace.id,
-      archivedAt: null,
-      // Only leads: Other is people you have not chosen to track, so no lookups for them.
-      lead: true,
-      profileCheckedAt: null,
-      OR: [{ publicId: { not: null } }, { linkedinUrn: { not: null } }],
-    },
-    select: { id: true, createdAt: true, publicId: true, linkedinUrn: true },
-  });
-  if (unchecked.length === 0) return NextResponse.json({ items: [] }, { headers: corsHeaders(request) });
-
-  const byId = new Map(unchecked.map((u) => [u.id, u]));
-  const people = (await getPeople(workspace.id)).filter((p) => byId.has(p.id));
-  const picked = pickLookups(people.map((person) => ({ person, createdAt: byId.get(person.id)!.createdAt })));
-
-  const items = picked
-    .map((p) => ({ id: p.id, name: p.name, identity: profileIdentity(byId.get(p.id)!) }))
-    .filter((p) => p.identity);
-  return NextResponse.json({ items }, { headers: corsHeaders(request) });
+  return NextResponse.json({ items: [] }, { headers: corsHeaders(request) });
 }
 
 interface LookupResult {

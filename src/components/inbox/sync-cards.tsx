@@ -132,7 +132,7 @@ export function SetupCard({ helper, token }: { helper: HelperStatus; token: stri
         <Step n={3} done={active > 3} active={active === 3} title="Stay logged in to LinkedIn in Chrome">
           {active === 3 ? (
             <>
-              The import starts within a minute of logging in.
+              The import starts within 15 minutes of logging in.
               <div className="mt-2">
                 <Button variant="outline" size="sm" asChild>
                   <a href="https://www.linkedin.com/login" target="_blank" rel="noreferrer">
@@ -151,7 +151,7 @@ export function SetupCard({ helper, token }: { helper: HelperStatus; token: stri
       {active === 2 && <Waiting>Waiting for the helper to connect.</Waiting>}
       {active === 4 && (
         <div className="flex items-center justify-between gap-3">
-          <Waiting>The first import starts within a minute.</Waiting>
+          <Waiting>The first import starts within 15 minutes.</Waiting>
           {presence.state === "found" && (
             <Button
               variant="outline"
@@ -179,7 +179,7 @@ export function ImportCard({ helper, leads, others }: { helper: HelperStatus; le
   return (
     <Frame
       title="Importing your LinkedIn inbox"
-      intro="The helper reads one page of 20 conversations a minute, so LinkedIn sees a normal pace. People appear in the list as they come in."
+      intro="The helper reads one page of 20 conversations every 15 minutes, so LinkedIn sees a gentle pace. People appear in the list as they come in."
     >
       <ImportProgress imported={helper.imported} />
       <div className="flex justify-between text-xs text-muted-foreground" suppressHydrationWarning>
@@ -193,7 +193,7 @@ export function ImportCard({ helper, leads, others }: { helper: HelperStatus; le
           LinkedIn is logged in{helper.version ? `, helper ${helper.version}` : ""}.
         </Step>
         <Step n={2} done={focusedDone} active={!focusedDone} title="Focused inbox">
-          {focusedDone ? "Done." : (page ?? "Starting within a minute.")}
+          {focusedDone ? "Done." : (page ?? "Starting within 15 minutes.")}
         </Step>
         <Step n={3} done={false} active={focusedDone} title="Other inbox">
           {focusedDone ? page : "After the Focused inbox."}

@@ -21,6 +21,8 @@ async function handlePOST(request: Request, ctx: RouteContext<"/api/helper/outbo
     status?: string;
     externalId?: string;
     conversationId?: string;
+    /** Their member id, when the helper read it from their profile to send this. */
+    recipientUrn?: string;
     error?: string;
     sentAt?: number;
     /** LinkedIn would not start a conversation with them: most likely not connected. */
@@ -51,12 +53,16 @@ async function handlePOST(request: Request, ctx: RouteContext<"/api/helper/outbo
     }
     await db.outbox.update({ where: { id }, data: { status: "sent", sentAt, externalId } });
     // A message went through, so you can message them: count that as connected.
-    const personData: { snoozedUntil: null; conversationId?: string; stage?: string; connectedAt?: Date; connection: string } = {
+    const personData: { snoozedUntil: null; conversationId?: string; linkedinUrn?: string; stage?: string; connectedAt?: Date; connection: string } = {
       snoozedUntil: null,
       connection: "yes",
     };
     if (typeof body.conversationId === "string") personData.conversationId = body.conversationId;
     const person = await db.person.findUniqueOrThrow({ where: { id: item.personId } });
+    const urn = typeof body.recipientUrn === "string" && /^urn:li:fsd_profile:[\w-]{4,80}$/.test(body.recipientUrn) ? body.recipientUrn : "";
+    if (urn && !person.linkedinUrn && !(await db.person.findFirst({ where: { workspaceId: workspace.id, linkedinUrn: urn }, select: { id: true } }))) {
+      personData.linkedinUrn = urn;
+    }
     if (["warming", "requested", "connected"].includes(person.stage)) personData.stage = "conversation";
     if (!person.connectedAt) personData.connectedAt = sentAt;
     await db.person.update({ where: { id: item.personId }, data: personData });

@@ -188,8 +188,8 @@ export async function helperTokenFor(workspace: { id: string; helperToken: strin
   return updated.helperToken!;
 }
 
-/** The helper counts as connected when it reported in during the last few minutes. */
-export const HELPER_ONLINE_MS = 5 * 60 * 1000;
+/** The helper counts as connected when it reported in lately. It checks in every 15 minutes. */
+export const HELPER_ONLINE_MS = 35 * 60 * 1000;
 
 /** Sent today plus anything still queued for the helper, which counts against the daily cap. */
 interface Usage {
@@ -264,7 +264,7 @@ function accountOf(workspace: Workspace, used: Usage, aiApps: string[]): Account
       touchesToConnect: workspace.touchesToConnect,
     },
     helper: {
-      connected: online && workspace.helperState === "ok",
+      connected: online && (workspace.helperState === "ok" || workspace.helperState === "resting"),
       state: workspace.helperState ?? "never",
       lastSeenAt: workspace.helperLastSeenAt?.toISOString(),
       linkedinName: workspace.helperName ?? undefined,

@@ -6,11 +6,10 @@
  * Adapted from inflow (MIT, Michael Grinich).
  */
 
-import { LinkedInError, jitter, voyagerFetch } from "./client";
+import { LinkedInError, getLinkedInCookies, jitter, voyagerFetch } from "./client";
 import { encodeUrnChars, extractConversationId, linkedInVariables, raw } from "./encode";
 import {
   extractCurrentPosition,
-  extractPicture,
   extractProfile,
   extractSentMessage,
   findInvitationId,
@@ -41,10 +40,22 @@ export interface Me {
   publicId?: string;
 }
 
-let cachedMe: { me: Me; at: number } | null = null;
+let cachedMe: { me: Me; at: number; login?: string } | null = null;
+
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Who is logged in changes rarely: asked twice a day, not every sync. */
+const ME_FOR_MS = 12 * 60 * 60 * 1000;
 
 export async function getMe(): Promise<Me> {
-  if (cachedMe && Date.now() - cachedMe.at < 60_000) return cachedMe.me;
+  if (!cachedMe) cachedMe = ((await chrome.storage.local.get("me")) as { me?: NonNullable<typeof cachedMe> }).me ?? null;
+  // A different login in this browser: ask again. Only a hash of the session cookie is kept.
+  const cookies = await getLinkedInCookies();
+  const login = cookies ? await sha256(cookies.liAt) : "";
+  if (cachedMe && Date.now() - cachedMe.at < ME_FOR_MS && cachedMe.login === login) return cachedMe.me;
   const res = await voyagerFetch("/me");
   if (!res.ok) throw new LinkedInError(`LinkedIn /me returned ${res.status}`, res.status);
   const data = (await res.json()) as VoyagerResponse;
@@ -59,7 +70,8 @@ export async function getMe(): Promise<Me> {
     pictureUrl: pictureFrom(mini?.picture) || undefined,
     publicId: typeof mini?.publicIdentifier === "string" ? mini.publicIdentifier : undefined,
   };
-  cachedMe = { me, at: Date.now() };
+  cachedMe = { me, at: Date.now(), login };
+  await chrome.storage.local.set({ me: cachedMe });
   return me;
 }
 
@@ -114,24 +126,6 @@ export async function fetchThread(memberUrn: string, conversationId: string, pag
   const seen = new Set<string>();
   const messages = all.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true))).sort((a, b) => a.sentAt - b.sentAt);
   return { messages, seenAt };
-}
-
-/**
- * The other person's read receipt for one conversation. With a query id from
- * AILI it asks LinkedIn's read-receipts query; otherwise it reads the latest
- * page of the thread and looks for a receipt there. Null when there is none.
- */
-export async function fetchSeenAt(memberUrn: string, conversationId: string, queryId?: string): Promise<number | null> {
-  if (queryId && /^[\w.]+$/.test(queryId)) {
-    const conversationUrn = `urn:li:msg_conversation:(${memberUrn},${conversationId})`;
-    const res = await voyagerFetch(`/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${linkedInVariables({ conversationUrn })}`);
-    if (res.status === 401 || res.status === 429 || res.status >= 500) throw new LinkedInError(`Read receipts returned ${res.status}`, res.status);
-    if (res.ok) {
-      const at = findSeenAt(await res.json().catch(() => null), memberUrn);
-      if (at) return at;
-    }
-  }
-  return findSeenAt(await fetchMessagesRaw(memberUrn, conversationId, 0, 20), memberUrn);
 }
 
 function trackingId(): string {
@@ -203,9 +197,9 @@ export async function sendToRecipient(memberUrn: string, recipientUrn: string, b
 }
 
 /*
- * Profile lookups for a current job title and company. LinkedIn has more than
- * one profile endpoint and retires them now and then, so these are tried in
- * order and the one that last worked goes first next time.
+ * Reading one profile. Only when you click: Connect, or Send to someone AILI
+ * has no member id for yet. LinkedIn has more than one profile endpoint and
+ * retires them now and then, so more than one is tried.
  */
 const PROFILE_PATHS = [
   (id: string) =>
@@ -213,44 +207,9 @@ const PROFILE_PATHS = [
   (id: string) => `/identity/profiles/${encodeURIComponent(id)}/positionGroups`,
   (id: string) => `/identity/profiles/${encodeURIComponent(id)}/profileView`,
 ];
-let preferredPath = 0;
-
-/** What a lookup found: the current role, and the profile photo when there is one. */
-export type PositionLookup = ({ status: "found"; position: CurrentPosition } | { status: "none" }) & { pictureUrl?: string };
-
 /**
- * Looks up one person's current position. Throws LinkedInError on 401 (logged
- * out), 429 or a server error, so the caller pauses like it does for syncing.
- * Any other refusal means that endpoint is no use for this profile, so the next
- * one is tried; if none has a current role the answer is "none".
- */
-export async function fetchCurrentPosition(identity: string): Promise<PositionLookup> {
-  const order = [preferredPath, ...PROFILE_PATHS.keys()].filter((v, i, a) => a.indexOf(v) === i);
-  let pictureUrl = "";
-  for (const index of order) {
-    const res = await voyagerFetch(PROFILE_PATHS[index](identity));
-    if (res.status === 401 || res.status === 429 || res.status >= 500) {
-      throw new LinkedInError(`Profile lookup returned ${res.status}`, res.status);
-    }
-    if (res.ok) {
-      const data = await res.json().catch(() => null);
-      pictureUrl ||= extractPicture(data, identity);
-      const position = extractCurrentPosition(data);
-      if (position) {
-        preferredPath = index;
-        return { status: "found", position, pictureUrl: pictureUrl || undefined };
-      }
-    }
-    await jitter(600, 900);
-  }
-  return { status: "none", pictureUrl: pictureUrl || undefined };
-}
-
-/**
- * One profile, for "Add to AILI": name, headline, photo, member id and the
- * current role. Only runs when you click Add, on the profile you are viewing.
- * Returns null if LinkedIn's answer has nothing usable; the popup then adds
- * the person with the name from the page title.
+ * One profile: name, headline, photo, member id and the current role. Returns
+ * null if LinkedIn's answer has nothing usable.
  */
 export async function fetchProfile(publicId: string): Promise<(ProfileBasics & { position: CurrentPosition | null }) | null> {
   for (const index of [0, 2]) {

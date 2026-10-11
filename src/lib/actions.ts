@@ -181,7 +181,8 @@ async function queueSendImpl(input: { personId: string; body: string; followUp?:
   await notWhileRecording(workspace.id);
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
-  if (!person.linkedinUrn) throw new Error("AILI does not know this person on LinkedIn yet. Send it by hand this time.");
+  // No member id yet: the helper reads their profile once, when it sends this.
+  if (!person.linkedinUrn && !person.publicId) throw new Error("AILI does not know this person on LinkedIn yet. Send it by hand this time.");
   // Queued while Chrome is closed too: the extension sends it the next time it runs.
   if (!workspace.helperLastSeenAt) throw new Error("The Chrome extension is not connected yet.");
 
@@ -655,7 +656,7 @@ async function deleteTemplateImpl(id: string) {
 
 /**
  * Queues one message per person, written out from the text (template fields
- * filled per person). The helper sends them one a minute. Stops at the daily
+ * filled per person). The helper sends them one every 15 minutes. Stops at the daily
  * cap; skips people AILI cannot reach on LinkedIn and people with a message
  * already waiting. Every send still starts with this click.
  */

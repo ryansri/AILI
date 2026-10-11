@@ -5,8 +5,7 @@ import { db } from "./db";
 
 /*
  * Warm-up the Chrome helper saw on LinkedIn: comments you posted on someone's
- * post, and from your notifications, replies to your comments and likes or
- * comments on your posts. Only people already in AILI are recorded; nothing
+ * post (and, from helpers before 0.16, replies and likes in your notifications). Only people already in AILI are recorded; nothing
  * here reaches LinkedIn.
  */
 
@@ -25,16 +24,6 @@ export interface SeenTouch {
   /** When it happened, ms. */
   at?: number;
 }
-
-/**
- * Where the helper reads your notifications. Kept here, not in the helper, so
- * a change on LinkedIn's side is fixed with a deploy instead of a helper update.
- * The helper tries each in turn and keeps the first that answers.
- */
-export const NOTIFICATION_PATHS = [
-  "/voyagerIdentityDashNotificationCards?decorationId=com.linkedin.voyager.dash.deco.identity.notifications.CardsCollectionWithInjectionsNoPills-24&count=25&q=filterVanityName",
-  "/identity/notificationCards?count=25&q=filterVanityName&filterVanityName=all&start=0",
-];
 
 /** Where the last notifications read is kept: when, how many cards, any error. */
 export const readKey = (workspaceId: string) => `warmup-read:${workspaceId}`;

@@ -1,29 +1,31 @@
 /*
  * AILI helper, background service worker.
  *
- * Once a minute, while paired and LinkedIn is logged in:
+ * Kept quiet on purpose: LinkedIn restricts accounts when a tool reads too
+ * much. Every 15 minutes, between 7 am and 9 pm, while paired and LinkedIn is
+ * logged in:
  *   1. deliver any message the user clicked Send on in AILI (one per tick),
  *   2. send or withdraw at most one connection request the user clicked
- *      Connect or Withdraw on, and every 15 minutes read your sent requests
+ *      Connect or Withdraw on, and every few hours read your sent requests
  *      and newest connections, so AILI knows who accepted,
  *   3. import history: walk the inbox one page per tick until every
  *      one-to-one conversation active in the last BACKFILL_DAYS is in AILI,
- *   4. after that, every other tick, re-read the first pages of the inbox and
- *      push anything with new activity,
- *   5. once history is in, look up at most two profiles for a current job
- *      title, company and photo (people who need you first, each person once),
- *   6. tell AILI it is alive, and after 9 am once a day, remind you to turn
- *      on post alerts (the bell) for a few leads.
+ *   4. after that, re-read the first page of the inbox and push anything with
+ *      new activity,
+ *   5. tell AILI it is alive, and once a day remind you about post alerts.
+ * Clicking Send or Sync now in AILI runs one straight away, at any hour.
  *
- * When a check after the history import finds a new reply, or someone accepts
- * your request, it shows a desktop notification (if you have them on in AILI
- * Settings). Clicking one opens that conversation in AILI.
+ * It never reads profiles in the background, never reads your notifications,
+ * and stops at DAILY_LIMIT requests a day. If LinkedIn pushes back once, it
+ * rests for a day (see linkedin/client.ts).
  *
- * It also notices, without changing anything, when you tap the bell on
- * someone's LinkedIn profile, so AILI can tick off their post alerts, and when
- * you comment on someone's post. Every 15 minutes it reads your LinkedIn
- * notifications for replies to your comments and likes on your posts: the
- * warm-up AILI shows beside each lead.
+ * When a check finds a new reply, or someone accepts your request, it shows a
+ * desktop notification (if you have them on in AILI Settings). Clicking one
+ * opens that conversation in AILI.
+ *
+ * It also notices, without changing anything or asking LinkedIn, when you tap
+ * the bell on someone's profile, so AILI can tick off their post alerts, and
+ * when you comment on someone's post: the warm-up AILI shows beside each lead.
  *
  * It never sends anything on its own. The queues only hold what a human
  * clicked (Send, Connect, Withdraw), and AILI caps them per day.
@@ -34,33 +36,26 @@ import {
   answerLead,
   linkPerson,
   postSync,
-  reportLookups,
   reportAlertsOpened,
   reportBellTap,
   reportInvite,
   reportNetwork,
   reportOutbox,
-  reportSeen,
   reportStatus,
   reportTouches,
-  takeLookups,
-  takeNotificationPaths,
   takeAlertsNudge,
   takeInvites,
   takeOutbox,
-  takeSeenChecks,
   type AcceptedToNotify,
   type LeadToAsk,
   type ReplyToNotify,
-  type WarmupToNotify,
 } from "./aili";
-import { LinkedInError, getLinkedInCookies, jitter, voyagerFetch } from "./linkedin/client";
+import { HoldError, LinkedInError, getLinkedInCookies, jitter } from "./linkedin/client";
+import { getBudget } from "./linkedin/budget";
 import {
   fetchConversationsPage,
-  fetchCurrentPosition,
   fetchProfile,
   fetchRecentConnections,
-  fetchSeenAt,
   fetchSentInvitations,
   fetchThread,
   getMe,
@@ -70,24 +65,30 @@ import {
   withdrawInvitation,
   type InboxCategory,
 } from "./linkedin/api";
-import { bellTapFrom, commentFrom, parseNotifications, type ConversationSummary, type PlainMessage } from "./linkedin/normalize";
+import { bellTapFrom, commentFrom, type ConversationSummary, type PlainMessage } from "./linkedin/normalize";
 import { getBackfill, getPairing, getStatus, getSyncedAt, setBackfill, setStatus, setSyncedAt, type Pairing } from "./storage";
 import { AILI_TAB_PATTERNS } from "./config";
 
 const ALARM = "aili-tick";
-const TICK_MINUTES = 1;
+const TICK_MINUTES = 15;
+/** Local hours the helper syncs on its own: 7 am to 9 pm. */
+const FIRST_HOUR = 7;
+const LAST_HOUR = 21;
 /** Conversations idle for longer than this are left out of the history import. */
 const BACKFILL_DAYS = 180;
 /** Pages of 20 conversations to re-scan per category once history is in. */
-const RECENT_PAGES: Record<InboxCategory, number> = { PRIMARY_INBOX: 2, SECONDARY_INBOX: 1 };
+const RECENT_PAGES: Record<InboxCategory, number> = { PRIMARY_INBOX: 1, SECONDARY_INBOX: 1 };
+/** The Other inbox (message requests) is read once an hour, not every tick. */
+const OTHER_INBOX_EVERY_MS = 60 * 60 * 1000;
+/** Clicking Send again and again does not re-read the inbox more than this often. */
+const SCAN_GAP_MS = 5 * 60 * 1000;
 /** Threads fetched per tick, so a tick stays well inside a minute. */
 const THREADS_PER_TICK = 10;
-/** How long to back off when LinkedIn answers 429 or a server error. */
-const PAUSE_MS = 10 * 60 * 1000;
+/** How long to back off when LinkedIn has a server error. (A 429 rests a whole day.) */
+const PAUSE_MS = 60 * 60 * 1000;
 const CATEGORY_ORDER: InboxCategory[] = ["PRIMARY_INBOX", "SECONDARY_INBOX"];
 
 let running = false;
-let tick = 0;
 
 chrome.runtime.onInstalled.addListener(() => {
   schedule();
@@ -179,13 +180,13 @@ async function reachOpenAiliTabs() {
 
 async function schedule() {
   const existing = await chrome.alarms.get(ALARM);
-  if (!existing) chrome.alarms.create(ALARM, { periodInMinutes: TICK_MINUTES });
+  // Replaces the once-a-minute alarm of helpers before 0.16.
+  if (existing?.periodInMinutes !== TICK_MINUTES) chrome.alarms.create(ALARM, { periodInMinutes: TICK_MINUTES });
 }
 
 export async function cycle({ force }: { force: boolean }): Promise<void> {
   if (running) return;
   running = true;
-  tick += 1;
   try {
     const pairing = await getPairing();
     if (!pairing) {
@@ -199,8 +200,16 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
       return;
     }
 
-    const paused = (await getStatus()).pausedUntil ?? 0;
-    if (!force && paused > Date.now()) return;
+    // On its own, only in the day. Send or Sync now in AILI runs at any hour.
+    const hour = new Date().getHours();
+    if (!force && (hour < FIRST_HOUR || hour >= LAST_HOUR)) {
+      // Still say it is alive (to AILI only), so AILI shows it resting rather than stopped.
+      await reportStatus(pairing, { state: "resting" }).catch(() => {});
+      return;
+    }
+    // A server error pause, or LinkedIn's pushback (that one is checked again for every request).
+    const status = await getStatus();
+    if ((status.pausedUntil ?? 0) > Date.now()) return;
 
     const me = await getMe();
     const delivered = await deliverOutbox(pairing, me.memberUrn);
@@ -209,33 +218,37 @@ export async function cycle({ force }: { force: boolean }): Promise<void> {
     const backfill = await getBackfill();
     if (backfill.category !== "done") {
       await backfillStep(pairing, me.memberUrn, me.displayName);
-    } else if (force || delivered > 0 || tick % 2 === 1) {
+    } else if (delivered > 0 || Date.now() - (status.lastSyncAt ?? 0) >= SCAN_GAP_MS) {
       await scanRecent(pairing, me.memberUrn, me.displayName);
     }
     // Always report, so AILI has your name and photo even on ticks that synced.
     await reportStatus(pairing, { state: "ok", memberUrn: me.memberUrn, displayName: me.displayName, pictureUrl: me.pictureUrl });
-    if (backfill.category === "done") {
-      await lookupProfiles(pairing);
-      await checkSeen(pairing, me.memberUrn);
-    }
-    // Replies to your comments and likes on your posts, from your notifications.
-    if (backfill.category === "done" && tick % 15 === 3) await readNotifications(pairing, memberIdOf(me.memberUrn)).catch(() => {});
-    // The morning reminder: AILI decides when; asking every 5 minutes is plenty.
-    if (tick % 5 === 1) await remindAlerts(pairing).catch(() => {});
+    // The morning reminder: AILI decides when. No LinkedIn request.
+    await remindAlerts(pairing).catch(() => {});
 
     await setStatus({ state: "ok", lastError: undefined, pausedUntil: undefined, memberUrn: me.memberUrn, displayName: me.displayName, publicId: me.publicId });
   } catch (err) {
     let message = err instanceof Error ? err.message : String(err);
+    // Today's limit, or LinkedIn pushed back (429 or 999): the helper rests (see linkedin/budget.ts).
+    const pushback = err instanceof LinkedInError && (err.status === 429 || err.status === 999);
+    const hold = err instanceof HoldError || pushback;
     const loggedOut = err instanceof LinkedInError && (err.status === 401 || err.status === 403);
-    const throttled = err instanceof LinkedInError && (err.status === 429 || err.status >= 500);
-    if (throttled) message = `LinkedIn asked us to slow down (${err.status}). Pausing for 10 minutes, then continuing.`;
+    const serverError = err instanceof LinkedInError && err.status >= 500 && err.status !== 999;
+    if (serverError) message = `LinkedIn had a problem (${err.status}). Trying again in an hour.`;
     if (message === "Failed to fetch") message = "Could not reach AILI. Is the app running? Start it with npm run dev, then Sync now.";
-    await setStatus({ state: loggedOut ? "logged_out" : "error", lastError: message, pausedUntil: throttled ? Date.now() + PAUSE_MS : undefined });
+    const pausedUntil = err instanceof HoldError ? err.until : pushback ? (await getBudget()).holdUntil : serverError ? Date.now() + PAUSE_MS : undefined;
+    // Resting or at today's limit is not an error: say so in the popup and wait.
+    await setStatus({ state: loggedOut ? "logged_out" : hold ? "ok" : "error", lastError: message, pausedUntil });
     const pairing = await getPairing();
-    if (pairing) await reportStatus(pairing, { state: loggedOut ? "logged_out" : "error" }).catch(() => {});
+    if (pairing) await reportStatus(pairing, { state: loggedOut ? "logged_out" : hold ? "ok" : "error" }).catch(() => {});
   } finally {
     running = false;
   }
+}
+
+/** Not a failure of this one item: logged out, resting, or LinkedIn asked to slow down. */
+function paused(err: unknown): boolean {
+  return err instanceof HoldError || (err instanceof LinkedInError && [401, 429, 999].includes(err.status));
 }
 
 const memberIdOf = (urn: string | null | undefined) => (urn ?? "").split(":").pop() ?? "";
@@ -263,8 +276,8 @@ async function handleInvites(pairing: Pairing, memberUrn: string): Promise<void>
       const { invitationId } = await sendInvitation(memberId, send.note);
       await reportInvite(pairing, send.id, { status: "sent", invitationId: invitationId || undefined, sentAt: Date.now(), recipientUrn });
     } catch (err) {
-      // Logged out: AILI hands the request out again once you are back.
-      if (err instanceof LinkedInError && err.status === 401) throw err;
+      // Logged out, resting or asked to slow down: AILI hands the request out again later.
+      if (paused(err)) throw err;
       await reportInvite(pairing, send.id, { status: "failed", error: err instanceof Error ? err.message : String(err) }).catch(() => {});
     }
   }
@@ -286,7 +299,7 @@ async function handleInvites(pairing: Pairing, memberUrn: string): Promise<void>
       if (invitationId) await withdrawInvitation(invitationId, sharedSecret ?? undefined);
       await reportInvite(pairing, withdraw.id, { status: "withdrawn" });
     } catch (err) {
-      if (err instanceof LinkedInError && err.status === 401) throw err;
+      if (paused(err)) throw err;
       await reportInvite(pairing, withdraw.id, { status: "withdraw-failed", error: err instanceof Error ? err.message : String(err) }).catch(() => {});
     }
   }
@@ -297,7 +310,7 @@ async function handleInvites(pairing: Pairing, memberUrn: string): Promise<void>
 /** Your sent requests and newest connections, to AILI; then a notice for leads who accepted. */
 async function checkNetworkNow(pairing: Pairing, myId: string): Promise<void> {
   const body: Parameters<typeof reportNetwork>[1] = {};
-  const stop = (err: unknown) => err instanceof LinkedInError && (err.status === 401 || err.status === 429 || err.status >= 500);
+  const stop = (err: unknown) => paused(err) || (err instanceof LinkedInError && err.status >= 500);
   try {
     const { sent, complete } = await fetchSentInvitations(myId);
     body.sent = sent;
@@ -316,75 +329,7 @@ async function checkNetworkNow(pairing: Pairing, myId: string): Promise<void> {
   if (accepted.length) await showAccepted(pairing, accepted);
 }
 
-/**
- * Fills in job titles, companies and profile photos, two people a tick at most. Whatever was
- * looked up before a pause is reported, so nobody is looked up twice.
- */
-async function lookupProfiles(pairing: Pairing): Promise<void> {
-  const items = await takeLookups(pairing);
-  const results: { id: string; status: "found" | "none"; title?: string; company?: string; pictureUrl?: string }[] = [];
-  try {
-    for (const item of items) {
-      await jitter(2000, 3000);
-      const found = await fetchCurrentPosition(item.identity);
-      results.push(
-        found.status === "found"
-          ? { id: item.id, status: "found", title: found.position.title, company: found.position.company, pictureUrl: found.pictureUrl }
-          : { id: item.id, status: "none", pictureUrl: found.pictureUrl },
-      );
-    }
-  } finally {
-    if (results.length) await reportLookups(pairing, results).catch(() => {});
-  }
-}
-
-/**
- * Read receipts: for a few conversations where your latest message is not
- * seen yet, asks LinkedIn whether they have read it. If LinkedIn never gives
- * a receipt (after many tries), it stops asking for a day rather than keep
- * spending requests.
- */
-const SEEN_GIVE_UP_AFTER = 30;
-
-async function checkSeen(pairing: Pairing, memberUrn: string): Promise<void> {
-  const state = (await chrome.storage.local.get(["seenMisses", "seenFound", "seenPausedUntil"])) as {
-    seenMisses?: number;
-    seenFound?: boolean;
-    seenPausedUntil?: number;
-  };
-  if ((state.seenPausedUntil ?? 0) > Date.now()) return;
-  const { items, queryId } = await takeSeenChecks(pairing);
-  if (items.length === 0) return;
-  const results: { personId: string; seenAt: number | null }[] = [];
-  let misses = state.seenMisses ?? 0;
-  let found = state.seenFound ?? false;
-  try {
-    for (const item of items) {
-      await jitter(1500, 2500);
-      const seenAt = await fetchSeenAt(memberUrn, item.conversationId, queryId);
-      results.push({ personId: item.personId, seenAt });
-      if (seenAt) found = true;
-      else misses += 1;
-    }
-  } finally {
-    if (results.length) await reportSeen(pairing, results).catch(() => {});
-    const giveUp = !found && misses >= SEEN_GIVE_UP_AFTER;
-    await chrome.storage.local.set({
-      seenMisses: giveUp ? 0 : misses,
-      seenFound: found,
-      ...(giveUp ? { seenPausedUntil: Date.now() + 24 * 60 * 60 * 1000 } : {}),
-    });
-  }
-}
-
-/**
- * "Add to AILI" from the popup, for the profile open in the current tab. Reads
- * that one profile from LinkedIn (you clicked, so it is one request, like
- * opening the page), then hands it to AILI. If LinkedIn's answer is unusable,
- * the name from the page title is enough; the background lookup fills in the
- * title and company later.
- */
-/** A profile read in the last few minutes, so checking and then adding costs one LinkedIn request. */
+/** A profile read in the last few minutes, so it costs one LinkedIn request at most. */
 const profileCache = new Map<string, { at: number; profile: Awaited<ReturnType<typeof fetchProfile>> }>();
 
 async function readProfile(publicId: string) {
@@ -398,7 +343,8 @@ async function readProfile(publicId: string) {
 /**
  * The popup found someone in AILI with this name but not this /in/ address
  * (people imported from messages carry a member id). Reads the profile's
- * member id and asks AILI whether it is the same person.
+ * member id and asks AILI whether it is the same person. Only for a name
+ * already in AILI, so rare, and one read at most for each profile.
  */
 async function matchProfile(publicId: string) {
   const pairing = await getPairing();
@@ -408,27 +354,21 @@ async function matchProfile(publicId: string) {
   return linkPerson(pairing, { publicId, urn: profile.urn });
 }
 
-async function addFromProfile(msg: { publicId: string; fallbackName: string; stage: string; tagId?: string; newTag?: string }) {
+/**
+ * "Add to AILI" from the popup, for the profile open in the current tab. The
+ * popup reads the name, headline and photo from the page, so this asks
+ * LinkedIn nothing. The member id is read once later, only if you click
+ * Connect or Send.
+ */
+async function addFromProfile(msg: { publicId: string; name: string; headline?: string; pictureUrl?: string; stage: string; tagId?: string; newTag?: string }) {
   const pairing = await getPairing();
   if (!pairing) throw new Error("Connect the helper to AILI first.");
-  let profile: Awaited<ReturnType<typeof fetchProfile>> = null;
-  try {
-    profile = await readProfile(msg.publicId);
-  } catch (err) {
-    if (err instanceof LinkedInError && (err.status === 401 || err.status === 403)) {
-      throw new Error("LinkedIn is logged out in this browser. Log in and try again.");
-    }
-  }
-  const name = profile?.name || msg.fallbackName;
-  if (!name) throw new Error("Could not read this profile. Reload the page and try again.");
+  if (!msg.name) throw new Error("Could not read this profile. Reload the page and try again.");
   return addPerson(pairing, {
     publicId: msg.publicId,
-    urn: profile?.urn,
-    name,
-    headline: profile?.headline,
-    pictureUrl: profile?.pictureUrl || undefined,
-    jobTitle: profile?.position?.title,
-    company: profile?.position?.company,
+    name: msg.name,
+    headline: msg.headline,
+    pictureUrl: msg.pictureUrl,
     stage: msg.stage,
     tagId: msg.tagId || undefined,
     newTag: msg.newTag || undefined,
@@ -442,22 +382,32 @@ async function deliverOutbox(pairing: Pairing, memberUrn: string): Promise<numbe
   for (const item of items) {
     try {
       await jitter(1500, 3000);
+      // Added from their profile, so no member id yet: read the profile once, now that you clicked Send.
+      let recipientUrn = item.recipientUrn ?? undefined;
+      let readUrn: string | undefined;
+      if (!item.conversationId && !recipientUrn && item.publicId) {
+        readUrn = (await readProfile(item.publicId))?.urn || undefined;
+        recipientUrn = readUrn;
+      }
       const sent = item.conversationId
         ? { ...(await sendToConversation(memberUrn, item.conversationId, item.body)), conversationId: item.conversationId }
-        : item.recipientUrn
-          ? await sendToRecipient(memberUrn, item.recipientUrn, item.body)
+        : recipientUrn
+          ? await sendToRecipient(memberUrn, recipientUrn, item.body)
           : null;
-      if (!sent) throw new Error("No LinkedIn id for this person");
+      if (!sent) throw new Error("Could not find them on LinkedIn. Check their LinkedIn address in AILI, or send it by hand.");
       await reportOutbox(pairing, item.id, {
         status: "sent",
         externalId: sent.id || undefined,
         conversationId: sent.conversationId,
+        recipientUrn: readUrn,
         sentAt: sent.sentAt || Date.now(),
       });
       delivered += 1;
       const status = await getStatus();
       await setStatus({ sentToday: (status.sentToday ?? 0) + 1 });
     } catch (err) {
+      // Resting or asked to slow down: leave it queued for later, it did not fail.
+      if (paused(err)) throw err;
       const message = err instanceof Error ? err.message : String(err);
       // LinkedIn would not start a conversation with them: most often you are not connected yet.
       const notConnected = !item.conversationId && err instanceof LinkedInError && [400, 403, 422].includes(err.status);
@@ -557,7 +507,11 @@ async function scanRecent(pairing: Pairing, memberUrn: string, displayName: stri
   const changed: ConversationSummary[] = [];
   let seen = 0;
 
+  const { otherScanAt = 0 } = (await chrome.storage.local.get("otherScanAt")) as { otherScanAt?: number };
+  const readOther = Date.now() - otherScanAt >= OTHER_INBOX_EVERY_MS;
   for (const category of CATEGORY_ORDER) {
+    if (category === "SECONDARY_INBOX" && !readOther) continue;
+    if (category === "SECONDARY_INBOX") await chrome.storage.local.set({ otherScanAt: Date.now() });
     let cursor: string | null = null;
     for (let page = 0; page < RECENT_PAGES[category]; page++) {
       if (page > 0 || category !== "PRIMARY_INBOX") await jitter();
@@ -772,50 +726,3 @@ async function onComment(tabId: number, comment: { postUrn: string; text: string
   });
 }
 
-/**
- * Reads your latest LinkedIn notifications and sends AILI the replies to your
- * comments and the likes or comments on your posts. Where to read them comes
- * from AILI, so a change on LinkedIn's side can be fixed without a new helper.
- */
-async function readNotifications(pairing: Pairing, myId: string): Promise<void> {
-  const paths = (await takeNotificationPaths(pairing)).filter((p) => /^\/[\w./?=&%:(),-]+$/.test(p));
-  let lastError = "No notification address worked";
-  for (const path of paths) {
-    const res = await voyagerFetch(path);
-    if (res.status === 401 || res.status === 429 || res.status >= 500) throw new LinkedInError(`Notifications returned ${res.status}`, res.status);
-    if (!res.ok) {
-      lastError = `Notifications returned ${res.status}`;
-      continue;
-    }
-    const { touches, cards } = parseNotifications(await res.json().catch(() => null), myId);
-    if (cards === 0) {
-      lastError = "No notification cards found";
-      continue;
-    }
-    const notify = await reportTouches(pairing, { touches, read: { cards } });
-    if (notify.length) await showWarmup(pairing, notify);
-    return;
-  }
-  await reportTouches(pairing, { touches: [], read: { cards: 0, error: lastError } }).catch(() => {});
-}
-
-/** "Sarah replied to your comment": a good time to message. */
-async function showWarmup(pairing: Pairing, items: WarmupToNotify[]): Promise<void> {
-  const base = pairing.serverUrl.replace(/\/$/, "");
-  for (const t of items) {
-    const first = t.name.split(" ")[0];
-    await new Promise<void>((resolve) =>
-      chrome.notifications.create(
-        `aili|${base}/inbox?person=${encodeURIComponent(t.personId)}|warm${Date.now()}`,
-        {
-          type: "basic",
-          iconUrl: "icon-128.png",
-          title: t.kind === "reply" ? `${first} replied to your comment` : `${first} engaged with your post`,
-          message: t.text ? `"${t.text}" · A good time to message.` : "A good time to message.",
-          priority: 1,
-        },
-        () => resolve(),
-      ),
-    );
-  }
-}

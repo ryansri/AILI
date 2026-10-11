@@ -10,6 +10,10 @@
  * Adapted from inflow (MIT, Michael Grinich).
  */
 
+import { holdForADay, spend } from "./budget";
+
+export { HoldError } from "./budget";
+
 const BASE_URL = "https://www.linkedin.com/voyager/api";
 const TIMEOUT_MS = 20_000;
 const RULE_ID = 1;
@@ -111,6 +115,7 @@ export class LinkedInError extends Error {
 export async function voyagerFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const cookies = await getLinkedInCookies();
   if (!cookies) throw new LinkedInError("LinkedIn is logged out in this browser", 401);
+  await spend();
   await ensureCookieRule();
 
   const res = await fetch(`${BASE_URL}${path.startsWith("/") ? path : `/${path}`}`, {
@@ -127,5 +132,10 @@ export async function voyagerFetch(path: string, init: RequestInit = {}): Promis
       ...(init.headers || {}),
     },
   });
+  // LinkedIn's "slow down" (429) and its bot block (999).
+  if (res.status === 429 || res.status === 999) {
+    await holdForADay();
+    throw new LinkedInError(`LinkedIn asked the helper to slow down (${res.status}). Resting for a day.`, res.status);
+  }
   return res;
 }

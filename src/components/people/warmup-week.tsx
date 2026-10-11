@@ -77,8 +77,8 @@ export function WarmupWeek({ people, needed }: { people: Person[]; needed: numbe
         )}
       </section>
       <p className="text-xs text-muted-foreground">
-        The last 7 days. Comments you post in Chrome and the replies and likes in your LinkedIn notifications are counted by
-        the AILI helper.
+        The last 7 days. The AILI helper counts the comments you post in Chrome; tap They replied on a lead when they reply
+        or like it.
       </p>
     </div>
   );

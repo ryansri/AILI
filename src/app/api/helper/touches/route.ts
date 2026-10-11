@@ -3,13 +3,14 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { privacyOn } from "@/lib/privacy-server";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
-import { NOTIFICATION_PATHS, readKey, recordTouches, validTouches } from "@/lib/warmup-sync";
+import { readKey, recordTouches, validTouches } from "@/lib/warmup-sync";
 
 export const dynamic = "force-dynamic";
 
 /*
- * Warm-up from LinkedIn. GET tells the helper where to read your
- * notifications. POST { touches, read? } records comments you posted and the
+ * Warm-up from LinkedIn. GET once told the helper where to read your
+ * notifications; that is off now (no paths), as reading them every 15 minutes
+ * added to what LinkedIn counts. POST { touches, read? } records comments you posted and the
  * replies and likes in your notifications, for people already in AILI, and
  * what the last notifications read found (shown beside the warm-up).
  */
@@ -21,7 +22,7 @@ export function OPTIONS(request: Request) {
 async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
   if (!workspace) return unauthorized();
-  return NextResponse.json({ notificationPaths: NOTIFICATION_PATHS }, { headers: corsHeaders(request) });
+  return NextResponse.json({ notificationPaths: [] }, { headers: corsHeaders(request) });
 }
 
 async function handlePOST(request: Request) {
@@ -29,7 +30,8 @@ async function handlePOST(request: Request) {
   if (!workspace) return unauthorized();
   const body = (await request.json().catch(() => null)) as { touches?: unknown; read?: { cards?: unknown; error?: unknown } } | null;
   const fresh = await recordTouches(workspace.id, validTouches(body?.touches));
-  if (body?.read) {
+  // An older helper with no paths to try reports a failed read: nothing to keep.
+  if (body?.read && typeof body.read.cards === "number" && body.read.cards > 0) {
     const value = JSON.stringify({
       at: new Date().toISOString(),
       cards: typeof body.read.cards === "number" ? body.read.cards : 0,

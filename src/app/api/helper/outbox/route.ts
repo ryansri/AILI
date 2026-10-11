@@ -27,7 +27,7 @@ async function handleGET(request: Request) {
   const next = await db.outbox.findFirst({
     where: { workspaceId: workspace.id, status: "queued" },
     orderBy: { createdAt: "asc" },
-    include: { person: { select: { linkedinUrn: true, conversationId: true, name: true } } },
+    include: { person: { select: { linkedinUrn: true, publicId: true, conversationId: true, name: true } } },
   });
   if (!next) return NextResponse.json({ items: [] }, { headers: corsHeaders(request) });
 
@@ -40,6 +40,8 @@ async function handleGET(request: Request) {
           body: next.body,
           conversationId: next.person.conversationId,
           recipientUrn: next.person.linkedinUrn,
+          // For someone added from their profile: the helper reads it once, at send time.
+          publicId: next.person.linkedinUrn ? null : next.person.publicId,
           personName: next.person.name,
         },
       ],

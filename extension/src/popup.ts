@@ -10,6 +10,7 @@
 import { checkPairing, checkPerson, type PersonCheck } from "./aili";
 import { getPairing, getStatus, setPairing, type HelperStatus, type Pairing } from "./storage";
 import { DEFAULT_SERVER } from "./config";
+import { DAILY_LIMIT, getBudget } from "./linkedin/budget";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const show = (el: HTMLElement, on: boolean) => el.classList.toggle("hidden", !on);
@@ -52,7 +53,7 @@ function viewOnly(name: keyof typeof views) {
 
 /** "Synced just now", or what the helper is busy with. */
 function syncLine(status: HelperStatus): { text: string; dot: "" | "amber" | "grey" } {
-  if (status.pausedUntil && status.pausedUntil > Date.now()) return { text: "Paused for a few minutes, LinkedIn asked to slow down", dot: "amber" };
+  if (status.pausedUntil && status.pausedUntil > Date.now()) return { text: status.lastError || "Resting for now, to keep LinkedIn happy", dot: "amber" };
   if (status.backfillDone === false) return { text: `Importing your history, ${status.imported ?? 0} so far`, dot: "" };
   if (status.lastSyncAt) return { text: `Synced ${relative(status.lastSyncAt)}`, dot: "" };
   return { text: "Waiting for the first sync", dot: "grey" };
@@ -164,6 +165,28 @@ async function profileTab(): Promise<ProfileTab | null> {
   return { publicId, name };
 }
 
+/**
+ * Name, headline and photo from the profile page you have open, read from the
+ * page itself: no request to LinkedIn. LinkedIn changes its page now and then,
+ * so anything not found is simply left blank.
+ */
+function topCardOnPage(): { name: string; headline: string; pictureUrl: string } {
+  const h1 = document.querySelector("main h1") as HTMLElement | null;
+  const name = h1?.innerText.trim() ?? "";
+  const card = h1?.closest("section") ?? document.querySelector("main section");
+  const headline = (card?.querySelector(".text-body-medium") as HTMLElement | null)?.innerText.trim() ?? "";
+  const imgs = Array.from(card?.querySelectorAll("img") ?? []) as HTMLImageElement[];
+  const photo = imgs.find((img) => /media\.licdn\.com\/dms\/image\//.test(img.src) && (!name || img.alt.includes(name.split(" ")[0])) && !/background/i.test(img.className));
+  return { name: name.slice(0, 120), headline: headline.slice(0, 200), pictureUrl: photo?.src ?? "" };
+}
+
+async function readTopCard(): Promise<{ name: string; headline: string; pictureUrl: string } | null> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) return null;
+  const [found] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: topCardOnPage }).catch(() => []);
+  return (found?.result as ReturnType<typeof topCardOnPage> | undefined) ?? null;
+}
+
 const pStage = $<HTMLSelectElement>("p-stage");
 const pTag = $<HTMLSelectElement>("p-tag");
 const pAdd = $<HTMLButtonElement>("p-add");
@@ -225,10 +248,13 @@ pAdd.addEventListener("click", async () => {
   const newTag = pTag.value === NEW_TAG ? pNewTag.value.trim() : "";
   try {
     if (pTag.value === NEW_TAG && !newTag) throw new Error("Type a name for the new tag, or pick one from the list.");
+    const card = await readTopCard();
     const res = await chrome.runtime.sendMessage({
       type: "add-person",
       publicId: current.tab.publicId,
-      fallbackName: current.tab.name,
+      name: card?.name || current.tab.name,
+      headline: card?.headline || undefined,
+      pictureUrl: card?.pictureUrl || undefined,
       stage: pStage.value,
       tagId: newTag ? undefined : pTag.value,
       newTag: newTag || undefined,
@@ -300,7 +326,9 @@ async function render() {
     .filter(Boolean)
     .join("\n");
   const line = syncLine(status);
-  $("f-text").textContent = line.text;
+  // How much of today's LinkedIn limit the helper has used.
+  const used = (await getBudget().catch(() => null))?.used ?? 0;
+  $("f-text").textContent = `${line.text} · ${used} of ${DAILY_LIMIT} LinkedIn requests today`;
   $("f-dot").className = `dot ${line.dot}`;
 
   if (status.state === "logged_out") {
@@ -355,7 +383,7 @@ async function render() {
     ok: true,
     title: importing ? "Importing your history" : "Syncing with AILI",
     sub: importing
-      ? `${status.imported ?? 0} conversations so far. Keep Chrome open; it carries on a page a minute.`
+      ? `${status.imported ?? 0} conversations so far. Keep Chrome open; it carries on a page every 15 minutes.`
       : "Open someone's LinkedIn profile, then click here to add them.",
     action: "Open AILI",
     primary: false,

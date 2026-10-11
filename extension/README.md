@@ -21,21 +21,28 @@ changes.
 
 ## How it works
 
-- Runs in the extension's background worker. Once a minute it checks LinkedIn
-  is logged in and delivers at most one queued message.
-- On first connect it imports your history: one inbox page per minute,
+- Runs in the extension's background worker, kept quiet on purpose: LinkedIn
+  restricts accounts when a tool reads too much. Every 15 minutes, 7 am to
+  9 pm, it checks LinkedIn is logged in and delivers at most one queued
+  message. Clicking Send or Sync now in AILI runs it straight away.
+- On first connect it imports your history: one inbox page per check,
   Focused then Other, until it reaches conversations older than 180 days.
   The popup shows the count as it goes. Keep Chrome open.
-- After that, every other minute it re-reads the first pages of your inbox
-  and pushes anything with new activity to AILI.
+- After that, each check re-reads the first page of your inbox (the Other
+  inbox once an hour) and pushes anything with new activity to AILI.
+- It never reads profiles in the background or your notifications. A profile
+  is read once only when you click Connect or Send for someone AILI has no
+  LinkedIn id for yet. "Add to AILI" reads the page you have open.
+- At most 200 LinkedIn requests a day. If LinkedIn pushes back once (429),
+  it stops for a day.
 - Uses the LinkedIn cookies already in your browser. Nothing is copied
   elsewhere. Requests to LinkedIn carry those cookies through a
   declarativeNetRequest rule scoped to this extension only.
 - **The popup** shows one thing at a time. On someone's LinkedIn profile:
   who it is, a Stage and a Tag (pick one, or New tag… to type one), and Add
-  to AILI. It keeps your last pick. On your own profile it just says so. Clicking Add reads that one profile from
-  LinkedIn and adds the name, headline, photo, current title and company to
-  People. If they are already in AILI it says so and offers Open in AILI. If they
+  to AILI. It keeps your last pick. On your own profile it just says so. Clicking Add takes the name, headline
+  and photo from the page you have open (no request to LinkedIn) and adds them
+  to People. If they are already in AILI it says so and offers Open in AILI. If they
   are in Other (in AILI but not a lead), the same form says Track as lead.
   Anywhere else it says it is syncing. It only speaks up when something needs
   you, like LinkedIn being logged out. Sync now and Disconnect are the two icons

@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 /** A claimed request that never reported back is handed out again after this long. */
 const STALE_CLAIM_MS = 5 * 60 * 1000;
-/** How often the helper reads your sent requests and newest connections. */
-const NETWORK_EVERY_MS = 15 * 60 * 1000;
+/** How often the helper reads your sent requests and newest connections. Kept rare: LinkedIn counts every read. */
+const NETWORK_EVERY_MS = 3 * 60 * 60 * 1000;
 
 export function OPTIONS(request: Request) {
   return preflight(request);

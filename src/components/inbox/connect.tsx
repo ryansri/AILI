@@ -110,7 +110,7 @@ function ConnectForm({
 
   return (
     <form
-      className="flex flex-col gap-4"
+      className="flex min-w-0 flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         send();
@@ -169,7 +169,7 @@ function ConnectForm({
               placeholder={`Hi ${first}, …`}
               rows={4}
               autoFocus
-              className="min-h-24 flex-1 resize-none text-md"
+              className="min-h-24 min-w-0 flex-1 resize-none text-md field-sizing-fixed"
             />
           </div>
           <div className="flex justify-between gap-3 text-2xs text-muted-foreground">

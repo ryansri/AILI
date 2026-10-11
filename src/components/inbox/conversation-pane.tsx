@@ -226,7 +226,7 @@ export function ConversationPane({
   /** The helper delivers when it is online and knows this person on LinkedIn. */
   // Once the extension has ever connected, sends go through it, from any browser:
   // while Chrome is closed they wait in the queue.
-  const viaHelper = Boolean(account.helper.lastSeenAt) && Boolean(person.linkedinUrn);
+  const viaHelper = Boolean(account.helper.lastSeenAt) && Boolean(person.linkedinUrn || /linkedin\.com\/in\//.test(person.linkedinUrl));
   const actionable = step.kind === "reply" || step.kind === "chase" || step.kind === "quiet";
   const isDone = step.kind === "waiting" && step.step === "Done";
   const subtitle = [person.jobTitle || person.headline, person.company].filter(Boolean).join(" · ");

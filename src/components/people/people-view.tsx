@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LinkedInMark } from "@/components/linkedin-bits";
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
 import { CountBadge } from "@/components/count-badge";
 import { TagChip, TagDot } from "@/components/tag-chip";
@@ -484,6 +486,24 @@ export function PeopleView({
                             <span className="rounded-md bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground">
                               {stageLabel(stages, p.stage)}
                             </span>
+                          )}
+                          {/* The row opens the chat; this opens their LinkedIn profile instead. */}
+                          {p.linkedinUrl && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <a
+                                  href={p.linkedinUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  aria-label={`Open ${p.name} on LinkedIn`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex size-6 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100"
+                                >
+                                  <LinkedInMark className="size-3.5 text-[8px]" />
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom">Open LinkedIn profile</TooltipContent>
+                            </Tooltip>
                           )}
                         </div>
                         <div data-private className="max-w-72 truncate text-xs text-muted-foreground">

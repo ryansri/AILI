@@ -9,7 +9,7 @@ import { INVITE_CAPS, NOTE_MAX, STALE_DAYS } from "./invites";
 
 /*
  * Connection requests from AILI. Connect puts one in the queue; the helper
- * sends it from your Chrome on its next check (one a minute, never on its
+ * sends it from your Chrome straight away or on its next check (never on its
  * own), within the daily limit in Settings, Sending. Withdraw takes one back.
  */
 

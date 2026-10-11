@@ -7,6 +7,8 @@ export interface OutboxItem {
   body: string;
   conversationId: string | null;
   recipientUrn: string | null;
+  /** When there is no member id yet: their /in/ address, for one profile read at send time. */
+  publicId?: string | null;
   personName: string;
 }
 
@@ -60,7 +62,8 @@ export async function reportStatus(
     importing: backfill.category !== "done",
     phase: status.importPhase,
     pausedUntil: status.pausedUntil && status.pausedUntil > Date.now() ? status.pausedUntil : undefined,
-    error: body.state === "error" ? status.lastError : undefined,
+    // Why it failed, or why it is resting (today's limit, or LinkedIn pushed back).
+    error: body.state === "error" || (status.pausedUntil ?? 0) > Date.now() ? status.lastError : undefined,
   };
   const res = await call<{ ok: boolean; resync?: boolean }>(pairing, "/api/helper/status", {
     method: "POST",
@@ -103,7 +106,15 @@ export async function takeOutbox(pairing: Pairing): Promise<OutboxItem[]> {
 export function reportOutbox(
   pairing: Pairing,
   id: string,
-  body: { status: "sent" | "failed"; externalId?: string; conversationId?: string; sentAt?: number; error?: string; notConnected?: boolean },
+  body: {
+    status: "sent" | "failed";
+    externalId?: string;
+    conversationId?: string;
+    recipientUrn?: string;
+    sentAt?: number;
+    error?: string;
+    notConnected?: boolean;
+  },
 ) {
   return call(pairing, `/api/helper/outbox/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(body) });
 }
@@ -154,24 +165,6 @@ export async function reportNetwork(
   return Array.isArray(data?.accepted) ? data.accepted : [];
 }
 
-export interface LookupItem {
-  id: string;
-  name: string;
-  identity: string;
-}
-
-export async function takeLookups(pairing: Pairing): Promise<LookupItem[]> {
-  const data = await call<{ items?: LookupItem[] }>(pairing, "/api/helper/profiles");
-  return Array.isArray(data?.items) ? data.items : [];
-}
-
-export function reportLookups(
-  pairing: Pairing,
-  results: { id: string; status: "found" | "none"; title?: string; company?: string; pictureUrl?: string }[],
-) {
-  return call(pairing, "/api/helper/profiles", { method: "POST", body: JSON.stringify({ results }) });
-}
-
 export interface PersonCheck {
   /** lead is false for someone in Other: in AILI, but not tracked as a lead. */
   person: { id: string; name: string; stage: string; lead?: boolean } | null;
@@ -208,21 +201,6 @@ export function addPerson(
   return call(pairing, "/api/helper/people", { method: "POST", body: JSON.stringify(body) });
 }
 
-export interface SeenCheck {
-  personId: string;
-  conversationId: string;
-}
-
-/** Conversations where your latest message is not seen yet, to check for a read receipt, and the read-receipts query id if AILI knows one. */
-export async function takeSeenChecks(pairing: Pairing): Promise<{ items: SeenCheck[]; queryId?: string }> {
-  const data = await call<{ items?: SeenCheck[]; queryId?: string }>(pairing, "/api/helper/seen");
-  return { items: Array.isArray(data?.items) ? data.items : [], queryId: typeof data?.queryId === "string" ? data.queryId : undefined };
-}
-
-export function reportSeen(pairing: Pairing, results: { personId: string; seenAt: number | null }[]) {
-  return call(pairing, "/api/helper/seen", { method: "POST", body: JSON.stringify({ results }) });
-}
-
 /** The morning reminder, when it is due: how many leads to tap the bell for, and the first. */
 export interface AlertsNudge {
   count: number;
@@ -253,12 +231,6 @@ export interface WarmupToNotify {
   name: string;
   kind: "reply" | "engage";
   text: string;
-}
-
-/** Where to read your LinkedIn notifications; AILI keeps the list up to date. */
-export async function takeNotificationPaths(pairing: Pairing): Promise<string[]> {
-  const data = await call<{ notificationPaths?: unknown }>(pairing, "/api/helper/touches");
-  return Array.isArray(data?.notificationPaths) ? data.notificationPaths.filter((p): p is string => typeof p === "string") : [];
 }
 
 /** Warm-up seen on LinkedIn: your comments, and replies and likes from your notifications. */

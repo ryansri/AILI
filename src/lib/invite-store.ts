@@ -156,6 +156,16 @@ export async function applyNetwork(workspaceId: string, report: NetworkReport, n
     }
   }
 
+  // Someone added from their profile has no member id yet; these lists carry it, at no extra cost.
+  const taken = new Set(byMember.keys());
+  for (const seen of [...(report.connections ?? []), ...(report.sent ?? [])]) {
+    const p = seen.publicId ? byPublic.get(seen.publicId.toLowerCase()) : undefined;
+    if (!p || p.linkedinUrn || !seen.memberId || taken.has(seen.memberId)) continue;
+    p.linkedinUrn = `urn:li:fsd_profile:${seen.memberId}`;
+    taken.add(seen.memberId);
+    await db.person.update({ where: { id: p.id }, data: { linkedinUrn: p.linkedinUrn } });
+  }
+
   await db.workspace.update({ where: { id: workspaceId }, data: { networkCheckedAt: now } });
   return accepted;
 }

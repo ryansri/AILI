@@ -24,7 +24,7 @@ const fieldLabel = (key: string) => TEMPLATE_FIELDS.find((f) => f.key === key)?.
 
 /**
  * One message, written once, queued for everyone in a tag or stage. Each copy
- * is filled in for its person. The helper still sends one a minute and stops
+ * is filled in for its person. The helper still sends one every 15 minutes and stops
  * at the daily cap, so this never sends faster than one-by-one would.
  */
 export function MessageAllDialog({
@@ -92,7 +92,7 @@ export function MessageAllDialog({
         const r = await queueBulk({ personIds: split.ready.slice(0, willQueue).map((p) => p.id), body, templateId: templateId || undefined });
         const skipped = r.noLinkedIn + r.alreadyWaiting + r.overCap;
         toast.success(
-          `${plural(r.queued, "message")} queued.${skipped ? ` ${skipped} skipped.` : ""} The helper sends one a minute.`,
+          `${plural(r.queued, "message")} queued.${skipped ? ` ${skipped} skipped.` : ""} The helper sends one every 15 minutes, 7 am to 9 pm.`,
         );
         reset(false);
       } catch (err) {
@@ -196,7 +196,7 @@ export function MessageAllDialog({
               </li>
             )}
             <li>
-              The helper sends one a minute while Chrome is open
+              The helper sends one every 15 minutes, 7 am to 9 pm, while Chrome is open
               {account.helper.connected ? "" : " (it is not connected right now, so they wait until it is)"}. You can
               cancel any of them from the conversation before it goes.
             </li>
