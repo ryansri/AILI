@@ -29,8 +29,8 @@ function instructions(ctx: ServerContext): string {
   const now = new Date();
   return [
     "AILI is the user's LinkedIn outreach inbox. Use it to read their LinkedIn conversations, draft replies, and write, schedule or publish their LinkedIn posts.",
-    "Messages: AILI cannot send LinkedIn messages. save_draft puts a reply in the conversation's message box; the user reviews it and clicks Send in AILI. Say so when you save one. " +
-      "Asked to schedule (e.g. \"send it at 10 am, and a second one 3 minutes later\"), pass send_at and second_text with second_after_minutes: AILI shows it with a Schedule button, and nothing goes until the user clicks it. Say that too.",
+    "Messages: save_draft puts a message in the conversation's message box in AILI; the user clicks Send (or Schedule) there, so nothing reaches anyone without that click. " +
+      "You can schedule messages: asked \"send it at 10 am\" or \"in 3 minutes\", pass send_at or send_in_minutes; for \"and a second one 3 minutes later\", pass second_text and second_after_minutes. AILI shows a one-click Schedule button with the time. Never tell the user you can't schedule; tell them to click Schedule in AILI.",
     "Posts: show the user the final text and time before create_post schedules or publishes it. Articles are saved with save_article; the user publishes them in LinkedIn.",
     "Progress: get_progress gives the week's or month's numbers against the user's goals, with a recap and the wins.",
     "Planning: get_plan shows the user's content plan, row by row, and what needs them now. Write a row with create_post or save_article and its plan_row_id; add rows with add_plan_rows.",

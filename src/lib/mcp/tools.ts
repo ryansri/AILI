@@ -214,13 +214,14 @@ const getConversation: Tool = {
 
 const saveDraft: Tool = {
   name: "save_draft",
-  title: "Save a draft reply",
+  title: "Save a draft reply, or one to schedule",
   description:
-    "Put a message in the message box of one conversation in AILI, for the user to review. This never sends anything: " +
-    "the user edits it and clicks Send in AILI. It replaces any earlier draft for that person. " +
-    "Write it as the user, in plain text (no markdown). person_id comes from find_conversations or get_conversation. " +
-    "When the user asks for a time, add send_at; for a second message a few minutes after the first, add second_text and " +
-    "second_after_minutes. AILI then shows a Schedule button with that time; nothing is scheduled until the user clicks it.",
+    "Put a message in the message box of one conversation in AILI, ready to send or to schedule. This is how you schedule " +
+    "messages: when the user asks to send at a time (\"at 10 am\") or after a delay (\"in 3 minutes\"), pass send_at or " +
+    "send_in_minutes, and AILI shows a one-click Schedule button with that time. For two messages (\"and a second one 3 minutes " +
+    "later\"), put the second in second_text with second_after_minutes, not in the same text. The user confirms with that one " +
+    "click; AILI then sends on time, with a countdown, and pauses the second if they reply. It replaces any earlier draft for that " +
+    "person. Write as the user, in plain text (no markdown). person_id comes from find_conversations or get_conversation.",
   inputSchema: {
     type: "object",
     properties: {
@@ -228,7 +229,13 @@ const saveDraft: Tool = {
       text: { type: "string", description: "The message, as the user would send it." },
       send_at: {
         type: "string",
-        description: "When to send it, as a clock time where the user is, e.g. 2026-10-14T10:00. Between 7 am and 9 pm. Leave out to send when the user clicks Send.",
+        description: "When to send it, as a clock time where the user is, e.g. 2026-10-14T10:00. Between 7 am and 9 pm.",
+      },
+      send_in_minutes: {
+        type: "integer",
+        minimum: 2,
+        maximum: 720,
+        description: "Or: send this many minutes from now (\"in 3 minutes\" is 3). Use instead of send_at.",
       },
       second_text: { type: "string", description: "A second message, sent a few minutes after the first. Paused if they reply in between." },
       second_after_minutes: { type: "integer", minimum: 1, maximum: MAX_PAIR_DELAY, description: "Minutes after the first message. Default 2." },
@@ -250,9 +257,17 @@ const saveDraft: Tool = {
     let sendAt: Date | null = null;
     const w = await db.workspace.findUniqueOrThrow({ where: { id: ctx.workspaceId } });
     const tz = timeZoneOf(w);
-    if (text(args.send_at).trim()) {
+    const inMinutes = args.send_in_minutes === undefined ? null : Number(args.send_in_minutes);
+    if (inMinutes !== null && text(args.send_at).trim()) throw new ToolError("Pass send_at or send_in_minutes, not both.");
+    if (inMinutes !== null) {
+      if (!Number.isInteger(inMinutes) || inMinutes < 2 || inMinutes > 720) throw new ToolError("send_in_minutes must be a whole number from 2 to 720.");
+      // A little ahead, so the minutes are not used up before the user clicks Schedule.
+      sendAt = new Date(Math.ceil((Date.now() + inMinutes * 60_000) / 60_000) * 60_000);
+    } else if (text(args.send_at).trim()) {
       sendAt = parseWhen(text(args.send_at), tz);
       if (!sendAt) throw new ToolError("send_at must be a time like 2026-10-14T10:00.");
+    }
+    if (sendAt) {
       const problem = scheduleProblem(sendAt, tz);
       if (problem) throw new ToolError(problem);
     }
@@ -269,15 +284,13 @@ const saveDraft: Tool = {
     });
     revalidatePath("/inbox");
     const first = person.name.split(" ")[0];
-    const plan = [
-      sendAt ? `Suggested time: ${formatWhen(sendAt, tz)}.` : "",
-      second ? `A second message ${delay} min after the first, paused if ${first} replies in between.` : "",
-    ].filter(Boolean);
-    const confirm = sendAt ? `the user clicks Schedule in AILI` : "the user clicks Send";
+    const when = sendAt ? formatWhen(sendAt, tz) : "";
+    const pair = second ? ` A second message follows ${delay} min after the first, paused if ${first} replies in between.` : "";
     return [
-      `Saved in ${person.name}'s message box in AILI.`,
-      ...plan,
-      `Nothing was sent or scheduled; ${first} sees it only after ${confirm}.`,
+      sendAt
+        ? `Ready to schedule for ${when}. ${person.name}'s message box in AILI now shows "Schedule for ${when.split(", ")[1]}": one click and it is set, with a countdown.${pair}`
+        : `Saved in ${person.name}'s message box in AILI. It goes when the user clicks Send.${pair}`,
+      `Tell the user: open ${first}'s chat in AILI and click ${sendAt ? "Schedule" : "Send"}. Nothing reaches ${first} before that click.`,
       `Open it: ${personLink(ctx, person.id)}`,
     ].join("\n");
   },

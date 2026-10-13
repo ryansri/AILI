@@ -212,7 +212,7 @@ export function ConversationPane({
   // Their latest message, quoted when AILI paused one because they wrote.
   const theirLatest = [...person.messages].filter((m) => m.direction === "in").sort((a, b) => a.sentAt.localeCompare(b.sentAt)).at(-1);
   // Due within the hour (or the second of a pair): count down, and look again as it goes.
-  const now = useTicker(person.pending.some((p) => p.status === "scheduled" || p.status === "after") ? 10_000 : 0);
+  const now = useTicker(person.pending.some((p) => p.status === "scheduled" || p.status === "after") || person.draft?.sendAt ? 10_000 : 0);
   const soon = person.pending.some(
     (p) => p.status === "after" || (p.status === "scheduled" && p.sendAt && new Date(p.sendAt).getTime() - now.getTime() < 60 * 60_000),
   );
@@ -752,11 +752,16 @@ export function ConversationPane({
               <span className="flex-1" suppressHydrationWarning>
                 <span className="font-semibold">{aiDraft.source} suggests {sendLabel(aiDraft.sendAt, account.timeZone)}</span>
                 {second ? `, then the second message ${second.delayMinutes} min after.` : "."}
-                {new Date(aiDraft.sendAt).getTime() <= now.getTime() && " That time has passed: pick a new one with the clock."}
+                {/* Too close to schedule (it needs two minutes): sending now is what was meant. */}
+                {new Date(aiDraft.sendAt).getTime() - now.getTime() < 2 * 60_000 && " That time is here, so send it now."}
               </span>
-              {new Date(aiDraft.sendAt).getTime() > now.getTime() && (
+              {new Date(aiDraft.sendAt).getTime() - now.getTime() >= 2 * 60_000 ? (
                 <Button size="sm" disabled={pending || Boolean(second && !second.body.trim())} onClick={() => schedule(new Date(aiDraft.sendAt!))}>
                   Schedule for {sendLabel(aiDraft.sendAt, account.timeZone).split(", ")[1]}
+                </Button>
+              ) : (
+                <Button size="sm" disabled={pending || capReached || Boolean(second && !second.body.trim())} onClick={send}>
+                  Send now
                 </Button>
               )}
             </div>
