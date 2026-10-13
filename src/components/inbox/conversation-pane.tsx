@@ -18,6 +18,7 @@ import {
   Mic,
   MoreHorizontal,
   Newspaper,
+  Pause,
   RotateCcw,
   Sparkles,
   Star,
@@ -26,7 +27,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, toggleStar } from "@/lib/client-actions";
+import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, sendScheduledNow, toggleStar } from "@/lib/client-actions";
+import { sendLabel } from "@/lib/schedule";
 import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { followUpNote, relativeTime, shortDate, shortTime } from "@/lib/next-step";
@@ -48,6 +50,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { HeaderAction } from "@/components/page-header";
 import { PersonAvatar } from "@/components/person-avatar";
 import { SnoozeMenu } from "./snooze-menu";
+import { ScheduleSend } from "./schedule-send";
 import { LogReplyDialog } from "./log-reply-dialog";
 import { SendDialog } from "./send-dialog";
 import { NotLeadBar } from "./track-as-lead";
@@ -188,8 +191,10 @@ export function ConversationPane({
   const [logging, setLogging] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
-  // A message or a connection request on its way.
-  const waiting = person.pending.length + (["queued", "sending", "withdrawing"].includes(person.invite?.status ?? "") ? 1 : 0);
+  // A message or a connection request on its way (not one scheduled for later).
+  const onItsWay = person.pending.filter((p) => p.status === "queued" || p.status === "sending");
+  const held = person.pending.find((p) => p.status === "held");
+  const waiting = onItsWay.length + (["queued", "sending", "withdrawing"].includes(person.invite?.status ?? "") ? 1 : 0);
   const connect = connectStateOf(person);
   const [writeAnyway, setWriteAnyway] = useState(false);
   /** The Connect dialog, with the note to start from; null when closed. */
@@ -240,6 +245,34 @@ export function ConversationPane({
         toast.error(e instanceof Error ? e.message : "That did not save.");
       }
     });
+  }
+
+  /** Send later: AILI holds it until then, and the helper sends it like any other. */
+  function schedule(sendAt: Date) {
+    if (!draft.trim() || pending) return;
+    const body = draft;
+    run(async () => {
+      await queueSend({ personId: person.id, body, followUp, templateId, sendAt: sendAt.toISOString() });
+      setDraft("");
+      setTemplateId(undefined);
+      onSent?.();
+    }, `Scheduled for ${sendLabel(sendAt, account.timeZone)}.`);
+  }
+
+  /** Edit a scheduled or held message: back into the box, and out of the schedule. */
+  function editScheduled(id: string, body: string) {
+    run(async () => {
+      await cancelQueued(id);
+      setDraft(body);
+      requestAnimationFrame(() => document.getElementById("reply")?.focus());
+    }, "Back in the message box. Send it, or schedule it again.");
+  }
+
+  function sendHeldNow(id: string) {
+    run(async () => {
+      await sendScheduledNow(id);
+      window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
+    }, "Sending it now.");
   }
 
   function send() {
@@ -470,12 +503,47 @@ export function ConversationPane({
                 <span className={AVATAR_SLOT}>
                   <MyAvatar account={account} />
                 </span>
-                <div data-private className="max-w-[56%] rounded-2xl border border-dashed px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-muted-foreground">
+                <div
+                  data-private
+                  className={cn(
+                    "max-w-[56%] rounded-2xl border border-dashed px-3.5 py-[calc(0.5rem-1px)] text-md leading-[1.375rem] break-words whitespace-pre-wrap text-muted-foreground",
+                    p.status === "scheduled" && "border-sky-300 dark:border-sky-800",
+                    p.status === "held" && "border-amber-300 dark:border-amber-800",
+                  )}
+                >
                   {p.body}
                 </div>
               </div>
               <div className="flex items-center gap-2 px-10 text-2xs text-muted-foreground">
-                {p.status === "sending" ? (
+                {p.status === "scheduled" && p.sendAt ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400" suppressHydrationWarning>
+                      <Clock3 className="size-3" />
+                      Sends {sendLabel(p.sendAt, account.timeZone)}
+                    </span>
+                    ·
+                    <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => sendHeldNow(p.id)}>
+                      Send now
+                    </button>
+                    ·
+                    <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => editScheduled(p.id, p.body)}>
+                      Edit
+                    </button>
+                    ·
+                    <button
+                      type="button"
+                      className="underline underline-offset-2 hover:text-foreground"
+                      onClick={() => run(() => cancelQueued(p.id), "Scheduled message cancelled.")}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : p.status === "held" ? (
+                  <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                    <Pause className="size-3" />
+                    {p.heldReason === "replied" ? `Held, not sent: ${first} wrote first` : "Held, not sent: it would have gone late"}
+                  </span>
+                ) : p.status === "sending" ? (
                   <span className="inline-flex items-center gap-1">
                     <Check className="size-3.5" />
                     Sending to LinkedIn…
@@ -563,6 +631,45 @@ export function ConversationPane({
         </footer>
       ) : (
         <footer className="flex flex-col gap-4 px-6 pt-1 pb-4">
+          {held && (
+            <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+              <span className="font-semibold text-amber-900 dark:text-amber-200">
+                {held.heldReason === "replied"
+                  ? `${first} wrote before your scheduled message went, so AILI held it.`
+                  : `Your message was due ${held.sendAt ? sendLabel(held.sendAt, account.timeZone) : "earlier"}, but Chrome was closed. AILI held it so it doesn't go late.`}
+              </span>
+              <span className="text-foreground/80">
+                {held.heldReason === "replied" ? "It may not fit now. Reply to what they said instead, or send it anyway." : "Send it now, pick a new time, or cancel it."}
+              </span>
+              <span className="flex flex-wrap gap-2">
+                {held.heldReason === "replied" ? (
+                  <>
+                    <Button size="sm" onClick={() => run(() => cancelQueued(held.id), "Deleted.")} disabled={pending}>
+                      Delete it
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => editScheduled(held.id, held.body)} disabled={pending}>
+                      Edit it
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => sendHeldNow(held.id)} disabled={pending}>
+                      Send anyway
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" onClick={() => sendHeldNow(held.id)} disabled={pending}>
+                      Send now
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => editScheduled(held.id, held.body)} disabled={pending}>
+                      Pick a new time
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => run(() => cancelQueued(held.id), "Cancelled.")} disabled={pending}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
+              </span>
+            </div>
+          )}
 
           {aiDraft && (
             <div className="-mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
@@ -625,6 +732,9 @@ export function ConversationPane({
                 send
               </span>
             </div>
+            {viaHelper && (
+              <ScheduleSend first={first} timeZone={account.timeZone} disabled={!draft.trim() || pending} onSchedule={schedule} />
+            )}
             <Button
               size="icon"
               aria-label="Send"

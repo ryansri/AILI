@@ -57,8 +57,12 @@ export interface Message {
 export interface PendingMessage {
   id: string;
   body: string;
-  status: "queued" | "sending";
+  /** scheduled: waiting for sendAt. held: a scheduled one AILI stopped, see heldReason. */
+  status: "queued" | "sending" | "scheduled" | "held";
   createdAt: string; // ISO
+  /** When a scheduled message goes. */
+  sendAt?: string;
+  heldReason?: "replied" | "late";
 }
 
 /** A message the helper could not deliver: LinkedIn refused it or it failed on the way. */
@@ -184,6 +188,8 @@ export interface Account {
   /** Your LinkedIn photo, once the helper has reported it. */
   pictureUrl?: string;
   dailyCap: number;
+  /** Your time zone, for scheduled messages. */
+  timeZone: string;
   /** Desktop notifications for new replies are on. */
   notifyReplies: boolean;
   /** Sent today plus anything still queued for the helper. */

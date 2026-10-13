@@ -261,13 +261,17 @@ model Outbox {
   followUp    Int?
   /// The template it started from, copied to the Message once sent
   templateId  String?
-  /// queued | sending | sent | failed
+  /// queued | sending | sent | failed | held (a scheduled one AILI stopped: see heldReason)
   status      String    @default("queued")
   error       String?
   externalId  String?
   createdAt   DateTime  @default(now())
   claimedAt   DateTime?
   sentAt      DateTime?
+  /// Scheduled: the helper is not handed it before this time. Null sends straight away.
+  sendAt      DateTime?
+  /// replied (they wrote before it went) | late (it would have gone 2+ hours after its time)
+  heldReason  String?
 
   @@index([workspaceId, status])
 }

@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId, newHelperToken } from "./auth";
 import { helperOutdated } from "./helper-version";
+import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
 import type { InviteFacts } from "./invites";
@@ -34,7 +35,7 @@ export const getWorkspace = cache(async () => {
 const personInclude = {
   tags: { select: { tagId: true } },
   messages: { orderBy: { sentAt: "asc" as const } },
-  outbox: { where: { status: { in: ["queued", "sending", "failed"] } }, orderBy: { createdAt: "asc" as const } },
+  outbox: { where: { status: { in: ["queued", "sending", "failed", "held"] } }, orderBy: { createdAt: "asc" as const } },
   // The latest connection request is all the screens need.
   invites: { orderBy: { createdAt: "desc" as const }, take: 1 },
   touches: { orderBy: { createdAt: "desc" as const }, take: 30, select: { createdAt: true, kind: true, text: true, source: true } },
@@ -112,8 +113,11 @@ function toPerson(row: PersonRow): Person {
       .map((o) => ({
         id: o.id,
         body: o.body,
-        status: o.status === "sending" ? "sending" : "queued",
+        status:
+          o.status === "sending" ? "sending" : o.status === "held" ? "held" : o.sendAt && o.sendAt.getTime() > Date.now() ? "scheduled" : "queued",
         createdAt: o.createdAt.toISOString(),
+        ...(o.sendAt ? { sendAt: o.sendAt.toISOString() } : {}),
+        ...(o.status === "held" ? { heldReason: o.heldReason === "replied" ? "replied" : "late" } : {}),
       })),
     failed: row.outbox
       .filter((o) => o.status === "failed")
@@ -214,11 +218,13 @@ async function usedToday(workspaceId: string): Promise<Usage> {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   const [sentToday, queued, invitesToday, invitesWeek] = await Promise.all([
     db.message.count({
       where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId } },
     }),
-    db.outbox.count({ where: { workspaceId, status: { in: ["queued", "sending"] } } }),
+    // Scheduled for a later day counts on that day, not today.
+    db.outbox.count({ where: { workspaceId, status: { in: ["queued", "sending"] }, OR: [{ sendAt: null }, { sendAt: { lt: endOfToday } }] } }),
     invitesSince(workspaceId, startOfToday),
     db.invite.count({ where: { workspaceId, OR: [{ sentAt: { gte: weekAgo } }, { status: { in: ["queued", "sending"] } }] } }),
   ]);
@@ -248,6 +254,7 @@ function accountOf(workspace: Workspace, used: Usage, aiApps: string[]): Account
     initials: workspace.initials,
     pictureUrl: workspace.helperPictureUrl ?? undefined,
     dailyCap: workspace.dailyCap,
+    timeZone: validTimeZone(workspace.timeZone) ? workspace.timeZone : DEFAULT_TIME_ZONE,
     notifyReplies: workspace.notifyReplies,
     sentToday: used.messages,
     aiApps,

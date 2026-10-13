@@ -280,3 +280,22 @@ describe("followUpNote", () => {
     expect(followUpNote(nextStep(p, now), now)).toBeNull();
   });
 });
+
+describe("scheduled messages", () => {
+  const out = { id: "m1", direction: "out" as const, body: "Hi", sentAt: daysAgo(6) };
+  const tomorrow = new Date(now.getTime() + DAY).toISOString();
+
+  it("waits while a message is scheduled, even when a follow-up is due", () => {
+    const p = person({ messages: [out], pending: [{ id: "o1", body: "Following up", status: "scheduled", createdAt: daysAgo(0), sendAt: tomorrow }] });
+    expect(nextStep(p, now)).toMatchObject({ kind: "waiting", step: "Scheduled", dueNow: false });
+    expect(nextStep(p, now).dueAt.toISOString()).toBe(tomorrow);
+  });
+
+  it("needs you when AILI held one back", () => {
+    const p = person({
+      messages: [out, { id: "m2", direction: "in", body: "Free Thursday?", sentAt: daysAgo(0, 8) }],
+      pending: [{ id: "o1", body: "Following up", status: "held", heldReason: "replied", createdAt: daysAgo(1), sendAt: tomorrow }],
+    });
+    expect(nextStep(p, now)).toMatchObject({ kind: "reply", step: "Held message", detail: "they wrote before it went", dueNow: true });
+  });
+});

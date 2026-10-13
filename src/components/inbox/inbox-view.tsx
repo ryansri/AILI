@@ -295,6 +295,7 @@ export function InboxView({
             conditions={conditions}
             onConditions={setConditions}
             helper={account.helper}
+            timeZone={account.timeZone}
             onMessageAll={view.kind === "tag" || view.kind === "stage" ? () => setMessageAll(true) : undefined}
           />
         </div>

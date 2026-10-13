@@ -1,6 +1,7 @@
 import "server-only";
 import { clip } from "./clip";
 import { db } from "./db";
+import { holdOnReply } from "./schedule-server";
 
 /*
  * Applies what the Chrome helper saw on LinkedIn to the database.
@@ -311,6 +312,9 @@ async function applyConversation(
     // Desktop notifications are for leads; Other just shows the new message in AILI.
     if (direction === "in" && isLead) result.newReplies.push({ personId, name: other.name, body: m.body, sentAt: m.sentAt });
   }
+
+  // They wrote after you scheduled a message to them: hold it for you to check.
+  await holdOnReply(personId);
 
   // Anything new means the snooze is over and early stages move on.
   const person = await db.person.findUniqueOrThrow({ where: { id: personId } });

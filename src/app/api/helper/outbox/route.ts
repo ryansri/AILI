@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { deliverableWhere, holdLate } from "@/lib/schedule-server";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export function OPTIONS(request: Request) {
 /**
  * The helper asks for messages to deliver. Hands out at most one at a time so
  * sends stay spaced out, and marks it "sending" so no other poll takes it.
+ * Scheduled ones wait for their time; late ones are held for you instead.
  */
 async function handleGET(request: Request) {
   const workspace = await workspaceFromRequest(request);
@@ -24,8 +26,9 @@ async function handleGET(request: Request) {
     data: { status: "queued", claimedAt: null },
   });
 
+  await holdLate(workspace.id);
   const next = await db.outbox.findFirst({
-    where: { workspaceId: workspace.id, status: "queued" },
+    where: deliverableWhere(workspace.id, workspace.helperLastSeenAt),
     orderBy: { createdAt: "asc" },
     include: { person: { select: { linkedinUrn: true, publicId: true, conversationId: true, name: true } } },
   });

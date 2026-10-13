@@ -26,6 +26,7 @@ export const logMessage = unwrap(actions.logMessage);
 export const queueSend = unwrap(actions.queueSend);
 export const discardDraft = unwrap(actions.discardDraft);
 export const cancelQueued = unwrap(actions.cancelQueued);
+export const sendScheduledNow = unwrap(actions.sendScheduledNow);
 export const retryQueued = unwrap(actions.retryQueued);
 export const createStage = unwrap(actions.createStage);
 export const reorderStages = unwrap(actions.reorderStages);

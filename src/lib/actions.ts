@@ -10,6 +10,11 @@ import { fillTemplate } from "./templates";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
 import { isTagColor, type Stage, type TagColor } from "./types";
 import { notWhileRecording } from "./privacy-server";
+import { scheduleProblem } from "./schedule";
+import { holdOnReply } from "./schedule-server";
+import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
+
+const timeZoneOf = (w: { timeZone: string | null }) => (validTimeZone(w.timeZone) ? w.timeZone : DEFAULT_TIME_ZONE);
 
 /*
  * Server actions. Every one resolves the logged-in workspace first and only
@@ -162,6 +167,8 @@ async function logMessageImpl(input: {
   // A message the user sent by hand replaces any draft from Claude or ChatGPT.
   const draft = input.direction === "out" ? { draft: null, draftSource: null, draftAt: null } : {};
   await db.person.update({ where: { id: input.personId }, data: { ...updates, ...draft } });
+  // Their reply, logged by hand: a message scheduled to them before it is held, like a synced one.
+  if (input.direction === "in") await holdOnReply(person.id);
   refresh();
 }
 
@@ -176,7 +183,30 @@ async function ownTemplateId(workspaceId: string, id: string | undefined): Promi
   return template?.id ?? null;
 }
 
-async function queueSendImpl(input: { personId: string; body: string; followUp?: 1 | 2; templateId?: string }) {
+/**
+ * Messages that go out on a day: sent, waiting to go, and scheduled for it.
+ * Days run on the server's clock, like the rest of the daily cap.
+ */
+async function sendsOnDay(workspaceId: string, day: Date): Promise<number> {
+  const start = new Date(day);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  const today = Date.now() >= start.getTime() && Date.now() < end.getTime();
+  const [sent, queued] = await Promise.all([
+    db.message.count({ where: { direction: "out", sentAt: { gte: start, lt: end }, person: { workspaceId } } }),
+    db.outbox.count({
+      where: {
+        workspaceId,
+        status: { in: ["queued", "sending"] },
+        OR: [{ sendAt: { gte: start, lt: end } }, ...(today ? [{ sendAt: null }, { sendAt: { lt: start } }] : [])],
+      },
+    }),
+  ]);
+  return sent + queued;
+}
+
+/** Send, or with sendAt, schedule: AILI holds it until then (see schedule.ts). */
+async function queueSendImpl(input: { personId: string; body: string; followUp?: 1 | 2; templateId?: string; sendAt?: string }) {
   const { workspace, person } = await ownPerson(input.personId);
   await notWhileRecording(workspace.id);
   const body = clean(input.body, 8000);
@@ -186,13 +216,18 @@ async function queueSendImpl(input: { personId: string; body: string; followUp?:
   // Queued while Chrome is closed too: the extension sends it the next time it runs.
   if (!workspace.helperLastSeenAt) throw new Error("The Chrome extension is not connected yet.");
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const [sentToday, queued] = await Promise.all([
-    db.message.count({ where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId: workspace.id } } }),
-    db.outbox.count({ where: { workspaceId: workspace.id, status: { in: ["queued", "sending"] } } }),
-  ]);
-  if (sentToday + queued >= workspace.dailyCap) throw new Error(`Daily cap of ${workspace.dailyCap} reached.`);
+  let sendAt: Date | null = null;
+  if (input.sendAt) {
+    sendAt = new Date(input.sendAt);
+    const problem = scheduleProblem(sendAt, timeZoneOf(workspace));
+    if (problem) throw new Error(problem);
+    if (await db.outbox.count({ where: { personId: person.id, status: { in: ["queued", "held"] }, sendAt: { not: null } } })) {
+      throw new Error("There is a scheduled message for them already. Change or cancel that one first.");
+    }
+  }
+  if ((await sendsOnDay(workspace.id, sendAt ?? new Date())) >= workspace.dailyCap) {
+    throw new Error(sendAt ? `That day already has ${workspace.dailyCap} messages, your daily cap. Pick another day.` : `Daily cap of ${workspace.dailyCap} reached.`);
+  }
 
   await db.outbox.create({
     data: {
@@ -201,6 +236,7 @@ async function queueSendImpl(input: { personId: string; body: string; followUp?:
       body,
       followUp: input.followUp ?? null,
       templateId: await ownTemplateId(workspace.id, input.templateId),
+      sendAt,
     },
   });
   await db.person.update({
@@ -219,8 +255,21 @@ async function discardDraftImpl(personId: string) {
 
 async function cancelQueuedImpl(outboxId: string) {
   const workspace = await getWorkspace();
-  // Waiting ones can be taken back; failed ones can be cleared away.
-  await db.outbox.deleteMany({ where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "failed"] } } });
+  // Waiting, scheduled and held ones can be taken back; failed ones can be cleared away.
+  await db.outbox.deleteMany({ where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "failed", "held"] } } });
+  refresh();
+}
+
+/** Send now on a scheduled message, or Send anyway on a held one: it goes on the helper's next check. */
+async function sendScheduledNowImpl(outboxId: string) {
+  const workspace = await getWorkspace();
+  await notWhileRecording(workspace.id);
+  if ((await sendsOnDay(workspace.id, new Date())) >= workspace.dailyCap) throw new Error(`Daily cap of ${workspace.dailyCap} reached.`);
+  const { count } = await db.outbox.updateMany({
+    where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "held"] }, sendAt: { not: null } },
+    data: { status: "queued", sendAt: null, heldReason: null, claimedAt: null },
+  });
+  if (count === 0) throw new Error("That message is not scheduled any more.");
   refresh();
 }
 
@@ -672,13 +721,7 @@ async function queueBulkImpl(input: { personIds: string[]; body: string; templat
     include: { outbox: { where: { status: { in: ["queued", "sending"] } }, select: { id: true } } },
   });
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const [sentToday, queued] = await Promise.all([
-    db.message.count({ where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId: workspace.id } } }),
-    db.outbox.count({ where: { workspaceId: workspace.id, status: { in: ["queued", "sending"] } } }),
-  ]);
-  let room = Math.max(0, workspace.dailyCap - sentToday - queued);
+  let room = Math.max(0, workspace.dailyCap - (await sendsOnDay(workspace.id, new Date())));
 
   const result = { queued: 0, noLinkedIn: 0, alreadyWaiting: 0, overCap: 0 };
   for (const person of people) {
@@ -804,6 +847,10 @@ export async function retryQueued(...args: Parameters<typeof retryQueuedImpl>) {
 
 export async function cancelQueued(...args: Parameters<typeof cancelQueuedImpl>) {
   return run(() => cancelQueuedImpl(...args));
+}
+
+export async function sendScheduledNow(...args: Parameters<typeof sendScheduledNowImpl>) {
+  return run(() => sendScheduledNowImpl(...args));
 }
 
 export async function createStage(...args: Parameters<typeof createStageImpl>) {
