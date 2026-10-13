@@ -27,7 +27,7 @@ export async function loadProgress(workspaceId: string, period: Period, now: Dat
   const inWorkspace = { person: { workspaceId } };
   const today = localDay(now, timeZone);
 
-  const [posts, handPosted, invites, accepted, out, inbound, firsts, comments, stages, plannedRows, scheduled, cohort, hidden] = await Promise.all([
+  const [posts, handPosted, invites, accepted, out, inbound, comments, stages, plannedRows, scheduled, cohort, hidden] = await Promise.all([
     db.post.findMany({ where: { workspaceId, status: "published", publishedAt: range }, select: { publishedAt: true } }),
     db.planEntry.findMany({ where: { workspaceId, postedAt: range, postId: null }, select: { postedAt: true } }),
     db.invite.findMany({ where: { workspaceId, sentAt: range, status: { not: "failed" } }, select: { sentAt: true } }),
@@ -37,7 +37,6 @@ export async function loadProgress(workspaceId: string, period: Period, now: Dat
       where: { ...inWorkspace, direction: "in", sentAt: range },
       select: { sentAt: true, personId: true, body: true, person: { select: { name: true } } },
     }),
-    db.message.groupBy({ by: ["personId"], where: { ...inWorkspace, direction: "in" }, _min: { sentAt: true } }),
     db.touch.findMany({ where: { workspaceId, kind: "comment", createdAt: range }, select: { createdAt: true } }),
     db.person.findMany({
       where: { workspaceId, archivedAt: null, stage: { in: ["call", "pilot", "won"] }, stageChangedAt: range },
@@ -64,6 +63,23 @@ export async function loadProgress(workspaceId: string, period: Period, now: Dat
     }),
     privacyOn(workspaceId),
   ]);
+  // A new conversation: their first message ever falls in these two spans. (Not a MIN() group-by:
+  // Turso's driver cannot read a date back from one.)
+  const wroteBefore = new Set(
+    (
+      await db.message.findMany({
+        where: { personId: { in: [...new Set(inbound.map((m) => m.personId))] }, direction: "in", sentAt: { lt: from } },
+        select: { personId: true },
+        distinct: ["personId"],
+      })
+    ).map((m) => m.personId),
+  );
+  const firstIn = new Map<string, Date>();
+  for (const m of inbound) {
+    if (wroteBefore.has(m.personId)) continue;
+    const seen = firstIn.get(m.personId);
+    if (!seen || m.sentAt < seen) firstIn.set(m.personId, m.sentAt);
+  }
 
   const name = (id: string, real: string) => (hidden ? fakeName(id) : real);
   const events: Events = {
@@ -76,7 +92,7 @@ export async function loadProgress(workspaceId: string, period: Period, now: Dat
       name: name(m.personId, m.person.name),
       body: hidden ? fakeText(m.body, `w:${m.personId}`) : m.body,
     })),
-    firstIn: firsts.map((f) => f._min.sentAt).filter((d): d is Date => Boolean(d && d >= from && d < span.end)),
+    firstIn: [...firstIn.values()],
     accepted: accepted.map((a) => ({ at: a.acceptedAt!, personId: a.personId, name: name(a.personId, a.person.name) })),
     comments: comments.map((c) => c.createdAt),
     stages: stages.map((s) => ({ at: s.stageChangedAt!, personId: s.id, name: name(s.id, s.name), stage: s.stage })),

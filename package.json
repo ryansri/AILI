@@ -13,6 +13,7 @@
     "db:deploy": "node scripts/db-deploy.mjs",
     "db:copy": "node scripts/db-copy.mjs",
     "db:migration": "node scripts/db-migration.mjs",
+    "test:turso": "TEST_TURSO=1 vitest run src/lib/*.db.test.ts src/lib/mcp/*.db.test.ts",
     "db:seed": "tsx prisma/seed.ts",
     "reset:conversations": "tsx prisma/reset-conversations.ts",
     "reset:password": "tsx prisma/reset-password.ts",

@@ -12,11 +12,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CountBadge } from "@/components/count-badge";
 
 const SECTIONS = [
+  { href: "/progress", label: "Progress", icon: TrendingUp },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/people", label: "Leads", icon: Users },
   { href: "/today", label: "Today", icon: CalendarDays },
   { href: "/posts", label: "Content", icon: FileText },
-  { href: "/progress", label: "Progress", icon: TrendingUp },
 ] as const;
 
 function RailLink({

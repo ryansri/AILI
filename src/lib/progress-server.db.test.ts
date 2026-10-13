@@ -9,7 +9,9 @@ const hasDb = existsSync(source);
 const dir = mkdtempSync(join(tmpdir(), "aili-progress-"));
 if (hasDb) copyFileSync(source, join(dir, "test.db"));
 process.env.DATABASE_URL = `file:${join(dir, "test.db")}`;
-delete process.env.TURSO_DATABASE_URL;
+// TEST_TURSO=1 runs this through Turso's driver, as on Vercel (dates and some queries differ).
+if (process.env.TEST_TURSO) process.env.TURSO_DATABASE_URL = process.env.DATABASE_URL;
+else delete process.env.TURSO_DATABASE_URL;
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
