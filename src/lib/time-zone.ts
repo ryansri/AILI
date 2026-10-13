@@ -87,3 +87,11 @@ export function toWallInput(date: Date, timeZone: string): string {
   const two = (n: number) => String(n).padStart(2, "0");
   return `${p.year}-${two(p.month)}-${two(p.day)}T${two(p.hour)}:${two(p.minute)}`;
 }
+
+/** When the day `date` falls on starts where you are, and when the next one starts. For daily limits. */
+export function dayBounds(date: Date, timeZone: string): { start: Date; end: Date } {
+  const day = toWallInput(date, timeZone).slice(0, 10);
+  const [y, m, d] = day.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  return { start: wallTimeToDate(`${day}T00:00`, timeZone)!, end: wallTimeToDate(`${next}T00:00`, timeZone)! };
+}

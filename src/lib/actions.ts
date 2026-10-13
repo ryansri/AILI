@@ -12,7 +12,7 @@ import { isTagColor, type Stage, type TagColor } from "./types";
 import { notWhileRecording } from "./privacy-server";
 import { scheduleProblem, validDelay } from "./schedule";
 import { holdOnReply, resumeFollowers } from "./schedule-server";
-import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
+import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
 
 /** A draft from Claude or ChatGPT, with its suggested time and second message, cleared. */
 const NO_DRAFT = { draft: null, draftSource: null, draftAt: null, draftSendAt: null, draftSecond: null, draftSecondDelay: null };
@@ -188,12 +188,11 @@ async function ownTemplateId(workspaceId: string, id: string | undefined): Promi
 
 /**
  * Messages that go out on a day: sent, waiting to go, and scheduled for it.
- * Days run on the server's clock, like the rest of the daily cap.
+ * Days are yours, midnight to midnight where you are (the server runs on UTC).
  */
-async function sendsOnDay(workspaceId: string, day: Date): Promise<number> {
-  const start = new Date(day);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+async function sendsOnDay(workspace: { id: string; timeZone: string | null }, day: Date): Promise<number> {
+  const workspaceId = workspace.id;
+  const { start, end } = dayBounds(day, timeZoneOf(workspace));
   const today = Date.now() >= start.getTime() && Date.now() < end.getTime();
   const [sent, queued] = await Promise.all([
     db.message.count({ where: { direction: "out", sentAt: { gte: start, lt: end }, person: { workspaceId } } }),
@@ -243,7 +242,7 @@ async function queueSendImpl(input: {
       throw new Error("There is a scheduled message for them already. Change or cancel that one first.");
     }
   }
-  if ((await sendsOnDay(workspace.id, sendAt ?? new Date())) + (second ? 1 : 0) >= workspace.dailyCap) {
+  if ((await sendsOnDay(workspace, sendAt ?? new Date())) + (second ? 1 : 0) >= workspace.dailyCap) {
     throw new Error(sendAt ? `That day already has ${workspace.dailyCap} messages, your daily cap. Pick another day.` : `Daily cap of ${workspace.dailyCap} reached.`);
   }
 
@@ -292,7 +291,7 @@ async function cancelQueuedImpl(outboxId: string) {
 async function sendScheduledNowImpl(outboxId: string) {
   const workspace = await getWorkspace();
   await notWhileRecording(workspace.id);
-  if ((await sendsOnDay(workspace.id, new Date())) >= workspace.dailyCap) throw new Error(`Daily cap of ${workspace.dailyCap} reached.`);
+  if ((await sendsOnDay(workspace, new Date())) >= workspace.dailyCap) throw new Error(`Daily cap of ${workspace.dailyCap} reached.`);
   const { count } = await db.outbox.updateMany({
     where: { id: outboxId, workspaceId: workspace.id, OR: [{ status: "queued", sendAt: { not: null } }, { status: "held" }] },
     data: { status: "queued", sendAt: null, heldReason: null, claimedAt: null },
@@ -750,7 +749,7 @@ async function queueBulkImpl(input: { personIds: string[]; body: string; templat
     include: { outbox: { where: { status: { in: ["queued", "sending"] } }, select: { id: true } } },
   });
 
-  let room = Math.max(0, workspace.dailyCap - (await sendsOnDay(workspace.id, new Date())));
+  let room = Math.max(0, workspace.dailyCap - (await sendsOnDay(workspace, new Date())));
 
   const result = { queued: 0, noLinkedIn: 0, alreadyWaiting: 0, overCap: 0 };
   for (const person of people) {

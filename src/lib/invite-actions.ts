@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { run } from "./action-result";
 import { getWorkspace, invitesSince } from "./data";
 import { db } from "./db";
+import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
 import { notWhileRecording } from "./privacy-server";
 import { INVITE_CAPS, NOTE_MAX, STALE_DAYS } from "./invites";
 
@@ -48,8 +49,8 @@ async function queueInviteImpl(personId: string, note: string) {
     throw new Error(`LinkedIn lets you ask ${who} again from ${again.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}.`);
   }
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  // Today where you are: the server runs on UTC.
+  const startOfToday = dayBounds(new Date(), validTimeZone(workspace.timeZone) ? workspace.timeZone : DEFAULT_TIME_ZONE).start;
   if ((await invitesSince(workspace.id, startOfToday)) >= workspace.inviteCap) {
     throw new Error(`That's today's ${workspace.inviteCap} requests. More tomorrow, or change the limit in Settings, Sending.`);
   }

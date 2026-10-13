@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { db } from "./db";
 import { currentWorkspaceId, newHelperToken } from "./auth";
 import { helperOutdated } from "./helper-version";
-import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
+import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
 import type { InviteFacts } from "./invites";
@@ -230,10 +230,10 @@ async function aiAppsOf(workspaceId: string): Promise<string[]> {
 }
 
 async function usedToday(workspaceId: string): Promise<Usage> {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  // Today where you are, not on the server's clock (UTC): at 10 am in Sydney the UTC day began yesterday at 11 am.
+  const w = await db.workspace.findUnique({ where: { id: workspaceId }, select: { timeZone: true } });
+  const { start: startOfToday, end: endOfToday } = dayBounds(new Date(), validTimeZone(w?.timeZone) ? w!.timeZone! : DEFAULT_TIME_ZONE);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   const [sentToday, queued, invitesToday, invitesWeek] = await Promise.all([
     db.message.count({
       where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId } },
