@@ -10,6 +10,7 @@ import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusL
 import { clockFor, loadPlan, type EntryView } from "../content-plan";
 import { addEntries, fillMatchingRow, followSchedule, linkPost, moveEntry, ownEntry, postedAtFor, updateEntry, type EntryInput } from "../plan-store";
 import { stageLabel } from "../types";
+import { MAX_PAIR_DELAY, scheduleProblem, validDelay } from "../schedule";
 
 /*
  * What Claude and ChatGPT can do in AILI. Reading, drafting and posting only:
@@ -188,6 +189,8 @@ const getConversation: Tool = {
       person.tags.length ? `Tags: ${person.tags.map((t) => t.tag.label).join(", ")}` : "",
       person.notes ? `Your notes: ${person.notes}` : "",
       person.draft ? `Draft waiting (from ${person.draftSource ?? "AI"}): ${person.draft}` : "",
+      person.draftSecond ? `Second message in the draft (${person.draftSecondDelay ?? 2} min after): ${person.draftSecond}` : "",
+      person.draftSendAt ? `Suggested time for the draft: ${formatWhen(person.draftSendAt, tz)} (not scheduled until the user clicks Schedule)` : "",
       person.outbox.length ? `Queued to send: ${person.outbox.map((o) => `"${clip(oneLine(o.body), 80)}"`).join("; ")}` : "",
       `Open in AILI: ${personLink(ctx, person.id)}`,
     ].filter(Boolean);
@@ -214,12 +217,20 @@ const saveDraft: Tool = {
   description:
     "Put a message in the message box of one conversation in AILI, for the user to review. This never sends anything: " +
     "the user edits it and clicks Send in AILI. It replaces any earlier draft for that person. " +
-    "Write it as the user, in plain text (no markdown). person_id comes from find_conversations or get_conversation.",
+    "Write it as the user, in plain text (no markdown). person_id comes from find_conversations or get_conversation. " +
+    "When the user asks for a time, add send_at; for a second message a few minutes after the first, add second_text and " +
+    "second_after_minutes. AILI then shows a Schedule button with that time; nothing is scheduled until the user clicks it.",
   inputSchema: {
     type: "object",
     properties: {
       person_id: { type: "string" },
       text: { type: "string", description: "The message, as the user would send it." },
+      send_at: {
+        type: "string",
+        description: "When to send it, as a clock time where the user is, e.g. 2026-10-14T10:00. Between 7 am and 9 pm. Leave out to send when the user clicks Send.",
+      },
+      second_text: { type: "string", description: "A second message, sent a few minutes after the first. Paused if they reply in between." },
+      second_after_minutes: { type: "integer", minimum: 1, maximum: MAX_PAIR_DELAY, description: "Minutes after the first message. Default 2." },
     },
     required: ["person_id", "text"],
     additionalProperties: false,
@@ -231,12 +242,43 @@ const saveDraft: Tool = {
     if (body.length > 8000) throw new ToolError("LinkedIn messages can be up to 8,000 characters.");
     const person = await db.person.findFirst({ where: { id: text(args.person_id), workspaceId: ctx.workspaceId, archivedAt: null } });
     if (!person) throw new ToolError("No such person in AILI. Use find_conversations to get their id.");
+    const second = text(args.second_text).trim();
+    if (second.length > 8000) throw new ToolError("LinkedIn messages can be up to 8,000 characters.");
+    const delay = args.second_after_minutes === undefined ? 2 : validDelay(args.second_after_minutes);
+    if (second && delay === null) throw new ToolError(`second_after_minutes must be a whole number from 1 to ${MAX_PAIR_DELAY}.`);
+    let sendAt: Date | null = null;
+    const w = await db.workspace.findUniqueOrThrow({ where: { id: ctx.workspaceId } });
+    const tz = timeZoneOf(w);
+    if (text(args.send_at).trim()) {
+      sendAt = parseWhen(text(args.send_at), tz);
+      if (!sendAt) throw new ToolError("send_at must be a time like 2026-10-14T10:00.");
+      const problem = scheduleProblem(sendAt, tz);
+      if (problem) throw new ToolError(problem);
+    }
     await db.person.update({
       where: { id: person.id },
-      data: { draft: body, draftSource: ctx.appName, draftAt: new Date() },
+      data: {
+        draft: body,
+        draftSource: ctx.appName,
+        draftAt: new Date(),
+        draftSendAt: sendAt,
+        draftSecond: second || null,
+        draftSecondDelay: second ? delay : null,
+      },
     });
     revalidatePath("/inbox");
-    return `Saved in ${person.name}'s message box in AILI. Nothing was sent; ${person.name.split(" ")[0]} sees it only after the user clicks Send.\nOpen it: ${personLink(ctx, person.id)}`;
+    const first = person.name.split(" ")[0];
+    const plan = [
+      sendAt ? `Suggested time: ${formatWhen(sendAt, tz)}.` : "",
+      second ? `A second message ${delay} min after the first, paused if ${first} replies in between.` : "",
+    ].filter(Boolean);
+    const confirm = sendAt ? `the user clicks Schedule in AILI` : "the user clicks Send";
+    return [
+      `Saved in ${person.name}'s message box in AILI.`,
+      ...plan,
+      `Nothing was sent or scheduled; ${first} sees it only after ${confirm}.`,
+      `Open it: ${personLink(ctx, person.id)}`,
+    ].join("\n");
   },
 };
 

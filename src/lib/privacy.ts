@@ -57,7 +57,13 @@ export function maskPerson(p: Person): Person {
     messages: p.messages.map((m) => ({ ...m, body: fakeText(m.body, m.id) })),
     pending: p.pending.map((m) => ({ ...m, body: fakeText(m.body, m.id) })),
     failed: p.failed?.map((m) => ({ ...m, body: fakeText(m.body, m.id) })),
-    draft: p.draft ? { ...p.draft, text: fakeText(p.draft.text, `d:${p.id}`) } : undefined,
+    draft: p.draft
+      ? {
+          ...p.draft,
+          text: fakeText(p.draft.text, `d:${p.id}`),
+          second: p.draft.second ? { ...p.draft.second, body: fakeText(p.draft.second.body, `d2:${p.id}`) } : undefined,
+        }
+      : undefined,
     invite: p.invite ? { ...p.invite, note: p.invite.note ? fakeText(p.invite.note, `i:${p.id}`) : "" } : undefined,
     warmup: p.warmup?.map((e, i) => ({ ...e, text: e.text ? fakeText(e.text, `w:${p.id}:${i}`) : "" })),
   };

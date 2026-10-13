@@ -106,7 +106,13 @@ function toPerson(row: PersonRow): Person {
       onLinkedIn: Boolean(m.externalId) || undefined,
     })),
     draft: row.draft
-      ? { text: row.draft, source: row.draftSource ?? "AI", at: (row.draftAt ?? row.updatedAt).toISOString() }
+      ? {
+          text: row.draft,
+          source: row.draftSource ?? "AI",
+          at: (row.draftAt ?? row.updatedAt).toISOString(),
+          ...(row.draftSendAt ? { sendAt: row.draftSendAt.toISOString() } : {}),
+          ...(row.draftSecond ? { second: { body: row.draftSecond, delayMinutes: row.draftSecondDelay ?? 2 } } : {}),
+        }
       : undefined,
     pending: row.outbox
       .filter((o) => o.status !== "failed")

@@ -152,6 +152,11 @@ model Person {
   /// Who wrote the draft, e.g. "Claude" or "ChatGPT".
   draftSource String?
   draftAt     DateTime?
+  /// From Claude or ChatGPT: when to send the draft (you confirm with Schedule)
+  draftSendAt DateTime?
+  /// From Claude or ChatGPT: a second message, sent draftSecondDelay minutes after the first
+  draftSecond      String?
+  draftSecondDelay Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

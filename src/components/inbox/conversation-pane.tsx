@@ -189,16 +189,19 @@ export function ConversationPane({
   // A draft from Claude or ChatGPT that arrives while this conversation is open
   // fills the box, unless the user is already typing something else.
   const [draftAt, setDraftAt] = useState(person.draft?.at);
+  /** A second message that follows the first by a few minutes; null when there is none. */
+  const [second, setSecond] = useState<{ body: string; delayMinutes: number } | null>(person.draft?.second ?? null);
   if (person.draft && person.draft.at !== draftAt) {
     setDraftAt(person.draft.at);
-    if (!draft.trim()) setDraft(person.draft.text);
+    if (!draft.trim()) {
+      setDraft(person.draft.text);
+      setSecond(person.draft.second ?? null);
+    }
   }
   const aiDraft = person.draft && draftAt === person.draft.at ? person.draft : undefined;
   const posts = postsUrl(person.linkedinUrl);
   // The template the message started from, for its reply rate. Cleared with the box.
   const [templateId, setTemplateId] = useState<string>();
-  /** A second message that follows the first by a few minutes; null when there is none. */
-  const [second, setSecond] = useState<{ body: string; delayMinutes: number } | null>(null);
   const [sending, setSending] = useState(false);
   const [logging, setLogging] = useState(false);
   const [pending, start] = useTransition();
@@ -726,7 +729,7 @@ export function ConversationPane({
                 Draft from {aiDraft.source}
               </span>
               <span suppressHydrationWarning>{relativeTime(aiDraft.at)}</span>
-              <span>· Check it, then send</span>
+              <span>· Check it, then {aiDraft.sendAt ? "schedule" : "send"}</span>
               <button
                 type="button"
                 className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground"
@@ -740,6 +743,22 @@ export function ConversationPane({
                 <X className="size-3" />
                 Discard
               </button>
+            </div>
+          )}
+          {/* Claude or ChatGPT suggested a time: one click schedules it, nothing before. */}
+          {aiDraft?.sendAt && viaHelper && draft.trim() && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-2.5 text-sm dark:border-sky-900 dark:bg-sky-950/30">
+              <Clock3 className="size-4 text-sky-700 dark:text-sky-400" />
+              <span className="flex-1" suppressHydrationWarning>
+                <span className="font-semibold">{aiDraft.source} suggests {sendLabel(aiDraft.sendAt, account.timeZone)}</span>
+                {second ? `, then the second message ${second.delayMinutes} min after.` : "."}
+                {new Date(aiDraft.sendAt).getTime() <= now.getTime() && " That time has passed: pick a new one with the clock."}
+              </span>
+              {new Date(aiDraft.sendAt).getTime() > now.getTime() && (
+                <Button size="sm" disabled={pending || Boolean(second && !second.body.trim())} onClick={() => schedule(new Date(aiDraft.sendAt!))}>
+                  Schedule for {sendLabel(aiDraft.sendAt, account.timeZone).split(", ")[1]}
+                </Button>
+              )}
             </div>
           )}
           <div className="flex items-end gap-2.5">
@@ -829,7 +848,7 @@ export function ConversationPane({
                       onChange={(e) => setSecond({ ...second, delayMinutes: Number(e.target.value) })}
                       className="rounded-md border bg-background px-1 py-0.5 font-medium text-foreground"
                     >
-                      {PAIR_DELAYS.map((m) => (
+                      {[...new Set([...PAIR_DELAYS, second.delayMinutes])].sort((a, b) => a - b).map((m) => (
                         <option key={m} value={m}>
                           {m} min
                         </option>

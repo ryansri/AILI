@@ -10,9 +10,12 @@ import { fillTemplate } from "./templates";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
 import { isTagColor, type Stage, type TagColor } from "./types";
 import { notWhileRecording } from "./privacy-server";
-import { PAIR_DELAYS, scheduleProblem } from "./schedule";
+import { scheduleProblem, validDelay } from "./schedule";
 import { holdOnReply, resumeFollowers } from "./schedule-server";
 import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
+
+/** A draft from Claude or ChatGPT, with its suggested time and second message, cleared. */
+const NO_DRAFT = { draft: null, draftSource: null, draftAt: null, draftSendAt: null, draftSecond: null, draftSecondDelay: null };
 
 const timeZoneOf = (w: { timeZone: string | null }) => (validTimeZone(w.timeZone) ? w.timeZone : DEFAULT_TIME_ZONE);
 
@@ -165,7 +168,7 @@ async function logMessageImpl(input: {
   }
   if (!person.connectedAt) updates.connectedAt = sentAt;
   // A message the user sent by hand replaces any draft from Claude or ChatGPT.
-  const draft = input.direction === "out" ? { draft: null, draftSource: null, draftAt: null } : {};
+  const draft = input.direction === "out" ? NO_DRAFT : {};
   await db.person.update({ where: { id: input.personId }, data: { ...updates, ...draft } });
   // Their reply, logged by hand: a message scheduled to them before it is held, like a synced one.
   if (input.direction === "in") await holdOnReply(person.id);
@@ -225,7 +228,7 @@ async function queueSendImpl(input: {
   if (!body) throw new Error("Empty message");
   const second = input.then ? clean(input.then.body, 8000) : "";
   if (input.then && !second) throw new Error("The second message is empty. Write it, or remove it.");
-  const delayMinutes = input.then ? ((PAIR_DELAYS as readonly number[]).includes(input.then.delayMinutes) ? input.then.delayMinutes : 2) : 0;
+  const delayMinutes = input.then ? (validDelay(input.then.delayMinutes) ?? 2) : 0;
   // No member id yet: the helper reads their profile once, when it sends this.
   if (!person.linkedinUrn && !person.publicId) throw new Error("AILI does not know this person on LinkedIn yet. Send it by hand this time.");
   // Queued while Chrome is closed too: the extension sends it the next time it runs.
@@ -262,7 +265,7 @@ async function queueSendImpl(input: {
   }
   await db.person.update({
     where: { id: person.id },
-    data: { handledAt: null, draft: null, draftSource: null, draftAt: null, ...touched() },
+    data: { handledAt: null, ...NO_DRAFT, ...touched() },
   });
   refresh();
 }
@@ -270,7 +273,7 @@ async function queueSendImpl(input: {
 /** Discard on a draft from Claude or ChatGPT. */
 async function discardDraftImpl(personId: string) {
   await ownPerson(personId);
-  await db.person.update({ where: { id: personId }, data: { draft: null, draftSource: null, draftAt: null } });
+  await db.person.update({ where: { id: personId }, data: NO_DRAFT });
   revalidatePath("/inbox");
 }
 

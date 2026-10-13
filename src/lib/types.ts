@@ -158,7 +158,8 @@ export interface Person {
   /** Sends that did not go through, until you try again or remove them. */
   failed?: FailedMessage[];
   /** A reply written in Claude or ChatGPT, waiting in the message box until the user sends or discards it. */
-  draft?: { text: string; source: string; at: string };
+  /** From Claude or ChatGPT; with a suggested time and a second message when asked for. You confirm. */
+  draft?: { text: string; source: string; at: string; sendAt?: string; second?: { body: string; delayMinutes: number } };
 }
 
 export interface HelperStatus {

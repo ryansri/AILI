@@ -73,8 +73,15 @@ export function shortSendLabel(sendAt: Date | string, timeZone: string, now: Dat
   return `${day} ${rest}`;
 }
 
-/** The second message of a pair can follow the first by these many minutes. */
-export const PAIR_DELAYS = [1, 2, 5] as const;
+/** The choices for how many minutes a second message follows the first by. */
+export const PAIR_DELAYS = [1, 2, 3, 5, 10] as const;
+export const MAX_PAIR_DELAY = 10;
+
+/** Whole minutes from 1 to MAX_PAIR_DELAY; anything else is not a delay AILI takes. */
+export function validDelay(minutes: unknown): number | null {
+  const n = Number(minutes);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_PAIR_DELAY ? n : null;
+}
 
 /** "in 2 min", "in under a minute", "in 3 h"; "any moment now" once due. Null when more than a day off. */
 export function untilLabel(sendAt: Date | string, now: Date = new Date()): string | null {
