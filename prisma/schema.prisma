@@ -59,6 +59,11 @@ model Workspace {
   alertsNudge      Boolean   @default(true)
   alertsPerDay     Int       @default(5)
   touchesToConnect Int       @default(3)
+  /// Weekly goals on Progress (0 hides one). Months use them times the weeks.
+  goalPosts        Int       @default(5)
+  goalRequests     Int       @default(50)
+  goalMessages     Int       @default(30)
+  goalComments     Int       @default(15)
   /// The day (in the account's time zone) the last reminder went out.
   alertsNudgedOn   String?
   /// When the helper last read your sent requests and newest connections from LinkedIn.

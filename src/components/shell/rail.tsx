@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, FileText, Inbox, Settings, Users } from "lucide-react";
+import { CalendarDays, FileText, Inbox, Settings, TrendingUp, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { syncLine } from "@/lib/sync-status";
 import { useExtensionGone } from "@/components/inbox/sync-line";
@@ -16,6 +16,7 @@ const SECTIONS = [
   { href: "/people", label: "Leads", icon: Users },
   { href: "/today", label: "Today", icon: CalendarDays },
   { href: "/posts", label: "Content", icon: FileText },
+  { href: "/progress", label: "Progress", icon: TrendingUp },
 ] as const;
 
 function RailLink({

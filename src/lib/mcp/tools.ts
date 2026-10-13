@@ -10,6 +10,7 @@ import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusL
 import { clockFor, loadPlan, type EntryView } from "../content-plan";
 import { addEntries, fillMatchingRow, followSchedule, linkPost, moveEntry, ownEntry, postedAtFor, updateEntry, type EntryInput } from "../plan-store";
 import { stageLabel } from "../types";
+import { loadProgress } from "../progress-server";
 import { MAX_PAIR_DELAY, scheduleProblem, validDelay } from "../schedule";
 
 /*
@@ -821,7 +822,46 @@ const updatePlanRow: Tool = {
   },
 };
 
+const getProgress: Tool = {
+  name: "get_progress",
+  title: "Progress this week or month",
+  description:
+    "The user's LinkedIn progress for this week (Monday to Sunday) or this month, against their weekly goals: a recap in plain words, " +
+    "posts out, connection requests, messages, comments on leads' posts, replies, accepted requests, calls booked, and the wins. " +
+    "Use it for 'how did my week go' or a weekly recap.",
+  inputSchema: {
+    type: "object",
+    properties: { period: { type: "string", enum: ["week", "month"], default: "week" } },
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  async run(args, ctx) {
+    const period = text(args.period) === "month" ? "month" : "week";
+    const p = await loadProgress(ctx.workspaceId, period);
+    const c = p.counts;
+    const lines = [
+      `${p.recap.title} (${p.span.label})`,
+      p.recap.text,
+      "",
+      "Goals:",
+      ...p.goals.map((g) => `- ${g.label}: ${g.count} of ${g.goal} (${g.state}; ${g.note})`),
+      "",
+      `People who wrote back: ${c.replied} of ${c.messaged} messaged. Requests accepted: ${c.accepted}. New conversations: ${c.conversations}. Calls booked: ${c.calls}. Pilots or clients: ${c.deals}.`,
+      ...(period === "month"
+        ? [`From request to call (requests sent this month): ${p.funnel.sent} sent, ${p.funnel.accepted} accepted, ${p.funnel.messaged} messaged, ${p.funnel.replied} replied, ${p.funnel.calls} calls, ${p.funnel.deals} pilots or clients.`]
+        : []),
+      "",
+      p.wins.length ? "Wins:" : "No wins yet.",
+      ...p.wins.slice(0, 12).map((w) => `- ${formatWhen(w.at, p.timeZone)}: ${w.text}`),
+      "",
+      `Open Progress: ${ctx.origin}/progress${period === "month" ? "?view=month" : ""}`,
+    ];
+    return lines.join("\n");
+  },
+};
+
 export const TOOLS: Tool[] = [
+  getProgress,
   findConversations,
   getConversation,
   saveDraft,

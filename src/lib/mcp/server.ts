@@ -32,6 +32,7 @@ function instructions(ctx: ServerContext): string {
     "Messages: AILI cannot send LinkedIn messages. save_draft puts a reply in the conversation's message box; the user reviews it and clicks Send in AILI. Say so when you save one. " +
       "Asked to schedule (e.g. \"send it at 10 am, and a second one 3 minutes later\"), pass send_at and second_text with second_after_minutes: AILI shows it with a Schedule button, and nothing goes until the user clicks it. Say that too.",
     "Posts: show the user the final text and time before create_post schedules or publishes it. Articles are saved with save_article; the user publishes them in LinkedIn.",
+    "Progress: get_progress gives the week's or month's numbers against the user's goals, with a recap and the wins.",
     "Planning: get_plan shows the user's content plan, row by row, and what needs them now. Write a row with create_post or save_article and its plan_row_id; add rows with add_plan_rows.",
     `The user's time zone is ${ctx.timeZone} (${offsetLabel(now, ctx.timeZone)}). It was ${formatWhen(now, ctx.timeZone)} there when this connection started.`,
   ].join("\n");

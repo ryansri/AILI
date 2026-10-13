@@ -39,8 +39,13 @@ export function fakeCompany(real: string): string {
   return real.trim() ? pick(COMPANIES, `co:${real.trim().toLowerCase()}`) : "";
 }
 
+/** The made-up name a person gets in recording mode, the same everywhere. */
+export function fakeName(id: string): string {
+  return `${pick(FIRST, `f:${id}`)} ${pick(LAST, `l:${id}`)}`;
+}
+
 export function maskPerson(p: Person): Person {
-  const name = `${pick(FIRST, `f:${p.id}`)} ${pick(LAST, `l:${p.id}`)}`;
+  const name = fakeName(p.id);
   const company = fakeCompany(p.company);
   const title = p.jobTitle || p.headline ? pick(TITLES, `t:${p.id}`) : "";
   return {
