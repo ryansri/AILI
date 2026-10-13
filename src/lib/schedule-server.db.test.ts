@@ -13,7 +13,7 @@ delete process.env.TURSO_DATABASE_URL;
 
 vi.mock("server-only", () => ({}));
 const { db } = await import("./db");
-const { deliverableWhere, holdLate, holdOnReply } = await import("./schedule-server");
+const { deliverableWhere, holdLate, holdOnReply, nextDueAt, pauseFollowers, resumeFollowers, startFollowers } = await import("./schedule-server");
 
 afterAll(async () => {
   await db.$disconnect();
@@ -57,5 +57,33 @@ describe.skipIf(!hasDb)("scheduled messages", () => {
     expect(await holdLate(w.id, now)).toBe(1);
     expect((await db.outbox.findUnique({ where: { id: late.id } }))).toMatchObject({ status: "held", heldReason: "late" });
     expect((await db.outbox.findUnique({ where: { id: nearly.id } }))?.status).toBe("queued");
+  });
+
+  it("starts a second message's minutes when the first goes, and pauses it if the first fails or they reply", async () => {
+    const w = await db.workspace.create({ data: { name: "Pair test", initials: "P" } });
+    const p = await db.person.create({ data: { workspaceId: w.id, name: "Jane", lead: true } });
+    const first = await db.outbox.create({ data: { workspaceId: w.id, personId: p.id, body: "Hi Jane" } });
+    const second = await db.outbox.create({ data: { workspaceId: w.id, personId: p.id, body: "PS", status: "after", afterId: first.id, delayMinutes: 2 } });
+    // Not handed out while it waits for the first.
+    expect((await db.outbox.findMany({ where: deliverableWhere(w.id, new Date(), new Date(), true) })).map((o) => o.id)).toEqual([first.id]);
+
+    // The first fails: the second pauses; Try again puts it back.
+    await pauseFollowers(first.id);
+    expect(await db.outbox.findUnique({ where: { id: second.id } })).toMatchObject({ status: "held", heldReason: "first-failed" });
+    await resumeFollowers(first.id);
+    expect(await db.outbox.findUnique({ where: { id: second.id } })).toMatchObject({ status: "after", heldReason: null });
+
+    // The first goes: two minutes from then.
+    const sentAt = new Date();
+    await startFollowers(first.id, sentAt);
+    const started = await db.outbox.findUnique({ where: { id: second.id } });
+    expect(started?.status).toBe("queued");
+    expect(started?.sendAt?.getTime()).toBe(sentAt.getTime() + 2 * 60_000);
+    expect(await nextDueAt(w.id)).toBe(sentAt.getTime() + 2 * 60_000);
+
+    // They reply in between: paused.
+    await db.message.create({ data: { personId: p.id, direction: "in", body: "Thanks!", sentAt: new Date(Date.now() + 1000) } });
+    expect(await holdOnReply(p.id)).toBe(1);
+    expect(await db.outbox.findUnique({ where: { id: second.id } })).toMatchObject({ status: "held", heldReason: "replied" });
   });
 });

@@ -57,12 +57,14 @@ export interface Message {
 export interface PendingMessage {
   id: string;
   body: string;
-  /** scheduled: waiting for sendAt. held: a scheduled one AILI stopped, see heldReason. */
-  status: "queued" | "sending" | "scheduled" | "held";
+  /** scheduled: waiting for sendAt. after: a second message waiting for the first. held: paused, see heldReason. */
+  status: "queued" | "sending" | "scheduled" | "after" | "held";
   createdAt: string; // ISO
   /** When a scheduled message goes. */
   sendAt?: string;
-  heldReason?: "replied" | "late";
+  heldReason?: "replied" | "late" | "first-failed";
+  /** A second message: minutes after the first one goes. */
+  delayMinutes?: number;
 }
 
 /** A message the helper could not deliver: LinkedIn refused it or it failed on the way. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLate, schedulePresets, scheduleProblem, sendLabel, shortSendLabel } from "./schedule";
+import { isLate, schedulePresets, scheduleProblem, sendLabel, shortSendLabel, untilLabel } from "./schedule";
 import { wallTimeToDate } from "./time-zone";
 
 const TZ = "Australia/Sydney";
@@ -46,5 +46,20 @@ describe("timing", () => {
   it("labels the list short within the week", () => {
     expect(shortSendLabel(at("2026-10-14T09:00"), TZ, now)).toBe("Wed 9:00 am");
     expect(shortSendLabel(at("2026-10-28T09:00"), TZ, now)).toBe("Wed 28 Oct");
+  });
+});
+
+describe("untilLabel", () => {
+  it("counts down in plain words", () => {
+    const t = new Date("2026-10-13T03:00:00Z");
+    const at = (ms: number) => new Date(t.getTime() + ms);
+    expect(untilLabel(at(5 * 60_000), t)).toBe("in 5 min");
+    expect(untilLabel(at(90_000), t)).toBe("in 2 min");
+    expect(untilLabel(at(61_000), t)).toBe("in 2 min");
+    expect(untilLabel(at(60_000), t)).toBe("in 1 min");
+    expect(untilLabel(at(20_000), t)).toBe("in under a minute");
+    expect(untilLabel(at(-5_000), t)).toBe("any moment now");
+    expect(untilLabel(at(3 * 3_600_000), t)).toBe("in 3 h");
+    expect(untilLabel(at(2 * 86_400_000), t)).toBeNull();
   });
 });

@@ -98,8 +98,8 @@ export function ScheduleSend({
           {error && <p className="text-xs text-amber-700">{error}</p>}
         </form>
         <p className="mt-1.5 border-t px-2.5 pt-2 pb-1 text-2xs leading-relaxed text-muted-foreground">
-          Your time ({timeZone}), 7 am to 9 pm. Chrome needs to be open; it goes within about 15 minutes of the time. If {first} writes
-          first, AILI holds it and asks you.
+          Your time ({timeZone}), 7 am to 9 pm. Chrome needs to be open at that time. If {first} replies first, AILI pauses it and asks
+          you.
         </p>
       </PopoverContent>
     </Popover>

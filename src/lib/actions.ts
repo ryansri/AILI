@@ -10,8 +10,8 @@ import { fillTemplate } from "./templates";
 import { newHelperToken, hashPassword, verifyPassword } from "./auth";
 import { isTagColor, type Stage, type TagColor } from "./types";
 import { notWhileRecording } from "./privacy-server";
-import { scheduleProblem } from "./schedule";
-import { holdOnReply } from "./schedule-server";
+import { PAIR_DELAYS, scheduleProblem } from "./schedule";
+import { holdOnReply, resumeFollowers } from "./schedule-server";
 import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
 
 const timeZoneOf = (w: { timeZone: string | null }) => (validTimeZone(w.timeZone) ? w.timeZone : DEFAULT_TIME_ZONE);
@@ -197,7 +197,7 @@ async function sendsOnDay(workspaceId: string, day: Date): Promise<number> {
     db.outbox.count({
       where: {
         workspaceId,
-        status: { in: ["queued", "sending"] },
+        status: { in: ["queued", "sending", "after"] },
         OR: [{ sendAt: { gte: start, lt: end } }, ...(today ? [{ sendAt: null }, { sendAt: { lt: start } }] : [])],
       },
     }),
@@ -205,12 +205,27 @@ async function sendsOnDay(workspaceId: string, day: Date): Promise<number> {
   return sent + queued;
 }
 
-/** Send, or with sendAt, schedule: AILI holds it until then (see schedule.ts). */
-async function queueSendImpl(input: { personId: string; body: string; followUp?: 1 | 2; templateId?: string; sendAt?: string }) {
+
+/**
+ * Send, or with sendAt, schedule: AILI holds it until then (see schedule.ts).
+ * With then: a second message that goes `then.delayMinutes` after the first,
+ * paused if they write in between.
+ */
+async function queueSendImpl(input: {
+  personId: string;
+  body: string;
+  followUp?: 1 | 2;
+  templateId?: string;
+  sendAt?: string;
+  then?: { body: string; delayMinutes: number };
+}) {
   const { workspace, person } = await ownPerson(input.personId);
   await notWhileRecording(workspace.id);
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
+  const second = input.then ? clean(input.then.body, 8000) : "";
+  if (input.then && !second) throw new Error("The second message is empty. Write it, or remove it.");
+  const delayMinutes = input.then ? ((PAIR_DELAYS as readonly number[]).includes(input.then.delayMinutes) ? input.then.delayMinutes : 2) : 0;
   // No member id yet: the helper reads their profile once, when it sends this.
   if (!person.linkedinUrn && !person.publicId) throw new Error("AILI does not know this person on LinkedIn yet. Send it by hand this time.");
   // Queued while Chrome is closed too: the extension sends it the next time it runs.
@@ -221,15 +236,15 @@ async function queueSendImpl(input: { personId: string; body: string; followUp?:
     sendAt = new Date(input.sendAt);
     const problem = scheduleProblem(sendAt, timeZoneOf(workspace));
     if (problem) throw new Error(problem);
-    if (await db.outbox.count({ where: { personId: person.id, status: { in: ["queued", "held"] }, sendAt: { not: null } } })) {
+    if (await db.outbox.count({ where: { personId: person.id, OR: [{ status: { in: ["queued", "held"] }, sendAt: { not: null } }, { status: "after" }] } })) {
       throw new Error("There is a scheduled message for them already. Change or cancel that one first.");
     }
   }
-  if ((await sendsOnDay(workspace.id, sendAt ?? new Date())) >= workspace.dailyCap) {
+  if ((await sendsOnDay(workspace.id, sendAt ?? new Date())) + (second ? 1 : 0) >= workspace.dailyCap) {
     throw new Error(sendAt ? `That day already has ${workspace.dailyCap} messages, your daily cap. Pick another day.` : `Daily cap of ${workspace.dailyCap} reached.`);
   }
 
-  await db.outbox.create({
+  const first = await db.outbox.create({
     data: {
       workspaceId: workspace.id,
       personId: person.id,
@@ -239,6 +254,12 @@ async function queueSendImpl(input: { personId: string; body: string; followUp?:
       sendAt,
     },
   });
+  // The second waits for the first; its minutes start when the first goes (see schedule-server.ts).
+  if (second) {
+    await db.outbox.create({
+      data: { workspaceId: workspace.id, personId: person.id, body: second, status: "after", afterId: first.id, delayMinutes },
+    });
+  }
   await db.person.update({
     where: { id: person.id },
     data: { handledAt: null, draft: null, draftSource: null, draftAt: null, ...touched() },
@@ -255,8 +276,12 @@ async function discardDraftImpl(personId: string) {
 
 async function cancelQueuedImpl(outboxId: string) {
   const workspace = await getWorkspace();
-  // Waiting, scheduled and held ones can be taken back; failed ones can be cleared away.
-  await db.outbox.deleteMany({ where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "failed", "held"] } } });
+  // Waiting, scheduled and paused ones can be taken back; failed ones can be cleared away.
+  const { count } = await db.outbox.deleteMany({
+    where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "failed", "held", "after"] } },
+  });
+  // A second message never goes without its first.
+  if (count) await db.outbox.deleteMany({ where: { afterId: outboxId, workspaceId: workspace.id, status: { in: ["after", "held"] } } });
   refresh();
 }
 
@@ -266,7 +291,7 @@ async function sendScheduledNowImpl(outboxId: string) {
   await notWhileRecording(workspace.id);
   if ((await sendsOnDay(workspace.id, new Date())) >= workspace.dailyCap) throw new Error(`Daily cap of ${workspace.dailyCap} reached.`);
   const { count } = await db.outbox.updateMany({
-    where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "held"] }, sendAt: { not: null } },
+    where: { id: outboxId, workspaceId: workspace.id, OR: [{ status: "queued", sendAt: { not: null } }, { status: "held" }] },
     data: { status: "queued", sendAt: null, heldReason: null, claimedAt: null },
   });
   if (count === 0) throw new Error("That message is not scheduled any more.");
@@ -281,6 +306,7 @@ async function retryQueuedImpl(outboxId: string) {
     data: { status: "queued", error: null, claimedAt: null },
   });
   if (count === 0) throw new Error("That message is not waiting to be retried.");
+  await resumeFollowers(outboxId);
   refresh();
 }
 

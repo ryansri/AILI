@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { markDone } from "@/lib/client-actions";
 import { followUpNote, relativeTime } from "@/lib/next-step";
-import { shortSendLabel } from "@/lib/schedule";
+import { shortSendLabel, untilLabel } from "@/lib/schedule";
 import { activeConditions, bucketOf, type Condition, type Group, type Row, type View } from "@/lib/rows";
 import type { HelperStatus, StageDef, Tag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,7 @@ import { LinkedInMark } from "@/components/linkedin-bits";
 function lastLine(row: Row): React.ReactNode {
   // A held reply-first message: their reply is the news, so the last message shows.
   const pending = row.person.pending.filter((p) => !(p.status === "held" && p.heldReason === "replied")).at(-1);
-  if (pending) return `${pending.status === "scheduled" || pending.status === "held" ? "Scheduled" : "You"}: ${pending.body}`;
+  if (pending) return `${pending.status === "queued" || pending.status === "sending" ? "You" : "Scheduled"}: ${pending.body}`;
   const msgs = row.person.messages;
   const last = msgs[msgs.length - 1];
   if (!last) {
@@ -73,23 +73,30 @@ function lastTime(row: Row): string {
   return last ? relativeTime(last.sentAt) : "";
 }
 
-/** A scheduled message: the blue clock and when. Held: amber. Otherwise the follow-up note. */
+/** A scheduled message: the blue clock and when (counting down within the hour). Paused: amber. Otherwise the follow-up note. */
 function ScheduleOrFollowUp({ row, timeZone }: { row: Row; timeZone: string }) {
   const held = row.person.pending.find((p) => p.status === "held");
   if (held) {
     return (
       <span className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap text-amber-700 dark:text-amber-400">
         <Pause className="size-3" />
-        Held
+        Paused
       </span>
     );
   }
-  const scheduled = row.person.pending.find((p) => p.status === "scheduled" && p.sendAt);
+  const scheduled = row.person.pending.find((p) => (p.status === "scheduled" && p.sendAt) || p.status === "after");
   if (scheduled) {
+    // Within the hour the countdown reads better than a clock time.
+    const until = scheduled.sendAt ? untilLabel(scheduled.sendAt) : null;
+    const soon = until !== null && !until.endsWith(" h");
     return (
       <span suppressHydrationWarning className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap text-sky-700 dark:text-sky-400">
         <Clock3 className="size-3" />
-        {shortSendLabel(scheduled.sendAt!, timeZone)}
+        {!scheduled.sendAt
+          ? `2nd in ${scheduled.delayMinutes ?? 2} min`
+          : soon
+            ? `Sends ${until}`
+            : shortSendLabel(scheduled.sendAt, timeZone)}
       </span>
     );
   }
@@ -297,7 +304,7 @@ export function PeopleList({
                             {moved ? (
                               <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                                 <Check className="size-3" strokeWidth={2.5} />
-                                {row.person.pending.some((p) => p.status === "scheduled") ? "Scheduled" : "Sent"} · moves to {movedTo(row)}
+                                {row.person.pending.some((p) => p.status === "scheduled" || p.status === "after") ? "Scheduled" : "Sent"} · moves to {movedTo(row)}
                               </span>
                             ) : (
                               row.person.lead !== false && <ScheduleOrFollowUp row={row} timeZone={timeZone} />

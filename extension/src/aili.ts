@@ -10,6 +10,8 @@ export interface OutboxItem {
   /** When there is no member id yet: their /in/ address, for one profile read at send time. */
   publicId?: string | null;
   personName: string;
+  /** Scheduled or a second message: read the chat first; a message from them after this time pauses it. */
+  checkReplySince?: number;
 }
 
 export class AiliError extends Error {
@@ -98,16 +100,17 @@ export function answerLead(pairing: Pairing, personId: string, lead: boolean) {
   return call(pairing, "/api/helper/lead", { method: "POST", body: JSON.stringify({ personId, lead }) });
 }
 
-export async function takeOutbox(pairing: Pairing): Promise<OutboxItem[]> {
-  const data = await call<{ items?: OutboxItem[] }>(pairing, "/api/helper/outbox");
-  return Array.isArray(data?.items) ? data.items : [];
+/** The next message to send, and when the next scheduled one is due (to wake for it on time). */
+export async function takeOutbox(pairing: Pairing): Promise<{ items: OutboxItem[]; nextDueAt?: number }> {
+  const data = await call<{ items?: OutboxItem[]; nextDueAt?: number }>(pairing, "/api/helper/outbox");
+  return { items: Array.isArray(data?.items) ? data.items : [], nextDueAt: typeof data?.nextDueAt === "number" ? data.nextDueAt : undefined };
 }
 
 export function reportOutbox(
   pairing: Pairing,
   id: string,
   body: {
-    status: "sent" | "failed";
+    status: "sent" | "failed" | "paused";
     externalId?: string;
     conversationId?: string;
     recipientUrn?: string;
@@ -116,7 +119,10 @@ export function reportOutbox(
     notConnected?: boolean;
   },
 ) {
-  return call(pairing, `/api/helper/outbox/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(body) });
+  return call<{ ok: boolean; nextDueAt?: number }>(pairing, `/api/helper/outbox/${encodeURIComponent(id)}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /** A connection request to send or withdraw: the user clicked Connect or Withdraw in AILI. */

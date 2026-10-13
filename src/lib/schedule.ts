@@ -72,3 +72,17 @@ export function shortSendLabel(sendAt: Date | string, timeZone: string, now: Dat
   if (at.getTime() - now.getTime() > 6 * DAY) return full.slice(0, full.indexOf(","));
   return `${day} ${rest}`;
 }
+
+/** The second message of a pair can follow the first by these many minutes. */
+export const PAIR_DELAYS = [1, 2, 5] as const;
+
+/** "in 2 min", "in under a minute", "in 3 h"; "any moment now" once due. Null when more than a day off. */
+export function untilLabel(sendAt: Date | string, now: Date = new Date()): string | null {
+  const ms = new Date(sendAt).getTime() - now.getTime();
+  if (ms <= 0) return "any moment now";
+  if (ms < 60_000) return "in under a minute";
+  const mins = Math.ceil(ms / 60_000);
+  if (mins < 60) return `in ${mins} min`;
+  if (ms < DAY) return `in ${Math.round(ms / 3_600_000)} h`;
+  return null;
+}

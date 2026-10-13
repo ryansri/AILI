@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { deliverableWhere, holdLate } from "@/lib/schedule-server";
+import { deliverableWhere, holdLate, nextDueAt } from "@/lib/schedule-server";
+import { CHECKS_REPLIES_FROM, versionAtLeast } from "@/lib/helper-version";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
@@ -28,11 +29,12 @@ async function handleGET(request: Request) {
 
   await holdLate(workspace.id);
   const next = await db.outbox.findFirst({
-    where: deliverableWhere(workspace.id, workspace.helperLastSeenAt),
+    where: deliverableWhere(workspace.id, workspace.helperLastSeenAt, new Date(), versionAtLeast(workspace.helperVersion, CHECKS_REPLIES_FROM)),
     orderBy: { createdAt: "asc" },
     include: { person: { select: { linkedinUrn: true, publicId: true, conversationId: true, name: true } } },
   });
-  if (!next) return NextResponse.json({ items: [] }, { headers: corsHeaders(request) });
+  // When the next scheduled one is due, so the helper can wake for it on time.
+  if (!next) return NextResponse.json({ items: [], nextDueAt: await nextDueAt(workspace.id) }, { headers: corsHeaders(request) });
 
   await db.outbox.update({ where: { id: next.id }, data: { status: "sending", claimedAt: new Date() } });
   return NextResponse.json(
@@ -46,6 +48,8 @@ async function handleGET(request: Request) {
           // For someone added from their profile: the helper reads it once, at send time.
           publicId: next.person.linkedinUrn ? null : next.person.publicId,
           personName: next.person.name,
+          // Scheduled or a second message: read the chat first and pause it if they wrote after this was written.
+          ...(next.sendAt ? { checkReplySince: next.createdAt.getTime() } : {}),
         },
       ],
     },

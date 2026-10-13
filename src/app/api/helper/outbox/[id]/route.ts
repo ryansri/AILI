@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { pauseFollowers, startFollowers, nextDueAt } from "@/lib/schedule-server";
 import { corsHeaders, preflight, unauthorized, workspaceFromRequest, helperRoute } from "@/lib/helper-auth";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,8 @@ async function handlePOST(request: Request, ctx: RouteContext<"/api/helper/outbo
       });
     }
     await db.outbox.update({ where: { id }, data: { status: "sent", sentAt, externalId } });
+    // The second message of a pair: its minutes count from now.
+    await startFollowers(id, sentAt);
     // A message went through, so you can message them: count that as connected.
     const personData: { snoozedUntil: null; conversationId?: string; linkedinUrn?: string; stage?: string; connectedAt?: Date; connection: string } = {
       snoozedUntil: null,
@@ -66,7 +69,11 @@ async function handlePOST(request: Request, ctx: RouteContext<"/api/helper/outbo
     if (["warming", "requested", "connected"].includes(person.stage)) personData.stage = "conversation";
     if (!person.connectedAt) personData.connectedAt = sentAt;
     await db.person.update({ where: { id: item.personId }, data: personData });
+  } else if (body.status === "paused") {
+    // The helper read the chat just before sending and they had written: paused for you.
+    await db.outbox.update({ where: { id }, data: { status: "held", heldReason: "replied", claimedAt: null } });
   } else {
+    await pauseFollowers(id);
     const person = await db.person.findUniqueOrThrow({ where: { id: item.personId } });
     const notConnected = body.notConnected === true && !person.conversationId;
     if (notConnected) await db.person.update({ where: { id: person.id }, data: { connection: "no" } });
@@ -84,7 +91,7 @@ async function handlePOST(request: Request, ctx: RouteContext<"/api/helper/outbo
   revalidatePath("/inbox");
   revalidatePath("/people");
   revalidatePath("/today");
-  return NextResponse.json({ ok: true }, { headers: corsHeaders(request) });
+  return NextResponse.json({ ok: true, nextDueAt: await nextDueAt(workspace.id) }, { headers: corsHeaders(request) });
 }
 
 export const POST = helperRoute(handlePOST);

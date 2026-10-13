@@ -13,7 +13,9 @@
  *   4. after that, re-read the first page of the inbox and push anything with
  *      new activity,
  *   5. tell AILI it is alive, and once a day remind you about post alerts.
- * Clicking Send or Sync now in AILI runs one straight away, at any hour.
+ * Clicking Send or Sync now in AILI runs one straight away, at any hour, and
+ * a scheduled message (or the second of a pair) wakes it at its time. Just
+ * before sending one of those it reads that chat, and pauses it if they wrote.
  *
  * It never reads profiles in the background, never reads your notifications,
  * and stops at DAILY_LIMIT requests a day. If LinkedIn pushes back once, it
@@ -70,6 +72,7 @@ import { getBackfill, getPairing, getStatus, getSyncedAt, setBackfill, setStatus
 import { AILI_TAB_PATTERNS } from "./config";
 
 const ALARM = "aili-tick";
+const SOON = "aili-soon";
 const TICK_MINUTES = 15;
 /** Local hours the helper syncs on its own: 7 am to 9 pm. */
 const FIRST_HOUR = 7;
@@ -97,7 +100,18 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => schedule());
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM) void cycle({ force: false });
+  // A scheduled message is due: run now rather than wait for the next 15-minute check.
+  if (alarm.name === SOON) {
+    if (running) chrome.alarms.create(SOON, { when: Date.now() + 30_000 });
+    else void cycle({ force: true });
+  }
 });
+
+/** Wake for the next scheduled message on time (one alarm, replaced each run). */
+function wakeAt(at: number | undefined) {
+  if (!at || at <= Date.now() || at - Date.now() > 24 * 60 * 60 * 1000) return;
+  chrome.alarms.create(SOON, { when: at + 3000 });
+}
 chrome.notifications.onClicked.addListener((id) => {
   void openFromNotification(id);
 });
@@ -375,13 +389,28 @@ async function addFromProfile(msg: { publicId: string; name: string; headline?: 
   });
 }
 
-/** Sends at most one queued message per tick, so sends are spaced out. */
+/**
+ * Sends at most one queued message per tick, so sends are spaced out. A
+ * scheduled message or the second of a pair: reads that chat first, and if
+ * they have written since you wrote it, pauses it for you instead (one
+ * request). Returns how many went or were paused, so the inbox is read after.
+ */
 async function deliverOutbox(pairing: Pairing, memberUrn: string): Promise<number> {
-  const items = await takeOutbox(pairing);
+  const { items, nextDueAt } = await takeOutbox(pairing);
+  wakeAt(nextDueAt);
   let delivered = 0;
   for (const item of items) {
     try {
       await jitter(1500, 3000);
+      if (item.checkReplySince && item.conversationId) {
+        const { messages } = await fetchThread(memberUrn, item.conversationId, 1);
+        if (messages.some((m) => m.senderUrn !== memberUrn && m.sentAt > item.checkReplySince!)) {
+          const res = await reportOutbox(pairing, item.id, { status: "paused" });
+          wakeAt(res?.nextDueAt);
+          delivered += 1;
+          continue;
+        }
+      }
       // Added from their profile, so no member id yet: read the profile once, now that you clicked Send.
       let recipientUrn = item.recipientUrn ?? undefined;
       let readUrn: string | undefined;
@@ -395,13 +424,15 @@ async function deliverOutbox(pairing: Pairing, memberUrn: string): Promise<numbe
           ? await sendToRecipient(memberUrn, recipientUrn, item.body)
           : null;
       if (!sent) throw new Error("Could not find them on LinkedIn. Check their LinkedIn address in AILI, or send it by hand.");
-      await reportOutbox(pairing, item.id, {
+      const res = await reportOutbox(pairing, item.id, {
         status: "sent",
         externalId: sent.id || undefined,
         conversationId: sent.conversationId,
         recipientUrn: readUrn,
         sentAt: sent.sentAt || Date.now(),
       });
+      // The second of a pair is due in a minute or two: wake for it.
+      wakeAt(res?.nextDueAt);
       delivered += 1;
       const status = await getStatus();
       await setStatus({ sentToday: (status.sentToday ?? 0) + 1 });

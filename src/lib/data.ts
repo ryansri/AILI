@@ -35,7 +35,7 @@ export const getWorkspace = cache(async () => {
 const personInclude = {
   tags: { select: { tagId: true } },
   messages: { orderBy: { sentAt: "asc" as const } },
-  outbox: { where: { status: { in: ["queued", "sending", "failed", "held"] } }, orderBy: { createdAt: "asc" as const } },
+  outbox: { where: { status: { in: ["queued", "sending", "failed", "held", "after"] } }, orderBy: { createdAt: "asc" as const } },
   // The latest connection request is all the screens need.
   invites: { orderBy: { createdAt: "desc" as const }, take: 1 },
   touches: { orderBy: { createdAt: "desc" as const }, take: 30, select: { createdAt: true, kind: true, text: true, source: true } },
@@ -114,10 +114,19 @@ function toPerson(row: PersonRow): Person {
         id: o.id,
         body: o.body,
         status:
-          o.status === "sending" ? "sending" : o.status === "held" ? "held" : o.sendAt && o.sendAt.getTime() > Date.now() ? "scheduled" : "queued",
+          o.status === "sending"
+            ? "sending"
+            : o.status === "held"
+              ? "held"
+              : o.status === "after"
+                ? "after"
+                : o.sendAt && o.sendAt.getTime() > Date.now()
+                  ? "scheduled"
+                  : "queued",
         createdAt: o.createdAt.toISOString(),
         ...(o.sendAt ? { sendAt: o.sendAt.toISOString() } : {}),
-        ...(o.status === "held" ? { heldReason: o.heldReason === "replied" ? "replied" : "late" } : {}),
+        ...(o.status === "held" ? { heldReason: o.heldReason === "replied" || o.heldReason === "first-failed" ? o.heldReason : "late" } : {}),
+        ...(o.afterId ? { delayMinutes: o.delayMinutes ?? 2 } : {}),
       })),
     failed: row.outbox
       .filter((o) => o.status === "failed")
@@ -224,7 +233,7 @@ async function usedToday(workspaceId: string): Promise<Usage> {
       where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId } },
     }),
     // Scheduled for a later day counts on that day, not today.
-    db.outbox.count({ where: { workspaceId, status: { in: ["queued", "sending"] }, OR: [{ sendAt: null }, { sendAt: { lt: endOfToday } }] } }),
+    db.outbox.count({ where: { workspaceId, status: { in: ["queued", "sending", "after"] }, OR: [{ sendAt: null }, { sendAt: { lt: endOfToday } }] } }),
     invitesSince(workspaceId, startOfToday),
     db.invite.count({ where: { workspaceId, OR: [{ sentAt: { gte: weekAgo } }, { status: { in: ["queued", "sending"] } }] } }),
   ]);

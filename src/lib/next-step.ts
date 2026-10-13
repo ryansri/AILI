@@ -86,21 +86,21 @@ export function nextStep(person: Person, now: Date = new Date()): NextStep {
   );
   const last = messages[messages.length - 1];
 
-  // A scheduled message AILI held back (they replied first, or it would have gone late) needs you.
+  // A scheduled message AILI paused (they replied first, it would have gone late, or the first of a pair failed) needs you.
   const held = person.pending.find((p) => p.status === "held");
   if (held) {
     return {
       kind: "reply",
-      step: "Held message",
-      detail: held.heldReason === "replied" ? "they wrote before it went" : "it would have gone late",
+      step: "Paused message",
+      detail: held.heldReason === "replied" ? "they wrote before it went" : held.heldReason === "first-failed" ? "your first message did not go" : "it would have gone late",
       dueAt: new Date(held.sendAt ?? held.createdAt),
       dueNow: true,
     };
   }
-  // A message scheduled to them: nothing to do until it goes.
-  const scheduled = person.pending.find((p) => p.status === "scheduled" && p.sendAt);
+  // A message scheduled to them, or a second one waiting for the first: nothing to do until it goes.
+  const scheduled = person.pending.find((p) => (p.status === "scheduled" && p.sendAt) || p.status === "after");
   if (scheduled) {
-    return { kind: "waiting", step: "Scheduled", detail: "message scheduled", dueAt: new Date(scheduled.sendAt!), dueNow: false };
+    return { kind: "waiting", step: "Scheduled", detail: "message scheduled", dueAt: new Date(scheduled.sendAt ?? Date.now()), dueNow: false };
   }
 
   // Snoozed people wait until the snooze date, whatever else is going on.

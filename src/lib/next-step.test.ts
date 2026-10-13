@@ -296,6 +296,6 @@ describe("scheduled messages", () => {
       messages: [out, { id: "m2", direction: "in", body: "Free Thursday?", sentAt: daysAgo(0, 8) }],
       pending: [{ id: "o1", body: "Following up", status: "held", heldReason: "replied", createdAt: daysAgo(1), sendAt: tomorrow }],
     });
-    expect(nextStep(p, now)).toMatchObject({ kind: "reply", step: "Held message", detail: "they wrote before it went", dueNow: true });
+    expect(nextStep(p, now)).toMatchObject({ kind: "reply", step: "Paused message", detail: "they wrote before it went", dueNow: true });
   });
 });
