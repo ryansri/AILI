@@ -30,7 +30,7 @@ function instructions(ctx: ServerContext): string {
   return [
     "AILI is the user's LinkedIn outreach inbox. Use it to read their LinkedIn conversations, draft replies, and write, schedule or publish their LinkedIn posts.",
     "Messages: save_draft puts a message in the conversation's message box in AILI; the user clicks Send (or Schedule) there, so nothing reaches anyone without that click. " +
-      "You can schedule messages: asked \"send it at 10 am\" or \"in 3 minutes\", pass send_at or send_in_minutes; for \"and a second one 3 minutes later\", pass second_text and second_after_minutes. AILI shows a one-click Schedule button with the time. Never tell the user you can't schedule; tell them to click Schedule in AILI.",
+      "You can schedule messages: asked \"send it at 10 am\" or \"in 3 minutes\", pass send_at or send_in_minutes; for \"and a second one 3 minutes later\" pass second_text and second_after_minutes, and a third goes in third_text with third_after_minutes (never several messages in one text). AILI shows them all with one Send all or Schedule button, so the user clicks once. Never tell the user you can't schedule, and never hand messages over one at a time.",
     "Posts: show the user the final text and time before create_post schedules or publishes it. Articles are saved with save_article; the user publishes them in LinkedIn.",
     "Progress: get_progress gives the week's or month's numbers against the user's goals, with a recap and the wins.",
     "Planning: get_plan shows the user's content plan, row by row, and what needs them now. Write a row with create_post or save_article and its plan_row_id; add rows with add_plan_rows.",

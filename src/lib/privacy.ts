@@ -66,7 +66,7 @@ export function maskPerson(p: Person): Person {
       ? {
           ...p.draft,
           text: fakeText(p.draft.text, `d:${p.id}`),
-          second: p.draft.second ? { ...p.draft.second, body: fakeText(p.draft.second.body, `d2:${p.id}`) } : undefined,
+          next: p.draft.next?.map((n, i) => ({ ...n, body: fakeText(n.body, `d${i + 2}:${p.id}`) })),
         }
       : undefined,
     invite: p.invite ? { ...p.invite, note: p.invite.note ? fakeText(p.invite.note, `i:${p.id}`) : "" } : undefined,

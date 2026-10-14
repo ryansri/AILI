@@ -191,6 +191,7 @@ const getConversation: Tool = {
       person.notes ? `Your notes: ${person.notes}` : "",
       person.draft ? `Draft waiting (from ${person.draftSource ?? "AI"}): ${person.draft}` : "",
       person.draftSecond ? `Second message in the draft (${person.draftSecondDelay ?? 2} min after): ${person.draftSecond}` : "",
+      person.draftThird ? `Third message in the draft (${person.draftThirdDelay ?? 2} min after the second): ${person.draftThird}` : "",
       person.draftSendAt ? `Suggested time for the draft: ${formatWhen(person.draftSendAt, tz)} (not scheduled until the user clicks Schedule)` : "",
       person.outbox.length ? `Queued to send: ${person.outbox.map((o) => `"${clip(oneLine(o.body), 80)}"`).join("; ")}` : "",
       `Open in AILI: ${personLink(ctx, person.id)}`,
@@ -218,9 +219,10 @@ const saveDraft: Tool = {
   description:
     "Put a message in the message box of one conversation in AILI, ready to send or to schedule. This is how you schedule " +
     "messages: when the user asks to send at a time (\"at 10 am\") or after a delay (\"in 3 minutes\"), pass send_at or " +
-    "send_in_minutes, and AILI shows a one-click Schedule button with that time. For two messages (\"and a second one 3 minutes " +
-    "later\"), put the second in second_text with second_after_minutes, not in the same text. The user confirms with that one " +
-    "click; AILI then sends on time, with a countdown, and pauses the second if they reply. It replaces any earlier draft for that " +
+    "send_in_minutes, and AILI shows a one-click Schedule button with that time. For two or three separate messages (\"send the " +
+    "first now, the next 1 minute after, and the third 1 minute after that\"), put them in text, second_text and third_text with " +
+    "second_after_minutes and third_after_minutes, never all in one text. The user sends or schedules them all with one click; " +
+    "AILI then sends each on time, with a countdown, and pauses the rest if they reply. It replaces any earlier draft for that " +
     "person. Write as the user, in plain text (no markdown). person_id comes from find_conversations or get_conversation.",
   inputSchema: {
     type: "object",
@@ -239,6 +241,8 @@ const saveDraft: Tool = {
       },
       second_text: { type: "string", description: "A second message, sent a few minutes after the first. Paused if they reply in between." },
       second_after_minutes: { type: "integer", minimum: 1, maximum: MAX_PAIR_DELAY, description: "Minutes after the first message. Default 2." },
+      third_text: { type: "string", description: "A third message, after the second. Needs second_text." },
+      third_after_minutes: { type: "integer", minimum: 1, maximum: MAX_PAIR_DELAY, description: "Minutes after the second message. Default 2." },
     },
     required: ["person_id", "text"],
     additionalProperties: false,
@@ -254,6 +258,11 @@ const saveDraft: Tool = {
     if (second.length > 8000) throw new ToolError("LinkedIn messages can be up to 8,000 characters.");
     const delay = args.second_after_minutes === undefined ? 2 : validDelay(args.second_after_minutes);
     if (second && delay === null) throw new ToolError(`second_after_minutes must be a whole number from 1 to ${MAX_PAIR_DELAY}.`);
+    const third = text(args.third_text).trim();
+    if (third && !second) throw new ToolError("third_text needs second_text: put the messages in order.");
+    if (third.length > 8000) throw new ToolError("LinkedIn messages can be up to 8,000 characters.");
+    const delay3 = args.third_after_minutes === undefined ? 2 : validDelay(args.third_after_minutes);
+    if (third && delay3 === null) throw new ToolError(`third_after_minutes must be a whole number from 1 to ${MAX_PAIR_DELAY}.`);
     let sendAt: Date | null = null;
     const w = await db.workspace.findUniqueOrThrow({ where: { id: ctx.workspaceId } });
     const tz = timeZoneOf(w);
@@ -280,17 +289,24 @@ const saveDraft: Tool = {
         draftSendAt: sendAt,
         draftSecond: second || null,
         draftSecondDelay: second ? delay : null,
+        draftThird: third || null,
+        draftThirdDelay: third ? delay3 : null,
       },
     });
     revalidatePath("/inbox");
     const first = person.name.split(" ")[0];
     const when = sendAt ? formatWhen(sendAt, tz) : "";
-    const pair = second ? ` A second message follows ${delay} min after the first, paused if ${first} replies in between.` : "";
+    const count = third ? 3 : second ? 2 : 1;
+    const pair = third
+      ? ` Message 2 follows ${delay} min after message 1, and message 3 ${delay3} min after that; the rest pause if ${first} replies.`
+      : second
+        ? ` A second message follows ${delay} min after the first, paused if ${first} replies in between.`
+        : "";
     return [
       sendAt
-        ? `Ready to schedule for ${when}. ${person.name}'s message box in AILI now shows "Schedule for ${when.split(", ")[1]}": one click and it is set, with a countdown.${pair}`
-        : `Saved in ${person.name}'s message box in AILI. It goes when the user clicks Send.${pair}`,
-      `Tell the user: open ${first}'s chat in AILI and click ${sendAt ? "Schedule" : "Send"}. Nothing reaches ${first} before that click.`,
+        ? `Ready to schedule for ${when}. ${person.name}'s message box in AILI now shows "Schedule ${count > 1 ? `all ${count} ` : ""}for ${when.split(", ")[1]}": one click and it is set, with a countdown.${pair}`
+        : `Saved in ${person.name}'s message box in AILI${count > 1 ? `, all ${count} messages` : ""}. They go when the user clicks ${count > 1 ? `"Send all ${count}"` : "Send"}.${pair}`,
+      `Tell the user: open ${first}'s chat in AILI (it shows up there within a few seconds) and click ${sendAt ? "Schedule" : count > 1 ? `Send all ${count}` : "Send"}. Nothing reaches ${first} before that click.`,
       `Open it: ${personLink(ctx, person.id)}`,
     ].join("\n");
   },

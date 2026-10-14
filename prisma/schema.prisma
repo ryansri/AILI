@@ -162,6 +162,9 @@ model Person {
   /// From Claude or ChatGPT: a second message, sent draftSecondDelay minutes after the first
   draftSecond      String?
   draftSecondDelay Int?
+  /// And a third, draftThirdDelay minutes after the second
+  draftThird       String?
+  draftThirdDelay  Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

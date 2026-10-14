@@ -189,13 +189,15 @@ export function ConversationPane({
   // A draft from Claude or ChatGPT that arrives while this conversation is open
   // fills the box, unless the user is already typing something else.
   const [draftAt, setDraftAt] = useState(person.draft?.at);
-  /** A second message that follows the first by a few minutes; null when there is none. */
-  const [second, setSecond] = useState<{ body: string; delayMinutes: number } | null>(person.draft?.second ?? null);
+  /** Up to two more messages, each following the one before by a few minutes. */
+  const [more, setMore] = useState<{ body: string; delayMinutes: number }[]>(person.draft?.next ?? []);
+  const moreEmpty = more.some((m) => !m.body.trim());
+  const all = 1 + more.length;
   if (person.draft && person.draft.at !== draftAt) {
     setDraftAt(person.draft.at);
     if (!draft.trim()) {
       setDraft(person.draft.text);
-      setSecond(person.draft.second ?? null);
+      setMore(person.draft.next ?? []);
     }
   }
   const aiDraft = person.draft && draftAt === person.draft.at ? person.draft : undefined;
@@ -209,6 +211,7 @@ export function ConversationPane({
   // A message or a connection request on its way (not one scheduled for later).
   const onItsWay = person.pending.filter((p) => p.status === "queued" || p.status === "sending");
   const held = person.pending.find((p) => p.status === "held");
+  const heldCount = person.pending.filter((p) => p.status === "held").length;
   // Their latest message, quoted when AILI paused one because they wrote.
   const theirLatest = [...person.messages].filter((m) => m.direction === "in").sort((a, b) => a.sentAt.localeCompare(b.sentAt)).at(-1);
   // Due within the hour (or the second of a pair): count down, and look again as it goes.
@@ -277,12 +280,12 @@ export function ConversationPane({
     if (!draft.trim() || pending) return;
     const body = draft;
     run(async () => {
-      await queueSend({ personId: person.id, body, followUp, templateId, sendAt: sendAt.toISOString(), then: second ?? undefined });
+      await queueSend({ personId: person.id, body, followUp, templateId, sendAt: sendAt.toISOString(), next: more });
       setDraft("");
       setTemplateId(undefined);
-      setSecond(null);
+      setMore([]);
       onSent?.();
-    }, `Scheduled for ${sendLabel(sendAt, account.timeZone)}.`);
+    }, `${all > 1 ? `${all} messages scheduled, the first for` : "Scheduled for"} ${sendLabel(sendAt, account.timeZone)}.`);
   }
 
   /** Edit a scheduled or held message: back into the box, and out of the schedule. */
@@ -302,14 +305,14 @@ export function ConversationPane({
   }
 
   function send() {
-    if (!draft.trim() || capReached || pending || (second && !second.body.trim())) return;
+    if (!draft.trim() || capReached || pending || moreEmpty) return;
     if (viaHelper) {
       const body = draft;
       run(async () => {
-        await queueSend({ personId: person.id, body, followUp, templateId, then: second ?? undefined });
+        await queueSend({ personId: person.id, body, followUp, templateId, next: more });
         setDraft("");
         setTemplateId(undefined);
-        setSecond(null);
+        setMore([]);
         onSent?.();
         // Wake the Chrome helper so it sends now, not at its next minute.
         window.postMessage({ source: "aili-page", type: "sync-now" }, window.location.origin);
@@ -546,7 +549,7 @@ export function ConversationPane({
                   <>
                     <span className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400">
                       <Clock3 className="size-3" />
-                      Sends {p.delayMinutes ?? 2} min after your first message
+                      Sends {p.delayMinutes ?? 2} min after the message above
                     </span>
                     ·
                     <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => editScheduled(p.id, p.body)}>
@@ -691,7 +694,7 @@ export function ConversationPane({
               <span className="inline-flex items-center gap-1.5 font-semibold text-amber-900 dark:text-amber-200">
                 <Pause className="size-3.5" />
                 {held.heldReason === "replied"
-                  ? `Paused because ${first} replied`
+                  ? `Paused because ${first} replied${heldCount > 1 ? `: ${heldCount} messages waiting` : ""}`
                   : held.heldReason === "first-failed"
                     ? "Paused because your first message didn't go"
                     : `Paused because Chrome was closed at ${held.sendAt ? sendLabel(held.sendAt, account.timeZone) : "its time"}`}
@@ -710,13 +713,13 @@ export function ConversationPane({
               </span>
               <span className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => sendHeldNow(held.id)} disabled={pending}>
-                  {held.heldReason === "late" ? "Send now" : "Send anyway"}
+                  {held.heldReason === "late" ? "Send now" : heldCount > 1 ? `Send all ${heldCount} anyway` : "Send anyway"}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => editScheduled(held.id, held.body)} disabled={pending}>
                   {held.heldReason === "late" ? "Pick a new time" : "Edit"}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => run(() => cancelQueued(held.id), "Deleted.")} disabled={pending}>
-                  Delete
+                  {heldCount > 1 ? `Delete all ${heldCount}` : "Delete"}
                 </Button>
               </span>
             </div>
@@ -751,17 +754,21 @@ export function ConversationPane({
               <Clock3 className="size-4 text-sky-700 dark:text-sky-400" />
               <span className="flex-1" suppressHydrationWarning>
                 <span className="font-semibold">{aiDraft.source} suggests {sendLabel(aiDraft.sendAt, account.timeZone)}</span>
-                {second ? `, then the second message ${second.delayMinutes} min after.` : "."}
+                {more.length === 1
+                  ? `, then message 2 ${more[0].delayMinutes} min after.`
+                  : more.length === 2
+                    ? `, then message 2 ${more[0].delayMinutes} min after and message 3 ${more[1].delayMinutes} min after that.`
+                    : "."}
                 {/* Too close to schedule (it needs two minutes): sending now is what was meant. */}
                 {new Date(aiDraft.sendAt).getTime() - now.getTime() < 2 * 60_000 && " That time is here, so send it now."}
               </span>
               {new Date(aiDraft.sendAt).getTime() - now.getTime() >= 2 * 60_000 ? (
-                <Button size="sm" disabled={pending || Boolean(second && !second.body.trim())} onClick={() => schedule(new Date(aiDraft.sendAt!))}>
-                  Schedule for {sendLabel(aiDraft.sendAt, account.timeZone).split(", ")[1]}
+                <Button size="sm" disabled={pending || moreEmpty} onClick={() => schedule(new Date(aiDraft.sendAt!))}>
+                  Schedule {all > 1 ? `all ${all} ` : ""}for {sendLabel(aiDraft.sendAt, account.timeZone).split(", ")[1]}
                 </Button>
               ) : (
-                <Button size="sm" disabled={pending || capReached || Boolean(second && !second.body.trim())} onClick={send}>
-                  Send now
+                <Button size="sm" disabled={pending || capReached || moreEmpty} onClick={send}>
+                  {all > 1 ? `Send all ${all} now` : "Send now"}
                 </Button>
               )}
             </div>
@@ -808,79 +815,87 @@ export function ConversationPane({
               <ScheduleSend
                 first={first}
                 timeZone={account.timeZone}
-                disabled={!draft.trim() || pending || Boolean(second && !second.body.trim())}
+                disabled={!draft.trim() || pending || moreEmpty}
                 onSchedule={schedule}
               />
             )}
+            {/* With more than one message, the button says how many go, so one click sends them all. */}
             <Button
-              size="icon"
-              aria-label="Send"
-              className="size-10 rounded-full"
-              disabled={!draft.trim() || capReached || pending || Boolean(second && !second.body.trim())}
+              size={all > 1 ? "default" : "icon"}
+              aria-label={all > 1 ? `Send all ${all}` : "Send"}
+              className={cn("h-10 rounded-full", all > 1 ? "px-4" : "size-10")}
+              disabled={!draft.trim() || capReached || pending || moreEmpty}
               onClick={send}
             >
               <ArrowUp />
+              {all > 1 && `Send all ${all}`}
             </Button>
           </div>
           {viaHelper &&
-            (second ? (
-              <div className="flex items-start gap-2 pl-[50px]">
+            more.map((m, i) => (
+              <div key={i} className="flex items-start gap-2 pl-[50px]">
                 <div className="flex flex-1 flex-col gap-1.5">
-                  <label htmlFor="reply-2" className="sr-only">
-                    Second message
+                  <label htmlFor={`reply-${i + 2}`} className="sr-only">
+                    Message {i + 2}
                   </label>
                   <Textarea
-                    id="reply-2"
+                    id={`reply-${i + 2}`}
                     rows={1}
-                    value={second.body}
-                    onChange={(e) => setSecond({ ...second, body: e.target.value })}
+                    value={m.body}
+                    onChange={(e) => setMore(more.map((x, k) => (k === i ? { ...x, body: e.target.value } : x)))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                         e.preventDefault();
                         send();
                       }
                     }}
-                    placeholder={`Second message to ${first}`}
+                    placeholder={`Message ${i + 2} to ${first}`}
                     data-private-placeholder
                     className="min-h-10 resize-none rounded-2xl px-4 py-2.5 text-md"
                   />
                   <span className="flex flex-wrap items-center gap-1.5 px-1 text-2xs text-muted-foreground">
                     <Clock3 className="size-3" />
-                    Sends
+                    Message {i + 2} sends
                     <select
-                      aria-label="Minutes after the first message"
-                      value={second.delayMinutes}
-                      onChange={(e) => setSecond({ ...second, delayMinutes: Number(e.target.value) })}
+                      aria-label={`Minutes after message ${i + 1}`}
+                      value={m.delayMinutes}
+                      onChange={(e) => setMore(more.map((x, k) => (k === i ? { ...x, delayMinutes: Number(e.target.value) } : x)))}
                       className="rounded-md border bg-background px-1 py-0.5 font-medium text-foreground"
                     >
-                      {[...new Set([...PAIR_DELAYS, second.delayMinutes])].sort((a, b) => a - b).map((m) => (
-                        <option key={m} value={m}>
-                          {m} min
+                      {[...new Set([...PAIR_DELAYS, m.delayMinutes])].sort((a, b) => a - b).map((n) => (
+                        <option key={n} value={n}>
+                          {n} min
                         </option>
                       ))}
                     </select>
-                    after the first. Paused if {first} replies before then.
+                    after message {i + 1}. Paused if {first} replies before then.
                   </span>
                 </div>
-                <Button variant="ghost" size="icon" aria-label="Remove the second message" className="size-10 rounded-full" onClick={() => setSecond(null)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove message ${i + 2}`}
+                  className="size-10 rounded-full"
+                  onClick={() => setMore(more.filter((_, k) => k !== i))}
+                >
                   <X />
                 </Button>
               </div>
-            ) : (
-              draft.trim() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSecond({ body: "", delayMinutes: 2 });
-                    requestAnimationFrame(() => document.getElementById("reply-2")?.focus());
-                  }}
-                  className="-mt-2 inline-flex items-center gap-1 self-start pl-[54px] text-xs text-muted-foreground hover:text-foreground"
-                >
-                  <Plus className="size-3.5" />
-                  Add a second message
-                </button>
-              )
             ))}
+          {viaHelper && draft.trim() && more.length < 2 && (
+            <button
+              type="button"
+              onClick={() => {
+                const n = more.length + 2;
+                setMore([...more, { body: "", delayMinutes: more.at(-1)?.delayMinutes ?? 2 }]);
+                requestAnimationFrame(() => document.getElementById(`reply-${n}`)?.focus());
+              }}
+              className="-mt-2 inline-flex items-center gap-1 self-start pl-[54px] text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="size-3.5" />
+              {more.length ? "Add a third message" : "Add a second message"}
+            </button>
+          )}
           {!draft.trim() && <AiTip apps={account.aiApps} first={first} />}
           {/* A line under the box only when sending works differently from usual. */}
           {(capReached || !viaHelper || !account.helper.connected || draft.trim()) && (

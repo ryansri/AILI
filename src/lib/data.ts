@@ -111,7 +111,14 @@ function toPerson(row: PersonRow): Person {
           source: row.draftSource ?? "AI",
           at: (row.draftAt ?? row.updatedAt).toISOString(),
           ...(row.draftSendAt ? { sendAt: row.draftSendAt.toISOString() } : {}),
-          ...(row.draftSecond ? { second: { body: row.draftSecond, delayMinutes: row.draftSecondDelay ?? 2 } } : {}),
+          ...(row.draftSecond
+            ? {
+                next: [
+                  { body: row.draftSecond, delayMinutes: row.draftSecondDelay ?? 2 },
+                  ...(row.draftThird ? [{ body: row.draftThird, delayMinutes: row.draftThirdDelay ?? 2 }] : []),
+                ],
+              }
+            : {}),
         }
       : undefined,
     pending: row.outbox

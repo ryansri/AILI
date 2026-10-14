@@ -11,11 +11,20 @@ import { newHelperToken, hashPassword, verifyPassword } from "./auth";
 import { isTagColor, type Stage, type TagColor } from "./types";
 import { notWhileRecording } from "./privacy-server";
 import { scheduleProblem, validDelay } from "./schedule";
-import { holdOnReply, resumeFollowers } from "./schedule-server";
+import { deleteFollowers, holdOnReply, resumeFollowers, resumeHeldFollowers } from "./schedule-server";
 import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
 
 /** A draft from Claude or ChatGPT, with its suggested time and second message, cleared. */
-const NO_DRAFT = { draft: null, draftSource: null, draftAt: null, draftSendAt: null, draftSecond: null, draftSecondDelay: null };
+const NO_DRAFT = {
+  draft: null,
+  draftSource: null,
+  draftAt: null,
+  draftSendAt: null,
+  draftSecond: null,
+  draftSecondDelay: null,
+  draftThird: null,
+  draftThirdDelay: null,
+};
 
 const timeZoneOf = (w: { timeZone: string | null }) => (validTimeZone(w.timeZone) ? w.timeZone : DEFAULT_TIME_ZONE);
 
@@ -208,10 +217,13 @@ async function sendsOnDay(workspace: { id: string; timeZone: string | null }, da
 }
 
 
+/** A sequence is the first message and at most this many more. */
+const MAX_NEXT = 2;
+
 /**
  * Send, or with sendAt, schedule: AILI holds it until then (see schedule.ts).
- * With then: a second message that goes `then.delayMinutes` after the first,
- * paused if they write in between.
+ * With next: up to two more messages, each going `delayMinutes` after the one
+ * before, all paused if they write in between.
  */
 async function queueSendImpl(input: {
   personId: string;
@@ -219,15 +231,17 @@ async function queueSendImpl(input: {
   followUp?: 1 | 2;
   templateId?: string;
   sendAt?: string;
-  then?: { body: string; delayMinutes: number };
+  next?: { body: string; delayMinutes: number }[];
 }) {
   const { workspace, person } = await ownPerson(input.personId);
   await notWhileRecording(workspace.id);
   const body = clean(input.body, 8000);
   if (!body) throw new Error("Empty message");
-  const second = input.then ? clean(input.then.body, 8000) : "";
-  if (input.then && !second) throw new Error("The second message is empty. Write it, or remove it.");
-  const delayMinutes = input.then ? (validDelay(input.then.delayMinutes) ?? 2) : 0;
+  const next = (input.next ?? []).slice(0, MAX_NEXT).map((n, i) => {
+    const text = clean(n.body, 8000);
+    if (!text) throw new Error(`Message ${i + 2} is empty. Write it, or remove it.`);
+    return { body: text, delayMinutes: validDelay(n.delayMinutes) ?? 2 };
+  });
   // No member id yet: the helper reads their profile once, when it sends this.
   if (!person.linkedinUrn && !person.publicId) throw new Error("AILI does not know this person on LinkedIn yet. Send it by hand this time.");
   // Queued while Chrome is closed too: the extension sends it the next time it runs.
@@ -242,7 +256,7 @@ async function queueSendImpl(input: {
       throw new Error("There is a scheduled message for them already. Change or cancel that one first.");
     }
   }
-  if ((await sendsOnDay(workspace, sendAt ?? new Date())) + (second ? 1 : 0) >= workspace.dailyCap) {
+  if ((await sendsOnDay(workspace, sendAt ?? new Date())) + next.length >= workspace.dailyCap) {
     throw new Error(sendAt ? `That day already has ${workspace.dailyCap} messages, your daily cap. Pick another day.` : `Daily cap of ${workspace.dailyCap} reached.`);
   }
 
@@ -256,11 +270,13 @@ async function queueSendImpl(input: {
       sendAt,
     },
   });
-  // The second waits for the first; its minutes start when the first goes (see schedule-server.ts).
-  if (second) {
-    await db.outbox.create({
-      data: { workspaceId: workspace.id, personId: person.id, body: second, status: "after", afterId: first.id, delayMinutes },
+  // Each next one waits for the one before; its minutes start when that one goes (see schedule-server.ts).
+  let before = first.id;
+  for (const n of next) {
+    const item = await db.outbox.create({
+      data: { workspaceId: workspace.id, personId: person.id, body: n.body, status: "after", afterId: before, delayMinutes: n.delayMinutes },
     });
+    before = item.id;
   }
   await db.person.update({
     where: { id: person.id },
@@ -282,8 +298,8 @@ async function cancelQueuedImpl(outboxId: string) {
   const { count } = await db.outbox.deleteMany({
     where: { id: outboxId, workspaceId: workspace.id, status: { in: ["queued", "failed", "held", "after"] } },
   });
-  // A second message never goes without its first.
-  if (count) await db.outbox.deleteMany({ where: { afterId: outboxId, workspaceId: workspace.id, status: { in: ["after", "held"] } } });
+  // A message in a sequence never goes without the ones before it.
+  if (count) await deleteFollowers(workspace.id, outboxId);
   refresh();
 }
 
@@ -297,6 +313,8 @@ async function sendScheduledNowImpl(outboxId: string) {
     data: { status: "queued", sendAt: null, heldReason: null, claimedAt: null },
   });
   if (count === 0) throw new Error("That message is not scheduled any more.");
+  // Send anyway on a paused message carries on the rest of its sequence, each after the one before.
+  await resumeHeldFollowers(outboxId);
   refresh();
 }
 

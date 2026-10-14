@@ -93,7 +93,7 @@ function ScheduleOrFollowUp({ row, timeZone }: { row: Row; timeZone: string }) {
       <span suppressHydrationWarning className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap text-sky-700 dark:text-sky-400">
         <Clock3 className="size-3" />
         {!scheduled.sendAt
-          ? `2nd in ${scheduled.delayMinutes ?? 2} min`
+          ? `Next in ${scheduled.delayMinutes ?? 2} min`
           : soon
             ? `Sends ${until}`
             : shortSendLabel(scheduled.sendAt, timeZone)}

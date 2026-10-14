@@ -37,7 +37,7 @@ describe.skipIf(!hasDb)("save_draft with a time and a second message", () => {
       ctx,
     );
     expect(out).toMatch(/Ready to schedule for .*10:00 am/);
-    expect(out).toMatch(/"Schedule for 10:00 am": one click/);
+    expect(out).toMatch(/"Schedule all 2 for 10:00 am": one click/);
     expect(out).toMatch(/second message follows 3 min after/);
     expect(out).toMatch(/Nothing reaches Jane before that click/);
 
@@ -77,5 +77,26 @@ describe.skipIf(!hasDb)("save_draft with a time and a second message", () => {
     expect(ms).toBeLessThanOrEqual(4 * 60_000);
     expect(saved.draftSecond).toBe("where are you starting?");
     await expect(saveDraft.run({ person_id: p.id, text: "x", send_in_minutes: 3, send_at: "2026-10-14T10:00" }, ctx)).rejects.toThrow(/not both/);
+  });
+
+  it("keeps three separate messages, in order", async () => {
+    const w = await db.workspace.create({ data: { name: "Draft test 4", initials: "D", timeZone: "Australia/Sydney" } });
+    const p = await db.person.create({ data: { workspaceId: w.id, name: "Kate Lowe", lead: true } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof saveDraft.run>[1];
+    const out = await saveDraft.run(
+      { person_id: p.id, text: "Hi Kate", second_text: "Congrats on the APSCo finals", second_after_minutes: 1, third_text: "How is the team finding it?", third_after_minutes: 1 },
+      ctx,
+    );
+    expect(out).toMatch(/all 3 messages/);
+    expect(out).toMatch(/Send all 3/);
+    const saved = await db.person.findUniqueOrThrow({ where: { id: p.id } });
+    expect([saved.draft, saved.draftSecond, saved.draftThird, saved.draftSecondDelay, saved.draftThirdDelay]).toEqual([
+      "Hi Kate",
+      "Congrats on the APSCo finals",
+      "How is the team finding it?",
+      1,
+      1,
+    ]);
+    await expect(saveDraft.run({ person_id: p.id, text: "Hi", third_text: "c" }, ctx)).rejects.toThrow(/needs second_text/);
   });
 });

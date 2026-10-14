@@ -78,3 +78,23 @@ export async function nextDueAt(workspaceId: string, now: Date = new Date()): Pr
   });
   return next?.sendAt?.getTime();
 }
+
+/** Every message after this one in its sequence, still waiting or paused, is deleted with it. */
+export async function deleteFollowers(workspaceId: string, firstId: string): Promise<void> {
+  for (let ids = [firstId]; ids.length; ) {
+    const next = await db.outbox.findMany({ where: { workspaceId, afterId: { in: ids }, status: { in: ["after", "held"] } }, select: { id: true } });
+    if (!next.length) return;
+    await db.outbox.deleteMany({ where: { id: { in: next.map((n) => n.id) } } });
+    ids = next.map((n) => n.id);
+  }
+}
+
+/** Send anyway: the rest of the sequence, paused because they replied, waits for the one before again. */
+export async function resumeHeldFollowers(firstId: string): Promise<void> {
+  for (let ids = [firstId]; ids.length; ) {
+    const next = await db.outbox.findMany({ where: { afterId: { in: ids }, status: "held" }, select: { id: true } });
+    if (!next.length) return;
+    await db.outbox.updateMany({ where: { id: { in: next.map((n) => n.id) } }, data: { status: "after", heldReason: null, sendAt: null } });
+    ids = next.map((n) => n.id);
+  }
+}

@@ -15,7 +15,7 @@ else delete process.env.TURSO_DATABASE_URL;
 
 vi.mock("server-only", () => ({}));
 const { db } = await import("./db");
-const { deliverableWhere, holdLate, holdOnReply, nextDueAt, pauseFollowers, resumeFollowers, startFollowers } = await import("./schedule-server");
+const { deleteFollowers, deliverableWhere, holdLate, holdOnReply, nextDueAt, pauseFollowers, resumeFollowers, resumeHeldFollowers, startFollowers } = await import("./schedule-server");
 
 afterAll(async () => {
   await db.$disconnect();
@@ -87,5 +87,37 @@ describe.skipIf(!hasDb)("scheduled messages", () => {
     await db.message.create({ data: { personId: p.id, direction: "in", body: "Thanks!", sentAt: new Date(Date.now() + 1000) } });
     expect(await holdOnReply(p.id)).toBe(1);
     expect(await db.outbox.findUnique({ where: { id: second.id } })).toMatchObject({ status: "held", heldReason: "replied" });
+  });
+
+  it("runs three in a row, pauses the rest on a reply, and keeps the chain together", async () => {
+    const w = await db.workspace.create({ data: { name: "Three test", initials: "T" } });
+    const p = await db.person.create({ data: { workspaceId: w.id, name: "Kate", lead: true } });
+    const m1 = await db.outbox.create({ data: { workspaceId: w.id, personId: p.id, body: "Hi Kate" } });
+    const m2 = await db.outbox.create({ data: { workspaceId: w.id, personId: p.id, body: "Congrats on the APSCo finals", status: "after", afterId: m1.id, delayMinutes: 1 } });
+    const m3 = await db.outbox.create({ data: { workspaceId: w.id, personId: p.id, body: "Quick question", status: "after", afterId: m2.id, delayMinutes: 1 } });
+
+    // Each starts when the one before goes.
+    const t1 = new Date();
+    await startFollowers(m1.id, t1);
+    expect((await db.outbox.findUnique({ where: { id: m2.id } }))?.sendAt?.getTime()).toBe(t1.getTime() + 60_000);
+    expect((await db.outbox.findUnique({ where: { id: m3.id } }))?.status).toBe("after");
+    await db.outbox.update({ where: { id: m2.id }, data: { status: "sent", sentAt: new Date(t1.getTime() + 60_000) } });
+    await startFollowers(m2.id, new Date(t1.getTime() + 60_000));
+    expect((await db.outbox.findUnique({ where: { id: m3.id } }))?.sendAt?.getTime()).toBe(t1.getTime() + 120_000);
+
+    // A second run: Kate replies after message 1, so 2 and 3 pause; Send anyway carries on both in order.
+    const a = await db.outbox.create({ data: { workspaceId: w.id, personId: p.id, body: "a", status: "after", afterId: m1.id, delayMinutes: 1, createdAt: new Date(Date.now() - 60_000) } });
+    const b = await db.outbox.create({ data: { workspaceId: w.id, personId: p.id, body: "b", status: "after", afterId: a.id, delayMinutes: 1, createdAt: new Date(Date.now() - 60_000) } });
+    await db.message.create({ data: { personId: p.id, direction: "in", body: "Thanks!", sentAt: new Date() } });
+    await holdOnReply(p.id);
+    expect((await db.outbox.findMany({ where: { id: { in: [a.id, b.id] } } })).map((o) => o.status)).toEqual(["held", "held"]);
+    await db.outbox.update({ where: { id: a.id }, data: { status: "queued", heldReason: null } });
+    await resumeHeldFollowers(a.id);
+    expect((await db.outbox.findUnique({ where: { id: b.id } }))?.status).toBe("after");
+
+    // Deleting a message deletes everything still waiting after it in the chain.
+    await db.outbox.update({ where: { id: a.id }, data: { status: "after" } });
+    await deleteFollowers(w.id, m1.id);
+    expect(await db.outbox.count({ where: { id: { in: [a.id, b.id] } } })).toBe(0);
   });
 });
