@@ -12,7 +12,9 @@ import { isTagColor, type Stage, type TagColor } from "./types";
 import { notWhileRecording } from "./privacy-server";
 import { scheduleProblem, validDelay } from "./schedule";
 import { deleteFollowers, holdOnReply, resumeFollowers, resumeHeldFollowers } from "./schedule-server";
-import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
+import { ceilingFor, limitProblem } from "./send-limit";
+import { messageUsage, wroteBack } from "./send-limit-server";
+import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
 
 /** A draft from Claude or ChatGPT, with its suggested time and second message, cleared. */
 const NO_DRAFT = {
@@ -195,28 +197,6 @@ async function ownTemplateId(workspaceId: string, id: string | undefined): Promi
   return template?.id ?? null;
 }
 
-/**
- * Messages that go out on a day: sent, waiting to go, and scheduled for it.
- * Days are yours, midnight to midnight where you are (the server runs on UTC).
- */
-async function sendsOnDay(workspace: { id: string; timeZone: string | null }, day: Date): Promise<number> {
-  const workspaceId = workspace.id;
-  const { start, end } = dayBounds(day, timeZoneOf(workspace));
-  const today = Date.now() >= start.getTime() && Date.now() < end.getTime();
-  const [sent, queued] = await Promise.all([
-    db.message.count({ where: { direction: "out", sentAt: { gte: start, lt: end }, person: { workspaceId } } }),
-    db.outbox.count({
-      where: {
-        workspaceId,
-        status: { in: ["queued", "sending", "after"] },
-        OR: [{ sendAt: { gte: start, lt: end } }, ...(today ? [{ sendAt: null }, { sendAt: { lt: start } }] : [])],
-      },
-    }),
-  ]);
-  return sent + queued;
-}
-
-
 /** A sequence is the first message and at most this many more. */
 const MAX_NEXT = 2;
 
@@ -256,9 +236,16 @@ async function queueSendImpl(input: {
       throw new Error("There is a scheduled message for them already. Change or cancel that one first.");
     }
   }
-  if ((await sendsOnDay(workspace, sendAt ?? new Date())) + next.length >= workspace.dailyCap) {
-    throw new Error(sendAt ? `That day already has ${workspace.dailyCap} messages, your daily cap. Pick another day.` : `Daily cap of ${workspace.dailyCap} reached.`);
-  }
+  // Replies to people who wrote back skip the daily cap, up to the day's ceiling (see send-limit.ts).
+  const day = sendAt ?? new Date();
+  const limit = limitProblem(
+    await messageUsage(workspace.id, timeZoneOf(workspace), day),
+    1 + next.length,
+    await wroteBack(person.id, day),
+    workspace.dailyCap,
+    Boolean(sendAt),
+  );
+  if (limit) throw new Error(limit);
 
   const first = await db.outbox.create({
     data: {
@@ -307,7 +294,11 @@ async function cancelQueuedImpl(outboxId: string) {
 async function sendScheduledNowImpl(outboxId: string) {
   const workspace = await getWorkspace();
   await notWhileRecording(workspace.id);
-  if ((await sendsOnDay(workspace, new Date())) >= workspace.dailyCap) throw new Error(`Daily cap of ${workspace.dailyCap} reached.`);
+  const item = await db.outbox.findFirst({ where: { id: outboxId, workspaceId: workspace.id }, select: { personId: true } });
+  if (item) {
+    const limit = limitProblem(await messageUsage(workspace.id, timeZoneOf(workspace)), 1, await wroteBack(item.personId), workspace.dailyCap);
+    if (limit) throw new Error(limit);
+  }
   const { count } = await db.outbox.updateMany({
     where: { id: outboxId, workspaceId: workspace.id, OR: [{ status: "queued", sendAt: { not: null } }, { status: "held" }] },
     data: { status: "queued", sendAt: null, heldReason: null, claimedAt: null },
@@ -767,7 +758,9 @@ async function queueBulkImpl(input: { personIds: string[]; body: string; templat
     include: { outbox: { where: { status: { in: ["queued", "sending"] } }, select: { id: true } } },
   });
 
-  let room = Math.max(0, workspace.dailyCap - (await sendsOnDay(workspace, new Date())));
+  // Messages to many people at once count as new ones.
+  const used = await messageUsage(workspace.id, timeZoneOf(workspace));
+  let room = Math.max(0, Math.min(workspace.dailyCap - used.fresh, ceilingFor(workspace.dailyCap) - used.total));
 
   const result = { queued: 0, noLinkedIn: 0, alreadyWaiting: 0, overCap: 0 };
   for (const person of people) {

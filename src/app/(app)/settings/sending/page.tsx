@@ -10,6 +10,7 @@ export default async function SendingPage() {
     <SendingView
       dailyCap={account.dailyCap}
       sentToday={account.sentToday}
+      repliesToday={account.repliesToday}
       notifyReplies={account.notifyReplies}
       firstCommentDelay={workspace.firstCommentDelay}
       runwayAlertDays={workspace.runwayAlertDays}

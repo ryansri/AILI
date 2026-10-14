@@ -62,7 +62,8 @@ export function MessageAllDialog({
     return { ready, noLinkedIn, waiting };
   }, [people]);
 
-  const room = Math.max(0, account.dailyCap - account.sentToday);
+  // These count as new messages, and all together stop at the day's ceiling.
+  const room = Math.max(0, Math.min(account.dailyCap - account.sentToday, account.dayCeiling - account.sentToday - account.repliesToday));
   const willQueue = Math.min(split.ready.length, room);
   const overCap = split.ready.length - willQueue;
   const preview = split.ready[Math.min(index, split.ready.length - 1)];
@@ -184,7 +185,7 @@ export function MessageAllDialog({
             )}
             {overCap > 0 && (
               <li>
-                {plural(overCap, "person", "people")} left out: your daily cap of {account.dailyCap} is reached. Try them
+                {plural(overCap, "person", "people")} left out: your daily cap of {account.dailyCap} new messages is reached. Try them
                 tomorrow.
               </li>
             )}

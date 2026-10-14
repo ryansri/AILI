@@ -29,7 +29,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { archivePerson, cancelQueued, discardDraft, retryQueued, markDone, moveToOther, queueSend, reopen, sendScheduledNow, toggleStar } from "@/lib/client-actions";
-import { PAIR_DELAYS, sendLabel, untilLabel } from "@/lib/schedule";
+import { PAIR_DELAYS, schedulePresets, sendLabel, untilLabel } from "@/lib/schedule";
+import { isReplyAt, limitProblem } from "@/lib/send-limit";
 import { type Account, type StageDef, type Tag } from "@/lib/types";
 import type { Row } from "@/lib/rows";
 import { followUpNote, relativeTime, shortDate, shortTime } from "@/lib/next-step";
@@ -252,7 +253,14 @@ export function ConversationPane({
     if (el) el.scrollTop = el.scrollHeight;
   }, [person.id, shown, hydrated]);
 
-  const capReached = account.sentToday >= account.dailyCap;
+  // Replies to someone who wrote back skip the daily cap, up to the day's ceiling (see send-limit.ts).
+  const isReply = isReplyAt(
+    messages.filter((m) => m.direction === "in").map((m) => m.sentAt),
+    now,
+  );
+  const used = { fresh: account.sentToday, replies: account.repliesToday, total: account.sentToday + account.repliesToday };
+  const capProblem = limitProblem(used, all, isReply, account.dailyCap);
+  const capReached = capProblem !== null;
   const followUp: 1 | 2 | undefined =
     step.step === "Follow-up 1" ? 1 : step.step === "Follow-up 2" ? 2 : undefined;
   const first = person.name.split(" ")[0];
@@ -900,16 +908,34 @@ export function ConversationPane({
           {/* A line under the box only when sending works differently from usual. */}
           {(capReached || !viaHelper || !account.helper.connected || draft.trim()) && (
             <div className="flex justify-between text-2xs text-muted-foreground">
-              <span>
-                {capReached
-                  ? `Daily cap of ${account.dailyCap} reached. Sending opens again tomorrow.`
-                  : viaHelper && !account.helper.connected
-                    ? "Sends when Chrome is open. It waits in the queue."
-                    : viaHelper
-                      ? ""
-                      : account.helper.connected
-                        ? "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."
-                        : "Copies the message and logs it once you confirm you sent it on LinkedIn."}
+              <span className={capReached ? "text-amber-700" : undefined}>
+                {capReached ? (
+                  <>
+                    {capProblem}
+                    {draft.trim() && viaHelper && (
+                      <button
+                        type="button"
+                        className="ml-1.5 font-medium underline underline-offset-2 hover:text-foreground"
+                        disabled={pending || moreEmpty}
+                        onClick={() => schedule(schedulePresets(account.timeZone)[0].at)}
+                      >
+                        Schedule for tomorrow 9 am
+                      </button>
+                    )}
+                  </>
+                ) : viaHelper && !account.helper.connected ? (
+                  "Sends when Chrome is open. It waits in the queue."
+                ) : viaHelper ? (
+                  isReply ? (
+                    `A reply: it doesn't count toward your ${account.dailyCap} a day.`
+                  ) : (
+                    `New message: ${account.sentToday} of ${account.dailyCap} sent today.`
+                  )
+                ) : account.helper.connected ? (
+                  "AILI has not matched this person on LinkedIn yet, so this one is copy and paste."
+                ) : (
+                  "Copies the message and logs it once you confirm you sent it on LinkedIn."
+                )}
               </span>
               <span>{draft.trim() ? `${draft.trim().split(/\s+/).length} words` : ""}</span>
             </div>

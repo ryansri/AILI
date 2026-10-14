@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Group, Row, SettingsPage } from "./settings-parts";
+import { ceilingFor, REPLY_WINDOW_DAYS } from "@/lib/send-limit";
 
 const MIN = 1;
 const MAX = 100;
@@ -24,6 +25,7 @@ const MAX = 100;
 export function SendingView({
   dailyCap,
   sentToday,
+  repliesToday,
   notifyReplies,
   firstCommentDelay,
   runwayAlertDays,
@@ -32,6 +34,7 @@ export function SendingView({
 }: {
   dailyCap: number;
   sentToday: number;
+  repliesToday: number;
   notifyReplies: boolean;
   firstCommentDelay: number;
   runwayAlertDays: number;
@@ -96,7 +99,10 @@ export function SendingView({
     <SettingsPage title="Sending" lead="Messages, connection requests, replies and posts: how much goes out, and when.">
       <h2 className="-mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Messages</h2>
       <Group>
-        <Row title="Daily limit" status={`Messages a day, sent and queued. ${sentToday} of ${cap} used today.`}>
+        <Row
+          title="Daily limit"
+          status={`New messages a day, sent and queued. Replies to people who wrote back in the last ${REPLY_WINDOW_DAYS} days don't count, up to ${ceilingFor(cap)} messages a day in all. Today: ${sentToday} of ${cap} new, ${repliesToday} ${repliesToday === 1 ? "reply" : "replies"}.`}
+        >
           <div className="flex h-8 items-center overflow-hidden rounded-md border" role="group" aria-label="Daily limit">
             <Button variant="ghost" size="icon-sm" className="rounded-none" aria-label="Fewer" disabled={cap <= MIN} onClick={() => changeCap(cap - 1)}>
               <Minus />

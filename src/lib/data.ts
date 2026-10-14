@@ -8,6 +8,8 @@ import { db } from "./db";
 import { currentWorkspaceId, newHelperToken } from "./auth";
 import { helperOutdated } from "./helper-version";
 import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
+import { ceilingFor, type DayUsage } from "./send-limit";
+import { messageUsage } from "./send-limit-server";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
 import type { InviteFacts } from "./invites";
@@ -217,10 +219,9 @@ export async function helperTokenFor(workspace: { id: string; helperToken: strin
 /** The helper counts as connected when it reported in lately. It checks in every 15 minutes. */
 export const HELPER_ONLINE_MS = 35 * 60 * 1000;
 
-/** Sent today plus anything still queued for the helper, which counts against the daily cap. */
+/** Today's messages (sent plus queued for the helper) and connection requests, for the daily limits. */
 interface Usage {
-  /** Messages sent today plus queued. */
-  messages: number;
+  messages: DayUsage;
   /** Connection requests from AILI today (queued or sent), and all sent in the last 7 days. */
   invitesToday: number;
   invitesWeek: number;
@@ -239,18 +240,16 @@ async function aiAppsOf(workspaceId: string): Promise<string[]> {
 async function usedToday(workspaceId: string): Promise<Usage> {
   // Today where you are, not on the server's clock (UTC): at 10 am in Sydney the UTC day began yesterday at 11 am.
   const w = await db.workspace.findUnique({ where: { id: workspaceId }, select: { timeZone: true } });
-  const { start: startOfToday, end: endOfToday } = dayBounds(new Date(), validTimeZone(w?.timeZone) ? w!.timeZone! : DEFAULT_TIME_ZONE);
+  const timeZone = validTimeZone(w?.timeZone) ? w!.timeZone! : DEFAULT_TIME_ZONE;
+  const { start: startOfToday } = dayBounds(new Date(), timeZone);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [sentToday, queued, invitesToday, invitesWeek] = await Promise.all([
-    db.message.count({
-      where: { direction: "out", sentAt: { gte: startOfToday }, person: { workspaceId } },
-    }),
+  const [messages, invitesToday, invitesWeek] = await Promise.all([
     // Scheduled for a later day counts on that day, not today.
-    db.outbox.count({ where: { workspaceId, status: { in: ["queued", "sending", "after"] }, OR: [{ sendAt: null }, { sendAt: { lt: endOfToday } }] } }),
+    messageUsage(workspaceId, timeZone),
     invitesSince(workspaceId, startOfToday),
     db.invite.count({ where: { workspaceId, OR: [{ sentAt: { gte: weekAgo } }, { status: { in: ["queued", "sending"] } }] } }),
   ]);
-  return { messages: sentToday + queued, invitesToday, invitesWeek };
+  return { messages, invitesToday, invitesWeek };
 }
 
 /** Requests from Connect in AILI since a time, for the daily limit. Ones LinkedIn refused do not count. */
@@ -278,7 +277,9 @@ function accountOf(workspace: Workspace, used: Usage, aiApps: string[]): Account
     dailyCap: workspace.dailyCap,
     timeZone: validTimeZone(workspace.timeZone) ? workspace.timeZone : DEFAULT_TIME_ZONE,
     notifyReplies: workspace.notifyReplies,
-    sentToday: used.messages,
+    sentToday: used.messages.fresh,
+    repliesToday: used.messages.replies,
+    dayCeiling: ceilingFor(workspace.dailyCap),
     aiApps,
     invites: {
       cap: workspace.inviteCap,

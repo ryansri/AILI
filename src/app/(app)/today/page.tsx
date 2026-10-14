@@ -97,7 +97,7 @@ export default async function TodayPage() {
         <div className="mx-auto flex max-w-3xl flex-col gap-7 px-6 py-6">
           <p className="text-sm text-muted-foreground">
             {dateLabel}. {total === 0 ? "Nothing due. " : `${total} things to do. `}
-            {account.sentToday} of {account.dailyCap} messages sent.
+            {account.sentToday} of {account.dailyCap} new messages sent{account.repliesToday ? `, plus ${account.repliesToday} ${account.repliesToday === 1 ? "reply" : "replies"}` : ""}.
           </p>
           <Section kind="reply" title="Reply" hint="they are waiting on you" rows={pick("reply")} />
           <Section kind="chase" title="Chase" hint="a follow-up is due" rows={pick("chase")} />

@@ -195,8 +195,12 @@ export interface Account {
   timeZone: string;
   /** Desktop notifications for new replies are on. */
   notifyReplies: boolean;
-  /** Sent today plus anything still queued for the helper. */
+  /** New messages today, sent plus queued for the helper: these count toward dailyCap. */
   sentToday: number;
+  /** Replies today to people who wrote back: they skip dailyCap (see send-limit.ts). */
+  repliesToday: number;
+  /** All messages in a day, replies included, stop here. */
+  dayCeiling: number;
   /** AI apps connected to AILI (Claude, ChatGPT), so they can draft replies. */
   aiApps: string[];
   /** Connection requests: the daily limit and how many went today and this week. */

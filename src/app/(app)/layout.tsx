@@ -33,7 +33,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           pictureUrl={account.pictureUrl}
           needsYou={needsYouCount}
           helper={account.helper}
-          sentLine={`${account.sentToday} of ${account.dailyCap} sent today.`}
+          sentLine={`${account.sentToday} of ${account.dailyCap} new messages today${account.repliesToday ? `, plus ${account.repliesToday} ${account.repliesToday === 1 ? "reply" : "replies"}` : ""}.`}
         />
         <main className="flex min-w-0 flex-1 flex-col">
           {reminder && <PlanBar toWrite={reminder.toWrite} toSchedule={reminder.toSchedule} firstDay={dayLabel(reminder.firstDay)} />}
