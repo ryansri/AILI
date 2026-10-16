@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 /**
  * A post's image or PDF, sent through AILI: ?postId=…&name=…, the file as
  * the body. Kept in Vercel Blob, or a local folder in development. Files
- * over 4 MB don't fit through here on Vercel; the page sends those straight
- * to Blob (see ../upload).
+ * over 4 MB don't fit through here on Vercel; the page sends those in
+ * pieces (see ../part).
  */
 export async function POST(request: Request) {
   const store = mediaStore();

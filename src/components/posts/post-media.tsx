@@ -2,16 +2,15 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { upload } from "@vercel/blob/client";
 import { FileText, ImagePlus, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { cannotAdd, IMAGE_TYPES, MAX_IMAGES, mediaKindOf, PDF_TYPE, type MediaKind, type MediaView } from "@/lib/media";
-import { attachMedia, orderMedia, removeMedia } from "@/lib/client-actions";
+import { cannotAdd, IMAGE_TYPES, MAX_IMAGES, mediaKindOf, PART_BYTES, PDF_TYPE, type MediaKind, type MediaView } from "@/lib/media";
+import { orderMedia, removeMedia } from "@/lib/client-actions";
 
 /*
- * Images and PDF carousels on a post. Files go from the browser straight to
- * storage (Vercel Blob, or a local folder in development), are sent to
+ * Images and PDF carousels on a post. Files go through AILI to storage
+ * (Vercel Blob, or a local folder in development), are sent to
  * LinkedIn with the post, and are deleted from AILI the day after it is
  * published. LinkedIn keeps its own copy.
  */
@@ -26,58 +25,54 @@ const modeOf = (media: MediaView[]): Mode =>
 const sizeLabel = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-/** A file name that is safe in a storage path; a PDF keeps its .pdf ending. */
-function storedName(file: File): string {
-  const name = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+/, "").slice(-80) || "file";
-  return file.type === PDF_TYPE && !/\.pdf$/i.test(name) ? `${name}.pdf` : name;
-}
-
-/** Files this size or smaller go through AILI (Vercel takes up to 4.5 MB); bigger ones straight to Blob. */
-const THROUGH_AILI_MAX = 4 * 1024 * 1024;
-
-/** Gives up on an upload that has not finished in time, instead of saying "Adding" for ever. */
-function timeLimit(file: File) {
+/** Gives up on a request that has not finished in time, instead of saying "Adding" for ever. */
+function timeLimit(bytes: number) {
   const controller = new AbortController();
-  const ms = 60_000 + (file.size / (1024 * 1024)) * 10_000;
+  const ms = 60_000 + (bytes / (1024 * 1024)) * 10_000;
   const timer = setTimeout(() => controller.abort(), ms);
   return { signal: controller.signal, done: () => clearTimeout(timer) };
 }
 
-async function uploadFile(postId: string, file: File, store: MediaStoreMode) {
-  const limit = timeLimit(file);
+/** A POST to AILI that says why it failed, or that it took too long. */
+async function post<T>(url: string, body: BodyInit, contentType: string, bytes: number, what: string): Promise<T> {
+  const limit = timeLimit(bytes);
   try {
-    if (store === "blob" && file.size > THROUGH_AILI_MAX) {
-      const send = (access: "public" | "private") =>
-        upload(`posts/${postId}/${storedName(file)}`, file, {
-          access,
-          handleUploadUrl: "/api/media/upload",
-          clientPayload: JSON.stringify({ postId }),
-          contentType: file.type,
-          multipart: file.size > 20 * 1024 * 1024,
-          abortSignal: limit.signal,
-        });
-      // The Blob store is public or private; try the other when one is refused.
-      const blob = await send("public").catch((err) => {
-        if (limit.signal.aborted) throw err;
-        return send("private");
-      });
-      await attachMedia(postId, { url: blob.url, name: file.name, contentType: file.type, size: file.size });
-      return;
-    }
-    const res = await fetch(`/api/media/file?postId=${encodeURIComponent(postId)}&name=${encodeURIComponent(file.name)}`, {
-      method: "POST",
-      headers: { "content-type": file.type },
-      body: file,
-      signal: limit.signal,
-    });
-    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "That file did not upload.");
+    const res = await fetch(url, { method: "POST", headers: { "content-type": contentType }, body, signal: limit.signal });
+    const json = (await res.json().catch(() => ({}))) as T & { error?: string };
+    if (!res.ok) throw new Error(json.error ?? "That file did not upload.");
+    return json;
   } catch (err) {
-    if (limit.signal.aborted) throw new Error(`${file.name} took too long to upload. Check your internet and try again.`);
+    if (limit.signal.aborted) throw new Error(`${what} took too long to upload. Check your internet and try again.`);
     console.error("Upload failed", err);
     throw err;
   } finally {
     limit.done();
   }
+}
+
+/**
+ * Up to 4 MB goes to AILI in one go. Bigger files (most PDFs) go in 4 MB
+ * pieces that AILI joins: Vercel takes at most 4.5 MB a request, and sending
+ * them from the browser straight to Blob stalled.
+ */
+async function uploadFile(postId: string, file: File, onProgress: (label: string) => void) {
+  const q = `postId=${encodeURIComponent(postId)}`;
+  if (file.size <= PART_BYTES) {
+    await post(`/api/media/file?${q}&name=${encodeURIComponent(file.name)}`, file, file.type, file.size, file.name);
+    return;
+  }
+  const upload = crypto.randomUUID();
+  const count = Math.ceil(file.size / PART_BYTES);
+  const parts: string[] = [];
+  for (let i = 0; i < count; i++) {
+    onProgress(`Uploading ${Math.round((i / count) * 100)}%`);
+    const piece = file.slice(i * PART_BYTES, (i + 1) * PART_BYTES);
+    const { url } = await post<{ url: string }>(`/api/media/part?${q}&upload=${upload}&part=${i}`, piece, "application/octet-stream", piece.size, file.name);
+    parts.push(url);
+  }
+  onProgress("Finishing");
+  const body = JSON.stringify({ parts, name: file.name, contentType: file.type, size: file.size });
+  await post(`/api/media/part?${q}&finish=1`, body, "application/json", file.size, file.name);
 }
 
 /** The "Images or carousel" part of a post: pick, add, order and remove its files. */
@@ -107,8 +102,9 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
           toast.error(`${file.name}: ${why}`);
           continue;
         }
-        setBusy(files.length > 1 ? `Adding ${i + 1} of ${files.length}` : "Adding");
-        await uploadFile(postId, file, store);
+        const adding = files.length > 1 ? `Adding ${i + 1} of ${files.length}` : "Adding";
+        setBusy(adding);
+        await uploadFile(postId, file, (label) => setBusy(files.length > 1 ? `${adding}: ${label}` : label));
         current.push({ kind: mediaKindOf(file.type)! });
         added++;
         if (mediaKindOf(file.type) === "document") setMode("pdf");

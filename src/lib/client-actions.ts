@@ -69,7 +69,6 @@ export const updateFirstCommentDelay = unwrap(posts.updateFirstCommentDelay);
 export const deletePost = unwrap(posts.deletePost);
 export const markArticlePublished = unwrap(posts.markArticlePublished);
 export const saveTimeZone = unwrap(posts.saveTimeZone);
-export const attachMedia = unwrap(media.attachMedia);
 export const togglePrivacy = unwrap(privacy.togglePrivacy);
 export const updateGoals = unwrap(progress.updateGoals);
 export const removeMedia = unwrap(media.removeMedia);

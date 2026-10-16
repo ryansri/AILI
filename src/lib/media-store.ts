@@ -35,6 +35,12 @@ export function isOwnBlobUrl(url: string, postId: string): boolean {
   }
 }
 
+/** A piece of a big upload for this post (see api/media/part), in Blob or the local folder. */
+export function isOwnPart(url: string, postId: string): boolean {
+  if (url.startsWith(LOCAL)) return url.startsWith(`${LOCAL}part-${postId}-`);
+  return isOwnBlobUrl(url, postId) && new URL(url).pathname.startsWith(`/posts/${postId}/part-${postId}-`);
+}
+
 /** Private store files live on a ….private.blob.vercel-storage.com address. */
 function accessOf(url: string): "public" | "private" {
   try {
@@ -56,7 +62,8 @@ export async function saveBlob(postId: string, name: string, bytes: Uint8Array, 
   const safe = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+/, "").slice(-80) || "file";
   const pathname = `posts/${postId}/${contentType === "application/pdf" && !/\.pdf$/i.test(safe) ? `${safe}.pdf` : safe}`;
   const body = Buffer.from(bytes);
-  const save = (access: "public" | "private") => put(pathname, body, { access, contentType, addRandomSuffix: true });
+  const save = (access: "public" | "private") =>
+    put(pathname, body, { access, contentType, addRandomSuffix: true, multipart: body.length > 20 * 1024 * 1024 });
   try {
     return (await save(storeAccess)).url;
   } catch (first) {

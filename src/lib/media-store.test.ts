@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const put = vi.fn();
 vi.mock("@vercel/blob", () => ({ put, del: vi.fn(), get: vi.fn() }));
-const { isPrivateBlob, saveBlob } = await import("./media-store");
+const { isOwnPart, isPrivateBlob, saveBlob } = await import("./media-store");
 
 beforeEach(() => {
   put.mockReset();
@@ -40,5 +40,17 @@ describe("saveBlob", () => {
     expect(isPrivateBlob("https://abc.private.blob.vercel-storage.com/posts/p1/a.png")).toBe(true);
     expect(isPrivateBlob("https://abc.public.blob.vercel-storage.com/posts/p1/a.png")).toBe(false);
     expect(isPrivateBlob("local:abc")).toBe(false);
+  });
+});
+
+describe("pieces of a big upload", () => {
+  it("only takes this post's pieces", () => {
+    expect(isOwnPart("https://abc.public.blob.vercel-storage.com/posts/p1/part-p1-u1-0-Xy12.", "p1")).toBe(true);
+    expect(isOwnPart("local:part-p1-u1-3", "p1")).toBe(true);
+    // Another post's piece, or a finished file, is not a piece of this upload.
+    expect(isOwnPart("https://abc.public.blob.vercel-storage.com/posts/p2/part-p2-u1-0", "p1")).toBe(false);
+    expect(isOwnPart("https://abc.public.blob.vercel-storage.com/posts/p1/deck.pdf", "p1")).toBe(false);
+    expect(isOwnPart("local:part-p2-u1-0", "p1")).toBe(false);
+    expect(isOwnPart("https://evil.example.com/posts/p1/part-p1-u1-0", "p1")).toBe(false);
   });
 });

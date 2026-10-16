@@ -11,6 +11,8 @@ export const PDF_TYPE = "application/pdf";
 export const MAX_IMAGES = 20;
 export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const PDF_MAX_BYTES = 100 * 1024 * 1024;
+/** Bigger files go to AILI in pieces this size: Vercel takes at most 4.5 MB a request. */
+export const PART_BYTES = 4 * 1024 * 1024;
 
 /** One file on a post, as the page shows it. */
 export interface MediaView {
