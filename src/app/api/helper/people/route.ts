@@ -43,7 +43,7 @@ async function findExisting(workspaceId: string, publicId: string, urn?: string)
       archivedAt: null,
       OR: [{ publicId }, ...(urn ? [{ linkedinUrn: urn }] : [])],
     },
-    select: { id: true, name: true, stage: true, publicId: true, lead: true, requestedAt: true, connectedAt: true },
+    select: { id: true, name: true, stage: true, publicId: true, lead: true, requestedAt: true, connectedAt: true, pictureUrl: true },
   });
 }
 
@@ -141,6 +141,11 @@ async function handlePOST(request: Request) {
   const stage = stages.some((s) => s.key === body.stage) ? String(body.stage) : "warming";
   const now = new Date();
 
+  const pictureUrl = isLinkedInImage(body.pictureUrl) ? String(body.pictureUrl) : "";
+  // LinkedIn's photo links expire, so the one from the profile open now wins.
+  if (existing && pictureUrl && existing.pictureUrl !== pictureUrl) {
+    await db.person.update({ where: { id: existing.id }, data: { pictureUrl } });
+  }
   if (existing?.lead) {
     await rememberAddress(existing, publicId);
     return NextResponse.json({ id: existing.id, existed: true, stage: existing.stage }, { headers: corsHeaders(request) });
@@ -153,7 +158,6 @@ async function handlePOST(request: Request) {
       : null;
   const jobTitle = clean(body.jobTitle, 120);
   const company = clean(body.company, 120);
-  const pictureUrl = isLinkedInImage(body.pictureUrl) ? String(body.pictureUrl) : "";
 
   // Someone in Other: Track as lead, in the stage and tag picked in the popup.
   if (existing) {

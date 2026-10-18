@@ -232,7 +232,8 @@ async function applyConversation(
         headline: !existing.headline || (existing.source === "linkedin" && existing.headline.includes("|")) ? headline : existing.headline,
         company: existing.company || company,
         publicId: existing.publicId ?? other.publicId,
-        pictureUrl: existing.pictureUrl || other.pictureUrl || "",
+        // LinkedIn's photo links expire after a few weeks, so the one just synced wins.
+        pictureUrl: isLinkedInImage(other.pictureUrl) ? other.pictureUrl : existing.pictureUrl,
         linkedinUrl: existing.linkedinUrl || (other.publicId ? `https://www.linkedin.com/in/${other.publicId}` : ""),
         connectedAt: existing.connectedAt ?? new Date(Math.min(conv.lastActivityAt || Date.now(), Date.now())),
       },
@@ -248,7 +249,7 @@ async function applyConversation(
         headline,
         company,
         publicId: other.publicId,
-        pictureUrl: other.pictureUrl ?? "",
+        pictureUrl: isLinkedInImage(other.pictureUrl) ? other.pictureUrl : "",
         linkedinUrl: other.publicId ? `https://www.linkedin.com/in/${other.publicId}` : "",
         linkedinUrn: other.urn,
         conversationId: conv.id,

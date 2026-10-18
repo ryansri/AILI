@@ -51,4 +51,24 @@ describe.skipIf(!hasDb)("applySync", () => {
     expect(msgs.map((m) => m.body)).toEqual(["[Sent a voice message]"]);
     expect((await db.person.findUniqueOrThrow({ where: { id: byChat.id } })).linkedinUrn).toBeNull();
   });
+
+  it("keeps the newest photo: LinkedIn's photo links expire", async () => {
+    const w = await db.workspace.create({ data: { name: "Photo test", initials: "P" } });
+    const them = `urn:li:fsd_profile:photo-${w.id}`;
+    const old = "https://media.licdn.com/dms/image/old.jpg?e=1700000000";
+    const fresh = "https://media.licdn.com/dms/image/new.jpg?e=1900000000";
+    const p = await db.person.create({ data: { workspaceId: w.id, name: "Pia", linkedinUrn: them, pictureUrl: old } });
+    const sync = (pictureUrl?: string) =>
+      applySync(w.id, {
+        memberUrn: ME,
+        conversations: [{ id: `chat-${w.id}`, lastActivityAt: Date.now(), participants: [{ urn: ME, name: "Ryan" }, { urn: them, name: "Pia", pictureUrl }], messages: [] }],
+      });
+
+    await sync(fresh);
+    expect((await db.person.findUniqueOrThrow({ where: { id: p.id } })).pictureUrl).toBe(fresh);
+    // No photo this time, or one from elsewhere: the one AILI has stays.
+    await sync(undefined);
+    await sync("https://evil.example.com/x.jpg");
+    expect((await db.person.findUniqueOrThrow({ where: { id: p.id } })).pictureUrl).toBe(fresh);
+  });
 });
