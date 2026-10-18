@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, Bell, Building2, CalendarDays, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
+import { Archive, Bell, Building2, CalendarDays, Check, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } from "@/lib/client-actions";
@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -166,7 +167,8 @@ export function PeopleView({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [tagId, setTagId] = useState(ALL);
+  // Any of these tags; none ticked shows everyone.
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const [conn, setConn] = useState<ConnectionState | typeof ALL>(ALL);
   const [pick, setPick] = useState<Pick>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -182,7 +184,10 @@ export function PeopleView({
   const [pending, start] = useTransition();
   const search = useHeaderSearch(query);
   // The tag narrows the whole page: funnel and table.
-  const scope = useMemo(() => people.filter((p) => tagId === ALL || p.tagIds.includes(tagId)), [people, tagId]);
+  const scope = useMemo(
+    () => people.filter((p) => tagIds.length === 0 || tagIds.some((id) => p.tagIds.includes(id))),
+    [people, tagIds],
+  );
 
   const companies = useMemo(() => groupByCompany(scope, stages, companyRules), [scope, stages, companyRules]);
   const byCompany = view === "companies";
@@ -400,20 +405,7 @@ export function PeopleView({
               </Button>
             )}
           </div>
-          <Select value={tagId} onValueChange={setTagId}>
-            <SelectTrigger size="sm" aria-label="Tag" className="min-w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value={ALL}>All tags</SelectItem>
-              {tags.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  <TagDot color={t.color} />
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <TagFilter tags={tags} people={people} value={tagIds} onChange={setTagIds} />
         </div>
 
         {showRequests && (
@@ -705,6 +697,97 @@ export function PeopleView({
         templates={templates}
         account={account}
       />
+    </div>
+  );
+}
+
+/** Tags to show, as many as you like: people with any of them. None ticked is everyone. */
+function TagFilter({ tags, people, value, onChange }: { tags: Tag[]; people: Person[]; value: string[]; onChange: (ids: string[]) => void }) {
+  const picked = tags.filter((t) => value.includes(t.id));
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  return (
+    <div className="flex items-center gap-1">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Tags"
+            className={cn(
+              "min-w-32 justify-between font-normal",
+              picked.length > 0 && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background dark:bg-foreground",
+            )}
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              {picked.length === 0 ? (
+                "All tags"
+              ) : picked.length === 1 ? (
+                <>
+                  <TagDot color={picked[0].color} />
+                  <span className="truncate">{picked[0].label}</span>
+                </>
+              ) : (
+                <>
+                  <span className="flex -space-x-0.5">
+                    {picked.slice(0, 3).map((t) => (
+                      <TagDot key={t.id} color={t.color} />
+                    ))}
+                  </span>
+                  {picked.length} tags
+                </>
+              )}
+            </span>
+            <ChevronDown className="opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-64 p-1">
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-muted"
+          >
+            All tags
+            {value.length === 0 && <Check className="ml-auto size-4" />}
+          </button>
+          {tags.map((t) => {
+            const on = value.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={on}
+                onClick={() => toggle(t.id)}
+                className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-muted"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex size-4 shrink-0 items-center justify-center rounded-[4px] border",
+                    on ? "border-foreground bg-foreground text-background" : "border-input",
+                  )}
+                >
+                  {on && <Check className="size-3" />}
+                </span>
+                <TagDot color={t.color} />
+                <span className="truncate">{t.label}</span>
+                <span className="ml-auto pl-3 text-xs text-muted-foreground tabular-nums">
+                  {people.filter((p) => p.tagIds.includes(t.id)).length}
+                </span>
+              </button>
+            );
+          })}
+          {tags.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">No tags yet.</p>}
+          {value.length > 1 && (
+            <p className="mt-1 border-t px-2 pt-1.5 pb-1 text-2xs text-muted-foreground">Showing people with any of these tags.</p>
+          )}
+        </PopoverContent>
+      </Popover>
+      {picked.length > 0 && (
+        <Button variant="ghost" size="icon-sm" aria-label="Show all tags" onClick={() => onChange([])}>
+          <X />
+        </Button>
+      )}
     </div>
   );
 }
