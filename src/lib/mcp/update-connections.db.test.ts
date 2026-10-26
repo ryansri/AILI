@@ -63,4 +63,36 @@ describe.skipIf(!hasDb)("update_connections", () => {
     const c = await db.person.findUniqueOrThrow({ where: { id: cara.id } });
     expect(c.connectedAt?.toISOString()).toBe("2026-09-01T00:00:00.000Z");
   });
+
+  it("adds new leads with their tag and connected day, and never twice", async () => {
+    const w = await db.workspace.create({ data: { name: "Add test", initials: "A", timeZone: "Australia/Sydney" } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof tool.run>[1];
+    const add = TOOLS.find((t) => t.name === "add_leads")!;
+    const tag = await db.tag.create({ data: { workspaceId: w.id, label: "Accounting firms", color: "green" } });
+    const other = await db.person.create({ data: { workspaceId: w.id, name: "Olly Other", lead: false } });
+
+    const out = await add.run(
+      {
+        people: [
+          { name: "Nat Example", job_title: "Partner & COO", company: "Example Partners", linkedin_url: "https://www.linkedin.com/in/natexample/", tag: "accounting firms", status: "connected", date: "2026-10-08" },
+          { name: "Olly Other", status: "connected", date: "2026-10-23" },
+          { name: "Nat Example", linkedin_url: "https://www.linkedin.com/in/natexample/" },
+          { name: "Tia Tagless", tag: "Recruiters" },
+        ],
+      },
+      ctx,
+    );
+    expect(out).toMatch(/Added 2 to Leads/);
+    expect(out).toMatch(/Nat Example \(id: \w+\) · Partner & COO, Example Partners · Accounting firms, connected Thu 8 Oct/);
+    expect(out).toMatch(/Olly Other \(id: \w+\), moved from Other into Leads/);
+    expect(out).toMatch(/No tag called "Recruiters"/);
+
+    const nat = await db.person.findMany({ where: { workspaceId: w.id, name: "Nat Example" }, include: { tags: true } });
+    expect(nat).toHaveLength(1);
+    expect(nat[0]).toMatchObject({ lead: true, stage: "connected", connection: "yes", publicId: "natexample", linkedinUrl: "https://www.linkedin.com/in/natexample" });
+    expect(nat[0].connectedAt?.toISOString()).toBe("2026-10-08T01:00:00.000Z");
+    expect(nat[0].tags.map((t) => t.tagId)).toEqual([tag.id]);
+    expect(await db.person.findUniqueOrThrow({ where: { id: other.id } })).toMatchObject({ lead: true, connection: "yes", stage: "connected" });
+    expect(await db.person.findFirstOrThrow({ where: { workspaceId: w.id, name: "Tia Tagless" } })).toMatchObject({ lead: true, stage: "warming", connection: "no" });
+  });
 });

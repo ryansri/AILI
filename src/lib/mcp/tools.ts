@@ -983,6 +983,133 @@ const updateConnections: Tool = {
   },
 };
 
+const addLeads: Tool = {
+  name: "add_leads",
+  title: "Add leads",
+  description:
+    "Add people to the user's Leads in AILI, for example ICPs from their LinkedIn connections page or a list they paste. One entry per person: " +
+    "name (required), job_title, company, linkedin_url (linkedin.com/in/…, recommended: it stops duplicates and opens their profile), tag " +
+    "(an existing tag's name, e.g. 'Accounting firms'), and status with date: not_connected (default), request_sent or connected, " +
+    "and the day it happened (e.g. 2026-10-23). Anyone already in AILI is not added twice: they are listed with their id, and moved " +
+    "into Leads if they were in Other. Returns each person's id, for save_draft. Up to 50 at once. Nothing goes to LinkedIn.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      people: {
+        type: "array",
+        maxItems: 50,
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            job_title: { type: "string" },
+            company: { type: "string" },
+            linkedin_url: { type: "string", description: "Their profile link, linkedin.com/in/…" },
+            tag: { type: "string", description: "The name of one of the user's tags. Unknown tags are listed, not created." },
+            status: { type: "string", enum: ["not_connected", "request_sent", "connected"], default: "not_connected" },
+            date: { type: "string", description: "When the request was sent or accepted, e.g. 2026-10-23. Leave out for today." },
+          },
+          required: ["name"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["people"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  async run(args, ctx) {
+    const list = Array.isArray(args.people) ? (args.people as Record<string, unknown>[]).slice(0, 50) : [];
+    if (list.length === 0) throw new ToolError("Pass people: one entry per person, with at least a name.");
+    const w = await workspace(ctx);
+    const tz = timeZoneOf(w);
+    const [everyone, tags] = await Promise.all([
+      db.person.findMany({
+        where: { workspaceId: ctx.workspaceId, archivedAt: null },
+        select: { id: true, name: true, publicId: true, linkedinUrl: true, lead: true },
+      }),
+      db.tag.findMany({ where: { workspaceId: ctx.workspaceId } }),
+    ]);
+    const byPublic = new Map<string, (typeof everyone)[number]>();
+    for (const p of everyone) {
+      const id = p.publicId?.toLowerCase() ?? publicIdOf(p.linkedinUrl);
+      if (id) byPublic.set(id, p);
+    }
+    const byName = new Map(everyone.map((p) => [nameKey(p.name), p]));
+    const tagOf = (label: string) => tags.find((t) => t.label.toLowerCase() === label.trim().toLowerCase());
+
+    const added: string[] = [];
+    const existing: string[] = [];
+    const problems: string[] = [];
+    const unknownTags = new Set<string>();
+    for (const entry of list) {
+      const name = oneLine(text(entry.name)).slice(0, 120);
+      if (!name) continue;
+      const url = text(entry.linkedin_url).trim().slice(0, 300);
+      const publicId = publicIdOf(url);
+      const status = (["request_sent", "connected"] as const).find((s) => s === text(entry.status));
+      const at = dayOf(text(entry.date), tz);
+      if (!at) {
+        problems.push(`${name}: couldn't read the date "${text(entry.date)}", not added`);
+        continue;
+      }
+      const tagName = text(entry.tag).trim();
+      const tag = tagName ? tagOf(tagName) : undefined;
+      if (tagName && !tag) unknownTags.add(tagName);
+
+      const found = (publicId ? byPublic.get(publicId) : undefined) ?? byName.get(nameKey(name));
+      let id: string;
+      if (found) {
+        id = found.id;
+        await db.person.update({
+          where: { id },
+          data: {
+            ...(found.lead ? {} : { lead: true, askLead: false }),
+            ...(publicId && !found.publicId ? { publicId, linkedinUrl: found.linkedinUrl || `https://www.linkedin.com/in/${publicId}` } : {}),
+            ...(tag ? { tags: { connectOrCreate: [{ where: { personId_tagId: { personId: id, tagId: tag.id } }, create: { tagId: tag.id } }] } } : {}),
+          },
+        });
+        existing.push(`${found.name} (id: ${id})${found.lead ? "" : ", moved from Other into Leads"}`);
+      } else {
+        const created = await db.person.create({
+          data: {
+            workspaceId: ctx.workspaceId,
+            name,
+            jobTitle: oneLine(text(entry.job_title)).slice(0, 120),
+            company: oneLine(text(entry.company)).slice(0, 120),
+            linkedinUrl: publicId ? `https://www.linkedin.com/in/${publicId}` : "",
+            publicId: publicId ?? null,
+            source: "manual",
+            lead: true,
+            stage: "warming",
+            stageChangedAt: new Date(),
+            connection: status ? "" : "no",
+            ...(tag ? { tags: { create: [{ tagId: tag.id }] } } : {}),
+          },
+        });
+        id = created.id;
+        byName.set(nameKey(name), { id, name, publicId: publicId ?? null, linkedinUrl: created.linkedinUrl, lead: true });
+        if (publicId) byPublic.set(publicId, { id, name, publicId, linkedinUrl: created.linkedinUrl, lead: true });
+        const role = [created.jobTitle, created.company].filter(Boolean).join(", ");
+        const day = formatWhen(at, tz);
+        const how = status ? `, ${status === "connected" ? "connected" : "request sent"} ${day.slice(0, day.indexOf(","))}` : ", not connected yet";
+        added.push(`${name} (id: ${id})${role ? ` · ${role}` : ""}${tag ? ` · ${tag.label}` : ""}${how}`);
+      }
+      if (status) await setConnection(ctx.workspaceId, [id], status, at);
+    }
+    revalidatePath("/people");
+    revalidatePath("/inbox");
+    const parts = [
+      added.length ? `Added ${added.length} to Leads:\n${added.map((l) => `- ${l}`).join("\n")}` : "No one new added.",
+      existing.length ? `Already in AILI, not added twice (status and tag updated if given):\n${existing.map((l) => `- ${l}`).join("\n")}` : "",
+      unknownTags.size ? `No tag called ${[...unknownTags].map((t) => `"${t}"`).join(", ")}. The user's tags: ${tags.map((t) => t.label).join(", ") || "none yet"}.` : "",
+      problems.length ? problems.map((l) => `- ${l}`).join("\n") : "",
+      "Use the ids with save_draft for their first messages. Nothing was sent to LinkedIn.",
+    ];
+    return parts.filter(Boolean).join("\n\n");
+  },
+};
+
 const getProgress: Tool = {
   name: "get_progress",
   title: "Progress this week or month",
@@ -1027,6 +1154,7 @@ export const TOOLS: Tool[] = [
   getConversation,
   saveDraft,
   updateConnections,
+  addLeads,
   getPlan,
   addPlanRows,
   updatePlanRow,
