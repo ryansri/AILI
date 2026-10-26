@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { connectionOf } from "@/lib/invites";
 import type { Person } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { noteOpened } from "@/components/opened-dot";
 
 /*
  * PersonAvatar: the one component for a person's photo, used everywhere in
@@ -52,7 +53,10 @@ export function PersonAvatar({ person, className, link = true }: { person: Perso
       href={person.linkedinUrl}
       target="_blank"
       rel="noreferrer"
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        noteOpened(person.id);
+      }}
       aria-label={`Open ${person.name}'s LinkedIn profile`}
       title={`${RING_TITLE[state]} · Open LinkedIn profile`}
       className="shrink-0 rounded-full transition-opacity hover:opacity-85"

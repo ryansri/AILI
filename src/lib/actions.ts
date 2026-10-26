@@ -13,6 +13,7 @@ import { notWhileRecording } from "./privacy-server";
 import { scheduleProblem, validDelay } from "./schedule";
 import { deleteFollowers, holdOnReply, resumeFollowers, resumeHeldFollowers } from "./schedule-server";
 import { ceilingFor, limitProblem } from "./send-limit";
+import { validProfilesPerHour } from "./profile-opens";
 import { messageUsage, wroteBack } from "./send-limit-server";
 import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
 
@@ -790,6 +791,36 @@ async function queueBulkImpl(input: { personIds: string[]; body: string; templat
 // Settings
 // ---------------------------------------------------------------------------
 
+/**
+ * You opened their LinkedIn profile from AILI: the dot beside their name, and
+ * the count of profiles opened this hour. Nothing goes to LinkedIn.
+ */
+async function markProfileOpenedImpl(personId: string) {
+  const { person } = await ownPerson(personId);
+  await db.person.update({ where: { id: person.id }, data: { profileOpenedAt: new Date() } });
+  revalidatePath("/inbox");
+  revalidatePath("/people");
+}
+
+/** Mark opened on Leads: for profiles you opened some other way (a link pasted into Safari, say). */
+async function markProfilesOpenedImpl(personIds: string[]) {
+  const workspace = await getWorkspace();
+  const people = await ownIds(workspace.id, personIds);
+  await db.person.updateMany({
+    where: { id: { in: people.map((p) => p.id) }, workspaceId: workspace.id },
+    data: { profileOpenedAt: new Date() },
+  });
+  revalidatePath("/inbox");
+  revalidatePath("/people");
+  return people.length;
+}
+
+async function updateProfilesPerHourImpl(n: number) {
+  const workspace = await getWorkspace();
+  await db.workspace.update({ where: { id: workspace.id }, data: { profilesPerHour: validProfilesPerHour(n) } });
+  refresh();
+}
+
 async function updateDailyCapImpl(cap: number) {
   const workspace = await getWorkspace();
   const value = Math.max(1, Math.min(100, Math.round(Number(cap) || 0)));
@@ -982,6 +1013,18 @@ export async function deleteTemplate(...args: Parameters<typeof deleteTemplateIm
 
 export async function queueBulk(...args: Parameters<typeof queueBulkImpl>) {
   return run(() => queueBulkImpl(...args));
+}
+
+export async function markProfileOpened(...args: Parameters<typeof markProfileOpenedImpl>) {
+  return run(() => markProfileOpenedImpl(...args));
+}
+
+export async function markProfilesOpened(...args: Parameters<typeof markProfilesOpenedImpl>) {
+  return run(() => markProfilesOpenedImpl(...args));
+}
+
+export async function updateProfilesPerHour(...args: Parameters<typeof updateProfilesPerHourImpl>) {
+  return run(() => updateProfilesPerHourImpl(...args));
 }
 
 export async function updateDailyCap(...args: Parameters<typeof updateDailyCapImpl>) {

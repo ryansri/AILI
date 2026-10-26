@@ -61,6 +61,7 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { useTicker } from "@/hooks/use-ticker";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import type { Template } from "@/lib/templates";
+import { noteOpened } from "@/components/opened-dot";
 
 /** "3:42 pm" today, "Mon 3:42 pm" this week, else "28 Sep". */
 function seenLabel(iso: string): string {
@@ -360,7 +361,7 @@ export function ConversationPane({
           {/* Their posts on LinkedIn, the best thing to write about. It only opens LinkedIn; AILI reads nothing. */}
           {posts && (
             <Button variant="secondary" size="sm" asChild className="mr-1.5 h-8 rounded-full px-3 text-xs">
-              <a href={posts} target="_blank" rel="noreferrer" title="Opens their posts on LinkedIn">
+              <a href={posts} target="_blank" rel="noreferrer" title="Opens their posts on LinkedIn" onClick={() => noteOpened(person.id)}>
                 <Newspaper />
                 Recent posts
               </a>

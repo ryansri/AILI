@@ -53,6 +53,8 @@ model Workspace {
   runwayAlertDays  Int       @default(3)
   /// Connection requests: the most a day, a notice when someone accepts, and when a request counts as old.
   inviteCap        Int       @default(20)
+  /// A gentle pace for opening profiles: Leads counts them and says when the next hour starts
+  profilesPerHour  Int       @default(20)
   notifyAccepts    Boolean   @default(true)
   inviteStaleDays  Int       @default(21)
   /// Post alerts: a morning reminder to tap the bell for this many leads, and comments before connecting.
@@ -150,6 +152,8 @@ model Person {
   jobTitle    String    @default("")
   /// When the helper last looked up the LinkedIn profile for title and company.
   profileCheckedAt DateTime?
+  /// When you last opened their LinkedIn profile from AILI (the blue and grey dots on Leads)
+  profileOpenedAt DateTime?
   /// When the user last saved this person by hand. Profile lookups never overwrite after that.
   profileEditedAt  DateTime?
   /// A message written for this person in Claude or ChatGPT, waiting in the message box. Never sent by itself.

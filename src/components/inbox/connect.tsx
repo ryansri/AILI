@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { TemplatePicker } from "@/components/templates/template-picker";
 import { PersonAvatar } from "@/components/person-avatar";
+import { noteOpened } from "@/components/opened-dot";
 
 /*
  * Connection requests in a conversation. LinkedIn only lets you message people
@@ -128,7 +129,7 @@ function ConnectForm({
           {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}
         </div>
         {person.linkedinUrl && (
-          <a href={person.linkedinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+          <a href={person.linkedinUrl} target="_blank" rel="noreferrer" onClick={() => noteOpened(person.id)} className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
             View profile
             <ExternalLink className="size-3" />
           </a>
@@ -327,7 +328,10 @@ export function ConnectPanel({
             href={person.linkedinUrl}
             target="_blank"
             rel="noreferrer"
-            onClick={() => act(() => openedForAlerts(person.id), "")}
+            onClick={() => {
+              noteOpened(person.id);
+              act(() => openedForAlerts(person.id), "");
+            }}
             title="Opens their profile: tap the bell there, and LinkedIn tells you when they post"
             className={cn("inline-flex items-center gap-1", link)}
           >

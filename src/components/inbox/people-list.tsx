@@ -23,6 +23,7 @@ import { isVoiceNote } from "@/lib/voice-note";
 import { ConnectionDot, PersonAvatar } from "@/components/person-avatar";
 import { SyncLineBar } from "./sync-line";
 import { LinkedInMark } from "@/components/linkedin-bits";
+import { noteOpened } from "@/components/opened-dot";
 
 function lastLine(row: Row): React.ReactNode {
   // A held reply-first message: their reply is the news, so the last message shows.
@@ -339,7 +340,7 @@ export function PeopleList({
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button variant="ghost" size="icon-xs" aria-label="Open LinkedIn profile" asChild>
-                                    <a href={row.person.linkedinUrl} target="_blank" rel="noreferrer" className="rounded-full">
+                                    <a href={row.person.linkedinUrl} target="_blank" rel="noreferrer" className="rounded-full" onClick={() => noteOpened(row.person.id)}>
                                       <LinkedInMark className="size-3.5 text-[8px]" />
                                     </a>
                                   </Button>

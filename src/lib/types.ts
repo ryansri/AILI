@@ -1,3 +1,4 @@
+import type { ProfilePace } from "./profile-opens";
 /**
  * Where a person sits in the pipeline: the key of one of the workspace's stages.
  * The built-in keys below drive a few rules (a reply moves early stages to
@@ -134,6 +135,8 @@ export interface Person {
   askLead?: boolean;
   /** When they last read the conversation on LinkedIn (their read receipt), ISO. */
   seenAt?: string;
+  /** When you last opened their LinkedIn profile from AILI: the blue (today) or grey (this week) dot. */
+  profileOpenedAt?: string;
   /** Connected on LinkedIn: "yes", "no", or "" when AILI does not know. */
   connection?: "yes" | "no" | "";
   /** The latest connection request to them. */
@@ -203,6 +206,8 @@ export interface Account {
   dayCeiling: number;
   /** AI apps connected to AILI (Claude, ChatGPT), so they can draft replies. */
   aiApps: string[];
+  /** Profiles opened from AILI: today, the last hour, and your hourly pace. */
+  profiles: ProfilePace;
   /** Connection requests: the daily limit and how many went today and this week. */
   invites: {
     cap: number;

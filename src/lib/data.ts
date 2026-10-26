@@ -10,6 +10,7 @@ import { helperOutdated } from "./helper-version";
 import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
 import { ceilingFor, type DayUsage } from "./send-limit";
 import { messageUsage } from "./send-limit-server";
+import { profilePace } from "./profile-opens";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
 import type { InviteFacts } from "./invites";
@@ -76,6 +77,7 @@ function toPerson(row: PersonRow): Person {
     lead: row.lead,
     askLead: row.askLead || undefined,
     seenAt: row.seenAt?.toISOString(),
+    profileOpenedAt: row.profileOpenedAt?.toISOString(),
     connection: row.connection === "yes" || row.connection === "no" ? row.connection : "",
     invite: row.invites[0] ? toInviteView(row.invites[0]) : undefined,
     alerts: row.alerts === "on" || row.alerts === "impossible" ? row.alerts : "",
@@ -225,6 +227,9 @@ interface Usage {
   /** Connection requests from AILI today (queued or sent), and all sent in the last 7 days. */
   invitesToday: number;
   invitesWeek: number;
+  /** Profiles opened from AILI today or in the last hour (see profile-opens.ts). */
+  profileOpens: Date[];
+  timeZone: string;
 }
 
 /** Claude, ChatGPT or other AI apps connected to AILI right now, by name. */
@@ -243,13 +248,15 @@ async function usedToday(workspaceId: string): Promise<Usage> {
   const timeZone = validTimeZone(w?.timeZone) ? w!.timeZone! : DEFAULT_TIME_ZONE;
   const { start: startOfToday } = dayBounds(new Date(), timeZone);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [messages, invitesToday, invitesWeek] = await Promise.all([
+  const since = new Date(Math.min(startOfToday.getTime(), Date.now() - 60 * 60 * 1000));
+  const [messages, invitesToday, invitesWeek, opened] = await Promise.all([
     // Scheduled for a later day counts on that day, not today.
     messageUsage(workspaceId, timeZone),
     invitesSince(workspaceId, startOfToday),
     db.invite.count({ where: { workspaceId, OR: [{ sentAt: { gte: weekAgo } }, { status: { in: ["queued", "sending"] } }] } }),
+    db.person.findMany({ where: { workspaceId, profileOpenedAt: { gte: since } }, select: { profileOpenedAt: true } }),
   ]);
-  return { messages, invitesToday, invitesWeek };
+  return { messages, invitesToday, invitesWeek, profileOpens: opened.map((p) => p.profileOpenedAt!), timeZone };
 }
 
 /** Requests from Connect in AILI since a time, for the daily limit. Ones LinkedIn refused do not count. */
@@ -281,6 +288,7 @@ function accountOf(workspace: Workspace, used: Usage, aiApps: string[]): Account
     repliesToday: used.messages.replies,
     dayCeiling: ceilingFor(workspace.dailyCap),
     aiApps,
+    profiles: profilePace(used.profileOpens, workspace.profilesPerHour, used.timeZone),
     invites: {
       cap: workspace.inviteCap,
       today: used.invitesToday,

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Archive, Bell, Building2, CalendarDays, Check, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { bulkAddTag, bulkArchive, bulkSetStage, moveToOther, withdrawInvites } from "@/lib/client-actions";
+import { bulkAddTag, bulkArchive, bulkSetStage, markProfilesOpened, moveToOther, withdrawInvites } from "@/lib/client-actions";
 import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
 import { buildFunnel, notMessaged, type Funnel } from "@/lib/funnel";
 import { CONNECTION_CHOICES, connectionOf, waitingDays, type ConnectionState, type InviteFacts } from "@/lib/invites";
@@ -38,6 +38,8 @@ import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./compa
 import { PersonDialog } from "./person-dialog";
 import { RequestsStrip } from "./requests-strip";
 import { PostAlertsPanel, usePostAlerts } from "./post-alerts";
+import { noteOpened, OpenedDot, ProfilePaceNote } from "@/components/opened-dot";
+import { openedState } from "@/lib/profile-opens";
 
 const ALL = "all";
 
@@ -170,6 +172,8 @@ export function PeopleView({
   // Any of these tags; none ticked shows everyone.
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [conn, setConn] = useState<ConnectionState | typeof ALL>(ALL);
+  // Hides anyone whose profile you opened from AILI in the last 7 days, so each batch is fresh.
+  const [notOpened, setNotOpened] = useState(false);
   const [pick, setPick] = useState<Pick>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<{ company: string } | null>(null);
@@ -223,6 +227,7 @@ export function PeopleView({
     const q = query.trim().toLowerCase();
     const list = scope.filter((p) => {
       if (conn !== ALL && connectionOf(p) !== conn) return false;
+      if (notOpened && openedState(p.profileOpenedAt, timeZone) !== null) return false;
       if (pick?.kind === "stage" && p.stage !== pick.key) return false;
       if (pick?.kind === "notMessaged" && !notMessaged(p)) return false;
       if (q && !`${p.name} ${p.jobTitle} ${p.company} ${p.headline}`.toLowerCase().includes(q)) return false;
@@ -230,7 +235,7 @@ export function PeopleView({
     });
     const time = (iso: string | undefined) => (iso ? new Date(iso).getTime() : 0);
     return list.sort((a, b) => time(lastTouch(b).at) - time(lastTouch(a).at));
-  }, [scope, pick, query, conn]);
+  }, [scope, pick, query, conn, notOpened, timeZone]);
 
   const shownIds = rows.map((p) => p.id);
   const chosen = shownIds.filter((id) => selected.has(id));
@@ -365,6 +370,22 @@ export function PeopleView({
             </Button>
           )}
           <div className="ml-auto flex items-center gap-1">
+            {view === "people" && (
+              <>
+                <ProfilePaceNote pace={account.profiles} timeZone={timeZone} />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={notOpened}
+                  title="Hide people whose profile you opened from AILI in the last 7 days"
+                  onClick={() => setNotOpened(!notOpened)}
+                  className={cn("ml-2", notOpened && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background")}
+                >
+                  <span className={cn("size-2 rounded-full", notOpened ? "bg-background" : "bg-blue-500")} aria-hidden="true" />
+                  Not opened
+                </Button>
+              </>
+            )}
             <Select value={conn} onValueChange={(v) => setConn(v as ConnectionState | typeof ALL)}>
               <SelectTrigger
                 size="sm"
@@ -474,6 +495,7 @@ export function PeopleView({
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span data-private className="text-md font-semibold">{p.name}</span>
+                          <OpenedDot person={p} timeZone={timeZone} now={now} />
                           {!RING_STAGES.has(p.stage) && (
                             <span className="rounded-md bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground">
                               {stageLabel(stages, p.stage)}
@@ -488,7 +510,10 @@ export function PeopleView({
                                   target="_blank"
                                   rel="noreferrer"
                                   aria-label={`Open ${p.name} on LinkedIn`}
-                                  onClick={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    noteOpened(p.id);
+                                  }}
                                   className="flex size-6 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100"
                                 >
                                   <LinkedInMark className="size-3.5 text-[8px]" />
@@ -594,6 +619,17 @@ export function PeopleView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="hover:bg-primary-foreground/10 hover:text-primary-foreground"
+            disabled={pending}
+            title="For profiles you opened outside AILI: they get today's blue dot and count this hour"
+            onClick={() => bulk(() => markProfilesOpened(chosen), (n) => `${people1(n)} marked as opened today.`)}
+          >
+            <span className="size-2 rounded-full bg-blue-400" aria-hidden="true" />
+            Mark opened
+          </Button>
           {withdrawable.length > 0 && (
             <Button
               size="sm"

@@ -4,7 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PLAN_WARNING_DAYS } from "@/lib/plan";
-import { setAlertSettings, setInviteSettings, setPlanWarning, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies } from "@/lib/client-actions";
+import { setAlertSettings, setInviteSettings, setPlanWarning, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies, updateProfilesPerHour } from "@/lib/client-actions";
+import { PROFILES_PER_HOUR } from "@/lib/profile-opens";
 import { INVITE_CAPS, STALE_DAYS } from "@/lib/invites";
 import { ALERTS_PER_DAY, TOUCHES_TO_CONNECT } from "@/lib/alerts";
 import type { Account } from "@/lib/types";
@@ -30,6 +31,7 @@ export function SendingView({
   firstCommentDelay,
   runwayAlertDays,
   invites,
+  profiles,
   alerts,
 }: {
   dailyCap: number;
@@ -39,6 +41,7 @@ export function SendingView({
   firstCommentDelay: number;
   runwayAlertDays: number;
   invites: Account["invites"];
+  profiles: Account["profiles"];
   alerts: Account["alerts"];
 }) {
   const [cap, setCap] = useState(dailyCap);
@@ -46,6 +49,7 @@ export function SendingView({
   const [delay, setDelay] = useState(String(firstCommentDelay));
   const [runway, setRunway] = useState(String(runwayAlertDays));
   const [inviteCap, setInviteCap] = useState(String(invites.cap));
+  const [perHour, setPerHour] = useState(String(profiles.perHour));
   const [accepts, setAccepts] = useState(invites.notifyAccepts);
   const [staleDays, setStaleDays] = useState(String(invites.staleDays));
   const [nudge, setNudge] = useState(alerts.nudge);
@@ -137,6 +141,45 @@ export function SendingView({
       <p className="text-xs leading-relaxed text-muted-foreground">
         LinkedIn is fine with a handful of messages a day, not hundreds. No notification on a Mac? Allow Chrome in System
         Settings, Notifications.
+      </p>
+      <h2 className="-mb-1 mt-4 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Opening profiles</h2>
+      <Group>
+        <Row
+          title="Profiles an hour"
+          status={`A pace for opening LinkedIn profiles from Leads. Leads counts them and says when the next hour starts. Today: ${profiles.today}, this hour: ${profiles.lastHour}.`}
+        >
+          <Select
+            value={perHour}
+            onValueChange={(value) => {
+              const previous = perHour;
+              setPerHour(value);
+              start(async () => {
+                try {
+                  await updateProfilesPerHour(Number(value));
+                  toast.success(`Up to ${value} profiles an hour.`);
+                } catch (e) {
+                  setPerHour(previous);
+                  toast.error(e instanceof Error ? e.message : "That did not save.");
+                }
+              });
+            }}
+          >
+            <SelectTrigger aria-label="Profiles an hour" className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {[...new Set([...PROFILES_PER_HOUR, profiles.perHour])].sort((a, b) => a - b).map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} an hour
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+      </Group>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Opening many profiles in a short time is what LinkedIn restricts. A blue dot on Leads means opened today, grey means
+        in the last 7 days.
       </p>
       <h2 className="-mb-1 mt-4 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Connection requests</h2>
       <Group>

@@ -12,6 +12,7 @@ import type { Person } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { PersonAvatar } from "@/components/person-avatar";
+import { noteOpened } from "@/components/opened-dot";
 
 /*
  * Post alerts: a few leads a day to tap the bell for on LinkedIn, so LinkedIn
@@ -61,7 +62,10 @@ function Row({ person, timeZone }: { person: Person; timeZone: string }) {
           <span className="text-xs text-muted-foreground">Opened</span>
         ) : (
           <Button size="sm" variant="outline" asChild>
-            <a href={person.linkedinUrl} target="_blank" rel="noreferrer" onClick={() => act(() => openedForAlerts(person.id))}>
+            <a href={person.linkedinUrl} target="_blank" rel="noreferrer" onClick={() => {
+                noteOpened(person.id);
+                act(() => openedForAlerts(person.id));
+              }}>
               Open profile
               <ExternalLink />
             </a>

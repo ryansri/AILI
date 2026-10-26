@@ -19,6 +19,7 @@ import { WarmthChip } from "@/components/warmth-chip";
 import { relativeTime } from "@/lib/next-step";
 import { warmthOf, warmupLine } from "@/lib/warmth";
 import type { WarmupEvent } from "@/lib/types";
+import { noteOpened } from "@/components/opened-dot";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -107,6 +108,7 @@ export function DetailsPanel({
               href={person.linkedinUrl}
               target="_blank"
               rel="noreferrer"
+              onClick={() => noteOpened(person.id)}
               className="inline-flex items-center gap-1 text-2xs text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground"
             >
               Open on LinkedIn
