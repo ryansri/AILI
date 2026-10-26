@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, Bell, Building2, CalendarDays, Check, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, X } from "lucide-react";
+import { Archive, Bell, Building2, CalendarDays, Check, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, UserCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { bulkAddTag, bulkArchive, bulkSetStage, markProfilesOpened, moveToOther, withdrawInvites } from "@/lib/client-actions";
+import { bulkAddTag, bulkArchive, bulkSetStage, markAccepted, markProfilesOpened, markRequestSent, markWithdrawn, moveToOther, withdrawInvites } from "@/lib/client-actions";
 import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
 import { buildFunnel, notMessaged, type Funnel } from "@/lib/funnel";
 import { CONNECTION_CHOICES, connectionOf, waitingDays, type ConnectionState, type InviteFacts } from "@/lib/invites";
@@ -277,6 +277,8 @@ export function PeopleView({
   }
 
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
+  // On Request sent the update buttons show on every row, not just on hover.
+  const waitingView = pick?.kind === "stage" && pick.key === "requested";
   const staleDays = account.invites.staleDays;
   const needed = account.alerts.touchesToConnect;
   const isStale = (p: Person) => p.invite?.status === "sent" && waitingDays(p.invite.sentAt, now) > staleDays;
@@ -522,6 +524,7 @@ export function PeopleView({
                               <TooltipContent side="bottom">Open LinkedIn profile</TooltipContent>
                             </Tooltip>
                           )}
+                          <ConnectionButtons person={p} shown={waitingView} onAct={(fn, msg) => bulk(fn, () => msg)} pending={pending} />
                         </div>
                         <div data-private className="max-w-72 truncate text-xs text-muted-foreground">
                           {[p.jobTitle || p.headline, p.company].filter(Boolean).join(" · ")}
@@ -619,6 +622,29 @@ export function PeopleView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="hover:bg-primary-foreground/10 hover:text-primary-foreground" disabled={pending}>
+                <UserCheck />
+                Connection
+                <ChevronDown className="opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start">
+              <DropdownMenuItem onSelect={() => bulk(() => markRequestSent(chosen), (n) => `${people1(n)} marked as request sent.`)}>
+                <Send />
+                Request sent on LinkedIn
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => bulk(() => markAccepted(chosen), (n) => `${people1(n)} marked as connected.`)}>
+                <Check />
+                They accepted
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => bulk(() => markWithdrawn(chosen), (n) => (n === 1 ? "1 request marked as withdrawn." : `${n} requests marked as withdrawn.`))}>
+                <Undo2 />
+                I withdrew it on LinkedIn
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             size="sm"
             variant="ghost"
@@ -630,7 +656,7 @@ export function PeopleView({
             <span className="size-2 rounded-full bg-blue-400" aria-hidden="true" />
             Mark opened
           </Button>
-          {withdrawable.length > 0 && (
+          {withdrawable.length > 0 && account.helper.connected && (
             <Button
               size="sm"
               variant="ghost"
@@ -825,5 +851,74 @@ function TagFilter({ tags, people, value, onChange }: { tags: Tag[]; people: Per
         </Button>
       )}
     </div>
+  );
+}
+
+/**
+ * On a lead's row: update their connection by hand after doing it on LinkedIn.
+ * Not connected: Sent. Request sent: Accepted or Withdrawn. Nothing goes to LinkedIn.
+ */
+function ConnectionButtons({
+  person,
+  shown,
+  pending,
+  onAct,
+}: {
+  person: Person;
+  shown: boolean;
+  pending: boolean;
+  onAct: (fn: () => Promise<number>, done: string) => void;
+}) {
+  const state = connectionOf(person);
+  if (state === "connected") return null;
+  const first = person.name.split(" ")[0];
+  const cls = cn(
+    "h-6 gap-1 px-2 text-xs transition-opacity focus-visible:opacity-100",
+    shown ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+  );
+  const stop = (fn: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
+  if (state === "not") {
+    return (
+      <Button
+        size="xs"
+        variant="outline"
+        className={cls}
+        disabled={pending}
+        title="You sent the request on LinkedIn: AILI marks it and starts counting the days"
+        onClick={stop(() => onAct(() => markRequestSent([person.id]), `Request to ${first} noted as sent.`))}
+      >
+        <Send className="size-3" />
+        Sent
+      </Button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1">
+      <Button
+        size="xs"
+        variant="outline"
+        className={cn(cls, "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400")}
+        disabled={pending}
+        title={`${first} accepted on LinkedIn`}
+        onClick={stop(() => onAct(() => markAccepted([person.id]), `${first} marked as connected.`))}
+      >
+        <Check className="size-3" />
+        Accepted
+      </Button>
+      <Button
+        size="xs"
+        variant="outline"
+        className={cls}
+        disabled={pending}
+        title="You withdrew it on LinkedIn"
+        onClick={stop(() => onAct(() => markWithdrawn([person.id]), `Request to ${first} noted as withdrawn.`))}
+      >
+        <Undo2 className="size-3" />
+        Withdrawn
+      </Button>
+    </span>
   );
 }

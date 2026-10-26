@@ -86,6 +86,84 @@ async function withdrawInvitesImpl(personIds: string[]) {
   return open.length;
 }
 
+/*
+ * By hand: you sent, saw accepted, or withdrew a request on LinkedIn
+ * yourself, and tell AILI. The photo ring, the stage, Request sent and the
+ * old-request reminders all follow. Nothing goes to LinkedIn.
+ */
+
+const EARLY = ["warming", "requested"];
+const OPEN = ["queued", "sending", "sent", "withdrawing"];
+
+async function ownLatest(personIds: string[]) {
+  const workspace = await getWorkspace();
+  const ids = Array.isArray(personIds) ? personIds.slice(0, 500) : [];
+  const people = await db.person.findMany({
+    where: { workspaceId: workspace.id, id: { in: ids } },
+    include: { invites: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
+  return { workspace, people };
+}
+
+async function markRequestSentImpl(personIds: string[]) {
+  const { workspace, people } = await ownLatest(personIds);
+  const now = new Date();
+  for (const p of people) {
+    const latest = p.invites[0];
+    if (latest?.status === "sent") continue;
+    if (latest && ["queued", "sending", "failed", "withdrawing"].includes(latest.status)) {
+      // One that was waiting for the Chrome helper: you sent it yourself instead.
+      await db.invite.update({ where: { id: latest.id }, data: { status: "sent", source: "linkedin", sentAt: now, claimedAt: null, error: "" } });
+    } else {
+      await db.invite.create({ data: { workspaceId: workspace.id, personId: p.id, status: "sent", source: "linkedin", sentAt: now } });
+    }
+    await db.person.update({
+      where: { id: p.id },
+      data: {
+        connection: "no",
+        requestedAt: p.requestedAt ?? now,
+        ...(p.stage === "warming" ? { stage: "requested", stageChangedAt: now } : {}),
+        lastActionAt: now,
+      },
+    });
+  }
+  refresh();
+  return people.length;
+}
+
+async function markAcceptedImpl(personIds: string[]) {
+  const { workspace, people } = await ownLatest(personIds);
+  const now = new Date();
+  await db.invite.updateMany({
+    where: { workspaceId: workspace.id, personId: { in: people.map((p) => p.id) }, status: { in: OPEN } },
+    data: { status: "accepted", acceptedAt: now, claimedAt: null, error: "" },
+  });
+  for (const p of people) {
+    await db.person.update({
+      where: { id: p.id },
+      data: {
+        connection: "yes",
+        connectedAt: p.connectedAt ?? now,
+        ...(EARLY.includes(p.stage) ? { stage: "connected", stageChangedAt: now } : {}),
+      },
+    });
+  }
+  refresh();
+  return people.length;
+}
+
+async function markWithdrawnImpl(personIds: string[]) {
+  const { workspace, people } = await ownLatest(personIds);
+  const now = new Date();
+  const open = await db.invite.findMany({ where: { workspaceId: workspace.id, personId: { in: people.map((p) => p.id) }, status: { in: OPEN } } });
+  await db.invite.updateMany({ where: { id: { in: open.map((i) => i.id) } }, data: { status: "withdrawn", withdrawnAt: now, claimedAt: null, error: "" } });
+  for (const p of people.filter((p) => p.stage === "requested")) {
+    await db.person.update({ where: { id: p.id }, data: { stage: "warming", stageChangedAt: now } });
+  }
+  refresh();
+  return open.length;
+}
+
 async function setInviteSettingsImpl(input: { cap?: number; notifyAccepts?: boolean; staleDays?: number }) {
   const workspace = await getWorkspace();
   const data: { inviteCap?: number; notifyAccepts?: boolean; inviteStaleDays?: number } = {};
@@ -109,6 +187,18 @@ export async function queueInvite(...args: Parameters<typeof queueInviteImpl>) {
 
 export async function withdrawInvites(...args: Parameters<typeof withdrawInvitesImpl>) {
   return run(() => withdrawInvitesImpl(...args));
+}
+
+export async function markRequestSent(...args: Parameters<typeof markRequestSentImpl>) {
+  return run(() => markRequestSentImpl(...args));
+}
+
+export async function markAccepted(...args: Parameters<typeof markAcceptedImpl>) {
+  return run(() => markAcceptedImpl(...args));
+}
+
+export async function markWithdrawn(...args: Parameters<typeof markWithdrawnImpl>) {
+  return run(() => markWithdrawnImpl(...args));
 }
 
 export async function setInviteSettings(...args: Parameters<typeof setInviteSettingsImpl>) {

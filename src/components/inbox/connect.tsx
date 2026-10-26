@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Bell, Check, ExternalLink, MessageSquare, RotateCcw, Undo2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { addTouch, openedForAlerts, queueInvite, removeTouch, withdrawInvites } from "@/lib/client-actions";
+import { addTouch, markAccepted, markRequestSent, markWithdrawn, openedForAlerts, queueInvite, removeTouch, withdrawInvites } from "@/lib/client-actions";
 import { needsConnect, NOTE_FREE_MAX, NOTE_MAX } from "@/lib/invites";
 import { shortDate } from "@/lib/next-step";
 import type { Account, Person } from "@/lib/types";
@@ -281,10 +281,17 @@ export function ConnectPanel({
       <NextBox
         title={`Send ${first} a connection request`}
         action={
-          <Button size="sm" onClick={() => onConnect()} disabled={tooSoon}>
-            <UserPlus />
-            Connect
-          </Button>
+          <>
+            {/* Sent it on LinkedIn yourself: AILI just notes it. */}
+            <Button size="sm" variant="outline" disabled={pending || tooSoon} onClick={() => act(() => markRequestSent([person.id]), `Request to ${first} noted as sent.`)}>
+              <Check />
+              I sent it on LinkedIn
+            </Button>
+            <Button size="sm" onClick={() => onConnect()} disabled={tooSoon}>
+              <UserPlus />
+              Connect
+            </Button>
+          </>
         }
       >
         {tooSoon ? (
@@ -339,11 +346,24 @@ export function ConnectPanel({
             Turn on post alerts
           </a>
         )}
-        {onWriteAnyway && person.connection !== "no" && (
-          <button type="button" onClick={onWriteAnyway} className={cn("ml-auto", link)}>
-            Already connected? Write a message
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              try {
+                await markAccepted([person.id]);
+                toast.success(`${first} marked as connected.`);
+                onWriteAnyway?.();
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "That did not save.");
+              }
+            })
+          }
+          className={cn("ml-auto", link)}
+        >
+          Already connected
+        </button>
       </NextBox>
     );
   }
@@ -353,10 +373,16 @@ export function ConnectPanel({
       <NextBox
         title={account.helper.connected ? `Sending your request to ${first}…` : `Your request to ${first} goes out when Chrome is open`}
         action={
-          <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), "Request taken back.")}>
-            <X />
-            Cancel
-          </Button>
+          <>
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => markRequestSent([person.id]), `Request to ${first} noted as sent.`)}>
+              <Check />
+              I sent it on LinkedIn
+            </Button>
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), "Request taken back.")}>
+              <X />
+              Cancel
+            </Button>
+          </>
         }
       />
     );
@@ -367,17 +393,30 @@ export function ConnectPanel({
       <NextBox
         title={state === "withdrawing" ? "Withdrawing your request…" : `Wait for ${first} to accept`}
         action={
-          state === "sent" && (
-            <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), `Withdrawing your request to ${first}.`)}>
-              <Undo2 />
-              Withdraw
+          <>
+            <Button size="sm" disabled={pending} onClick={() => act(() => markAccepted([person.id]), `${first} marked as connected.`)}>
+              <Check />
+              They accepted
             </Button>
-          )
+            {/* With the helper running it withdraws on LinkedIn; without it, you withdraw there and tell AILI. */}
+            {state === "sent" && account.helper.connected ? (
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => withdrawInvites([person.id]), `Withdrawing your request to ${first}.`)}>
+                <Undo2 />
+                Withdraw
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => markWithdrawn([person.id]), `Request to ${first} noted as withdrawn.`)}>
+                <Undo2 />
+                I withdrew it
+              </Button>
+            )}
+          </>
         }
       >
         <span suppressHydrationWarning>
           Request sent {invite.sentAt ? shortDate(new Date(invite.sentAt)) : ""}
-          {invite.source === "linkedin" ? " on LinkedIn" : ""}. AILI tells you when {first} accepts.
+          {invite.source === "linkedin" ? " on LinkedIn" : ""}.{" "}
+          {account.helper.connected ? `AILI tells you when ${first} accepts.` : `When ${first} accepts on LinkedIn, click They accepted.`}
         </span>
         {invite.error && <span className="text-amber-700">{invite.error}</span>}
       </NextBox>
