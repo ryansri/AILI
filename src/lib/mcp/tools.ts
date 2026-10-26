@@ -5,17 +5,19 @@ import { getStages } from "../data";
 import { linkedInPostUrl } from "../linkedin-posting";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "../linkedin-text";
 import { addFirstComment, checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
-import { formatWhen, offsetLabel, parseWhen } from "../time-zone";
+import { formatWhen, offsetLabel, parseWhen, wallTimeToDate } from "../time-zone";
 import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel } from "../plan";
 import { clockFor, loadPlan, type EntryView } from "../content-plan";
 import { addEntries, fillMatchingRow, followSchedule, linkPost, moveEntry, ownEntry, postedAtFor, updateEntry, type EntryInput } from "../plan-store";
 import { stageLabel } from "../types";
 import { loadProgress } from "../progress-server";
 import { MAX_PAIR_DELAY, scheduleProblem, validDelay } from "../schedule";
+import { setConnection, type ConnectionChange } from "../connection-store";
 
 /*
- * What Claude and ChatGPT can do in AILI. Reading, drafting and posting only:
- * there is deliberately no tool that sends a LinkedIn message. A draft waits
+ * What Claude and ChatGPT can do in AILI. Reading, drafting, posting, and
+ * recording connections the user made on LinkedIn themselves: there is
+ * deliberately no tool that sends a LinkedIn message or request. A draft waits
  * in the conversation's message box until the user clicks Send in AILI.
  */
 
@@ -851,6 +853,136 @@ const updatePlanRow: Tool = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Connections, recorded by hand
+// ---------------------------------------------------------------------------
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+/** "2026-10-26", "October 26, 2026" or "26 Oct 2026": midday that day where the user is. Empty: now. */
+function dayOf(value: string, timeZone: string, now = new Date()): Date | null {
+  const v = value.trim();
+  if (!v) return now;
+  let y: number, m: number, d: number;
+  const iso = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const mdy = v.match(/^([a-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/i);
+  const dmy = v.match(/^(\d{1,2})\s+([a-z]+)\.?,?\s+(\d{4})$/i);
+  const month = (name: string) => MONTHS.findIndex((n) => n.startsWith(name.toLowerCase().slice(0, 3))) + 1;
+  if (iso) [y, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (mdy) [y, m, d] = [Number(mdy[3]), month(mdy[1]), Number(mdy[2])];
+  else if (dmy) [y, m, d] = [Number(dmy[3]), month(dmy[2]), Number(dmy[1])];
+  else return null;
+  if (!m || d < 1 || d > 31) return null;
+  const at = wallTimeToDate(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}T12:00`, timeZone);
+  if (!at) return null;
+  return at > now ? now : at;
+}
+
+const publicIdOf = (url: string) => url.match(/linkedin\.com\/in\/([^/?#\s)]+)/i)?.[1]?.toLowerCase();
+const nameKey = (name: string) =>
+  name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const CHANGE_WORDS: Record<ConnectionChange, string> = {
+  connected: "connected",
+  request_sent: "request sent",
+  withdrawn: "request withdrawn",
+};
+
+const updateConnections: Tool = {
+  name: "update_connections",
+  title: "Update connection status",
+  description:
+    "Record in AILI what the user did on LinkedIn themselves: a connection request they sent, one that was accepted (connected), " +
+    "or one they withdrew, with the day it happened. Use it when the user pastes their LinkedIn connections page " +
+    "(lines like 'Name / headline / Connected on October 26, 2026') or says who accepted. One entry per person: person (name or id), " +
+    "status (connected, request_sent or withdrawn), date (e.g. 2026-10-26; leave out for today), and linkedin_url when the paste has it " +
+    "(it matches exactly). Up to 100 at once. It only records in AILI: nothing goes to LinkedIn. People not in AILI are listed, not added.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      people: {
+        type: "array",
+        maxItems: 100,
+        items: {
+          type: "object",
+          properties: {
+            person: { type: "string", description: "Their name as on LinkedIn, or an id from find_conversations." },
+            status: { type: "string", enum: ["connected", "request_sent", "withdrawn"] },
+            date: { type: "string", description: "The day it happened, e.g. 2026-10-26 or 'October 26, 2026'. Leave out for today." },
+            linkedin_url: { type: "string", description: "Their profile link, linkedin.com/in/…, when you have it." },
+          },
+          required: ["person", "status"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["people"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  async run(args, ctx) {
+    const list = Array.isArray(args.people) ? (args.people as Record<string, unknown>[]).slice(0, 100) : [];
+    if (list.length === 0) throw new ToolError("Pass people: one entry per person, with person and status.");
+    const w = await workspace(ctx);
+    const tz = timeZoneOf(w);
+    const everyone = await db.person.findMany({
+      where: { workspaceId: ctx.workspaceId, archivedAt: null },
+      select: { id: true, name: true, publicId: true, linkedinUrl: true, lead: true },
+    });
+    const byId = new Map(everyone.map((p) => [p.id, p]));
+    const byPublic = new Map<string, (typeof everyone)[number]>();
+    for (const p of everyone) {
+      const id = p.publicId?.toLowerCase() ?? publicIdOf(p.linkedinUrl);
+      if (id) byPublic.set(id, p);
+    }
+    const byName = new Map<string, (typeof everyone)[number][]>();
+    for (const p of everyone) byName.set(nameKey(p.name), [...(byName.get(nameKey(p.name)) ?? []), p]);
+
+    const done: string[] = [];
+    const already: string[] = [];
+    const missing: string[] = [];
+    const unsure: string[] = [];
+    for (const entry of list) {
+      const ref = text(entry.person).trim();
+      const change = (["connected", "request_sent", "withdrawn"] as const).find((c) => c === text(entry.status));
+      if (!ref || !change) continue;
+      const at = dayOf(text(entry.date), tz);
+      if (!at) {
+        unsure.push(`${ref}: couldn't read the date "${text(entry.date)}"`);
+        continue;
+      }
+      const url = publicIdOf(text(entry.linkedin_url));
+      const named = byName.get(nameKey(ref)) ?? [];
+      const person = byId.get(ref) ?? (url ? byPublic.get(url) : undefined) ?? (named.length === 1 ? named[0] : undefined);
+      if (!person) {
+        if (named.length > 1) unsure.push(`${ref}: ${named.length} people with that name in AILI (ids: ${named.map((n) => n.id).join(", ")})`);
+        else missing.push(ref);
+        continue;
+      }
+      const [result] = await setConnection(ctx.workspaceId, [person.id], change, at);
+      const day = formatWhen(at, tz);
+      const line = `${person.name}: ${CHANGE_WORDS[change]}, ${day.slice(0, day.indexOf(","))}${person.lead ? "" : " (in Other, not a lead)"}`;
+      (result?.changed ? done : already).push(line);
+    }
+    revalidatePath("/people");
+    revalidatePath("/inbox");
+    const parts = [
+      done.length ? `Updated ${done.length} in AILI:\n${done.map((l) => `- ${l}`).join("\n")}` : "Nothing needed changing.",
+      already.length ? `Already like that (date checked):\n${already.map((l) => `- ${l}`).join("\n")}` : "",
+      missing.length ? `Not in AILI (${missing.length}), left alone: ${missing.join(", ")}` : "",
+      unsure.length ? `Not changed, check with the user:\n${unsure.map((l) => `- ${l}`).join("\n")}` : "",
+      "Recorded in AILI only; nothing was sent to LinkedIn.",
+    ];
+    return parts.filter(Boolean).join("\n\n");
+  },
+};
+
 const getProgress: Tool = {
   name: "get_progress",
   title: "Progress this week or month",
@@ -894,6 +1026,7 @@ export const TOOLS: Tool[] = [
   findConversations,
   getConversation,
   saveDraft,
+  updateConnections,
   getPlan,
   addPlanRows,
   updatePlanRow,
