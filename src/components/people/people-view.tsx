@@ -277,8 +277,6 @@ export function PeopleView({
   }
 
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
-  // On Request sent the update buttons show on every row, not just on hover.
-  const waitingView = pick?.kind === "stage" && pick.key === "requested";
   const staleDays = account.invites.staleDays;
   const needed = account.alerts.touchesToConnect;
   const isStale = (p: Person) => p.invite?.status === "sent" && waitingDays(p.invite.sentAt, now) > staleDays;
@@ -524,7 +522,6 @@ export function PeopleView({
                               <TooltipContent side="bottom">Open LinkedIn profile</TooltipContent>
                             </Tooltip>
                           )}
-                          <ConnectionButtons person={p} shown={waitingView} onAct={(fn, msg) => bulk(fn, () => msg)} pending={pending} />
                         </div>
                         <div data-private className="max-w-72 truncate text-xs text-muted-foreground">
                           {[p.jobTitle || p.headline, p.company].filter(Boolean).join(" · ")}
@@ -543,7 +540,7 @@ export function PeopleView({
                     className={cn("text-md", next?.due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground/80")}
                     suppressHydrationWarning
                   >
-                    {next?.text}
+                    <NextCell person={p} text={next?.text ?? ""} pending={pending} onAct={(fn, msg) => bulk(fn, () => msg)} />
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1.5">
@@ -855,70 +852,65 @@ function TagFilter({ tags, people, value, onChange }: { tags: Tag[]; people: Per
 }
 
 /**
- * On a lead's row: update their connection by hand after doing it on LinkedIn.
- * Not connected: Sent. Request sent: Accepted or Withdrawn. Nothing goes to LinkedIn.
+ * The Next column. While you are not connected yet, it is also where you
+ * change their connection by hand after doing it on LinkedIn: click
+ * "Waiting to accept" (or "Send a request") for the choices. Nothing goes
+ * to LinkedIn.
  */
-function ConnectionButtons({
+function NextCell({
   person,
-  shown,
+  text,
   pending,
   onAct,
 }: {
   person: Person;
-  shown: boolean;
+  text: string;
   pending: boolean;
   onAct: (fn: () => Promise<number>, done: string) => void;
 }) {
   const state = connectionOf(person);
-  if (state === "connected") return null;
+  if (state === "connected") return <>{text}</>;
   const first = person.name.split(" ")[0];
-  const cls = cn(
-    "h-6 gap-1 px-2 text-xs transition-opacity focus-visible:opacity-100",
-    shown ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-  );
-  const stop = (fn: () => void) => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    fn();
-  };
-  if (state === "not") {
-    return (
-      <Button
-        size="xs"
-        variant="outline"
-        className={cls}
-        disabled={pending}
-        title="You sent the request on LinkedIn: AILI marks it and starts counting the days"
-        onClick={stop(() => onAct(() => markRequestSent([person.id]), `Request to ${first} noted as sent.`))}
-      >
-        <Send className="size-3" />
-        Sent
-      </Button>
-    );
-  }
+  const ids = [person.id];
   return (
-    <span className="flex items-center gap-1">
-      <Button
-        size="xs"
-        variant="outline"
-        className={cn(cls, "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400")}
-        disabled={pending}
-        title={`${first} accepted on LinkedIn`}
-        onClick={stop(() => onAct(() => markAccepted([person.id]), `${first} marked as connected.`))}
-      >
-        <Check className="size-3" />
-        Accepted
-      </Button>
-      <Button
-        size="xs"
-        variant="outline"
-        className={cls}
-        disabled={pending}
-        title="You withdrew it on LinkedIn"
-        onClick={stop(() => onAct(() => markWithdrawn([person.id]), `Request to ${first} noted as withdrawn.`))}
-      >
-        <Undo2 className="size-3" />
-        Withdrawn
-      </Button>
-    </span>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={(e) => e.stopPropagation()}
+          title="Change their connection: you did it on LinkedIn, AILI notes it"
+          className="-mx-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-left hover:bg-muted data-[state=open]:bg-muted"
+        >
+          {text}
+          <ChevronDown className="size-3.5 shrink-0 opacity-50" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+        {state === "pending" ? (
+          <>
+            <DropdownMenuItem onSelect={() => onAct(() => markAccepted(ids), `${first} marked as connected.`)}>
+              <Check />
+              They accepted
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onAct(() => markWithdrawn(ids), `Request to ${first} noted as withdrawn.`)}>
+              <Undo2 />
+              I withdrew it on LinkedIn
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <>
+            <DropdownMenuItem onSelect={() => onAct(() => markRequestSent(ids), `Request to ${first} noted as sent.`)}>
+              <Send />
+              I sent a request on LinkedIn
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onAct(() => markAccepted(ids), `${first} marked as connected.`)}>
+              <Check />
+              Already connected
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
