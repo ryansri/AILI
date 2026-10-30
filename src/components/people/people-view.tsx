@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, Bell, CalendarDays, Check, ChevronDown, MessageSquare, MoreHorizontal, MoveRight, Plus, Send, Tag as TagIcon, Undo2, Upload, UserCheck, X } from "lucide-react";
+import { Archive, Bell, CalendarDays, Check, ChevronDown, MessageSquare, MoreHorizontal, MoveRight, Plus, Search, Send, Tag as TagIcon, Undo2, Upload, UserCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -29,7 +29,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LinkedInMark } from "@/components/linkedin-bits";
-import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
+import { HeaderAction, PageHeader } from "@/components/page-header";
+import { Input } from "@/components/ui/input";
 import { TagDot } from "@/components/tag-chip";
 import { PersonAvatar } from "@/components/person-avatar";
 import { noteOpened, OpenedDot, ProfilePaceNote } from "@/components/opened-dot";
@@ -146,7 +147,6 @@ export function PeopleView({
   const [messaging, setMessaging] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [pending, start] = useTransition();
-  const search = useHeaderSearch(query);
   const staleDays = account.invites.staleDays;
 
   const companies = useMemo(() => groupByCompany(people, stages, companyRules), [people, stages, companyRules]);
@@ -263,20 +263,9 @@ export function PeopleView({
             {tab("companies", "Companies", companyCount)}
           </nav>
         }
-        search={
-          search.open ? (
-            <HeaderSearch
-              value={query}
-              onChange={setQuery}
-              placeholder={byCompany ? "Search companies" : "Search name, company, role"}
-              open
-              onOpenChange={search.setOpen}
-            />
-          ) : undefined
-        }
         actions={
           <>
-            <HeaderSearch value={query} onChange={setQuery} open={false} onOpenChange={search.setOpen} />
+            <LeadsSearch value={query} onChange={setQuery} placeholder={byCompany ? "Search companies" : "Search name, company, role"} />
             <Button variant="outline" size="sm" className="mx-1" onClick={() => setImporting(true)}>
               <Upload />
               Import
@@ -659,6 +648,51 @@ function FilterOption({ on, onClick, label, count, dot }: { on: boolean; onClick
   );
 }
 
+
+/** Always there: type to search, Escape or the x clears, "/" anywhere jumps here. */
+function LeadsSearch({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (e.key !== "/" || t?.closest("input, textarea, [contenteditable=true]")) return;
+      e.preventDefault();
+      ref.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="relative mr-1 w-64">
+      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        ref={ref}
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onChange("");
+        }}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className="h-8 pr-8 pl-8 text-sm [&::-webkit-search-cancel-button]:hidden"
+      />
+      {value && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => {
+            onChange("");
+            ref.current?.focus();
+          }}
+          className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 /** The left column: tick tags, connection, stage, or not opened lately. Counts are for everyone. */
 function FilterPanel({
