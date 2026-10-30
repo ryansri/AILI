@@ -1111,6 +1111,160 @@ const addLeads: Tool = {
   },
 };
 
+const TALKING_STAGES = ["connected", "conversation", "call", "pilot", "won"];
+const strings = (v: unknown) => (Array.isArray(v) ? v.map(text).map((t) => t.trim()).filter(Boolean) : text(v).trim() ? [text(v).trim()] : []);
+
+const updateLeads: Tool = {
+  name: "update_leads",
+  title: "Update leads",
+  description:
+    "Change people already in AILI: their stage (e.g. Talking, Call booked, Pilot, Client, Not a fit), a corrected name, job_title or company, " +
+    "a new LinkedIn link (new_linkedin_url), tags to add or remove (by the tag's name), and a note (added to their notes with today's date). " +
+    "One entry per person: person (name or id from find_conversations), plus linkedin_url when you have it (it matches exactly), and only " +
+    "the fields to change. Up to 50 at once. For connection status (request sent, connected, withdrawn) use update_connections; to add " +
+    "new people use add_leads. It only changes AILI: nothing goes to LinkedIn.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      people: {
+        type: "array",
+        maxItems: 50,
+        items: {
+          type: "object",
+          properties: {
+            person: { type: "string", description: "Their name, or an id from find_conversations." },
+            linkedin_url: { type: "string", description: "Their current profile link, to find them exactly." },
+            stage: { type: "string", description: "A stage name from the user's pipeline, e.g. Talking or Call booked." },
+            name: { type: "string", description: "A corrected name." },
+            job_title: { type: "string" },
+            company: { type: "string" },
+            new_linkedin_url: { type: "string", description: "Their correct profile link, linkedin.com/in/…" },
+            add_tags: { type: "array", items: { type: "string" } },
+            remove_tags: { type: "array", items: { type: "string" } },
+            note: { type: "string", description: "Added to their notes, dated today." },
+          },
+          required: ["person"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["people"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  async run(args, ctx) {
+    const list = Array.isArray(args.people) ? (args.people as Record<string, unknown>[]).slice(0, 50) : [];
+    if (list.length === 0) throw new ToolError("Pass people: one entry per person, with person and the fields to change.");
+    const w = await workspace(ctx);
+    const tz = timeZoneOf(w);
+    const [everyone, tags, stages] = await Promise.all([
+      db.person.findMany({
+        where: { workspaceId: ctx.workspaceId, archivedAt: null },
+        select: { id: true, name: true, publicId: true, linkedinUrl: true, stage: true, requestedAt: true, connectedAt: true, notes: true },
+      }),
+      db.tag.findMany({ where: { workspaceId: ctx.workspaceId } }),
+      getStages(ctx.workspaceId),
+    ]);
+    const byId = new Map(everyone.map((p) => [p.id, p]));
+    const byPublic = new Map<string, (typeof everyone)[number]>();
+    for (const p of everyone) {
+      const id = p.publicId?.toLowerCase() ?? publicIdOf(p.linkedinUrl);
+      if (id) byPublic.set(id, p);
+    }
+    const byName = new Map<string, (typeof everyone)[number][]>();
+    for (const p of everyone) byName.set(nameKey(p.name), [...(byName.get(nameKey(p.name)) ?? []), p]);
+    const tagOf = (label: string) => tags.find((t) => t.label.toLowerCase() === label.toLowerCase());
+    const stageOf = (v: string) => stages.find((st) => st.key === v || st.label.toLowerCase() === v.toLowerCase());
+    const today = formatWhen(new Date(), tz);
+    const stamp = today.slice(today.indexOf(" ") + 1, today.indexOf(","));
+
+    const done: string[] = [];
+    const problems: string[] = [];
+    for (const entry of list) {
+      const ref = text(entry.person).trim();
+      if (!ref) continue;
+      const url = publicIdOf(text(entry.linkedin_url));
+      const named = byName.get(nameKey(ref)) ?? [];
+      const p = byId.get(ref) ?? (url ? byPublic.get(url) : undefined) ?? (named.length === 1 ? named[0] : undefined);
+      if (!p) {
+        problems.push(named.length > 1 ? `${ref}: ${named.length} people with that name (ids: ${named.map((n) => n.id).join(", ")})` : `${ref}: not in AILI (add them with add_leads)`);
+        continue;
+      }
+      const data: Record<string, unknown> = {};
+      const changes: string[] = [];
+      const now = new Date();
+
+      const stageText = text(entry.stage).trim();
+      if (stageText) {
+        const st = stageOf(stageText);
+        if (!st) problems.push(`${p.name}: no stage called "${stageText}". Stages: ${stages.map((x) => x.label).join(", ")}`);
+        else if (st.key !== p.stage) {
+          Object.assign(data, {
+            stage: st.key,
+            stageChangedAt: now,
+            ...(st.key === "requested" && !p.requestedAt ? { requestedAt: now } : {}),
+            ...(TALKING_STAGES.includes(st.key) && !p.connectedAt ? { connectedAt: now } : {}),
+          });
+          changes.push(`stage ${st.label}`);
+        }
+      }
+      // Corrections the user made: background lookups never overwrite them (profileEditedAt).
+      for (const [field, key, label] of [
+        ["name", "name", "name"],
+        ["job_title", "jobTitle", "title"],
+        ["company", "company", "company"],
+      ] as const) {
+        const v = oneLine(text(entry[field])).slice(0, 120);
+        if (v) {
+          data[key] = v;
+          data.profileEditedAt = now;
+          changes.push(`${label} "${v}"`);
+        }
+      }
+      const newUrl = text(entry.new_linkedin_url).trim();
+      const fill = !p.linkedinUrl && url ? url : undefined;
+      const newId = newUrl ? publicIdOf(newUrl) : fill;
+      if (newUrl && !newId) problems.push(`${p.name}: "${newUrl}" isn't a LinkedIn profile link (linkedin.com/in/…)`);
+      if (newId) {
+        const taken = byPublic.get(newId);
+        if (taken && taken.id !== p.id) problems.push(`${p.name}: that LinkedIn link already belongs to ${taken.name} in AILI`);
+        else {
+          Object.assign(data, { publicId: newId, linkedinUrl: `https://www.linkedin.com/in/${newId}` });
+          changes.push("LinkedIn link");
+        }
+      }
+      const note = text(entry.note).trim().slice(0, 2000);
+      if (note) {
+        data.notes = `${p.notes ? `${p.notes}\n` : ""}[${stamp}] ${note}`.slice(-8000);
+        changes.push("note added");
+      }
+      const add = strings(entry.add_tags);
+      const remove = strings(entry.remove_tags);
+      const unknown = [...add, ...remove].filter((t) => !tagOf(t));
+      if (unknown.length) problems.push(`${p.name}: no tag called ${unknown.map((t) => `"${t}"`).join(", ")}. Tags: ${tags.map((t) => t.label).join(", ") || "none yet"}`);
+      const addIds = add.map(tagOf).filter((t): t is NonNullable<typeof t> => Boolean(t));
+      const removeIds = remove.map(tagOf).filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+      if (Object.keys(data).length) await db.person.update({ where: { id: p.id }, data: { ...data, lastActionAt: now } });
+      for (const t of addIds) {
+        await db.personTag.upsert({ where: { personId_tagId: { personId: p.id, tagId: t.id } }, update: {}, create: { personId: p.id, tagId: t.id } });
+      }
+      if (removeIds.length) await db.personTag.deleteMany({ where: { personId: p.id, tagId: { in: removeIds.map((t) => t.id) } } });
+      if (addIds.length) changes.push(`tagged ${addIds.map((t) => t.label).join(", ")}`);
+      if (removeIds.length) changes.push(`untagged ${removeIds.map((t) => t.label).join(", ")}`);
+      if (changes.length) done.push(`${typeof data.name === "string" ? data.name : p.name}: ${changes.join(", ")}`);
+    }
+    revalidatePath("/people");
+    revalidatePath("/inbox");
+    const parts = [
+      done.length ? `Updated ${done.length} in AILI:\n${done.map((l) => `- ${l}`).join("\n")}` : "Nothing was changed.",
+      problems.length ? `Check with the user:\n${problems.map((l) => `- ${l}`).join("\n")}` : "",
+      "Changed in AILI only; nothing was sent to LinkedIn.",
+    ];
+    return parts.filter(Boolean).join("\n\n");
+  },
+};
+
 const getProgress: Tool = {
   name: "get_progress",
   title: "Progress this week or month",
@@ -1156,6 +1310,7 @@ export const TOOLS: Tool[] = [
   saveDraft,
   updateConnections,
   addLeads,
+  updateLeads,
   getPlan,
   addPlanRows,
   updatePlanRow,

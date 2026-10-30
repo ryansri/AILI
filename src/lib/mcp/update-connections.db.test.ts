@@ -106,4 +106,33 @@ describe.skipIf(!hasDb)("update_connections", () => {
     expect(r.changed).toBe(true);
     expect(await db.person.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ connection: "no", stage: "warming", connectedAt: null });
   });
+
+  it("updates stage, title, tags, link and notes on people already in AILI", async () => {
+    const w = await db.workspace.create({ data: { name: "Update test", initials: "U", timeZone: "Australia/Sydney" } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof tool.run>[1];
+    const update = TOOLS.find((t) => t.name === "update_leads")!;
+    const acc = await db.tag.create({ data: { workspaceId: w.id, label: "Accounting firms", color: "green" } });
+    const rec = await db.tag.create({ data: { workspaceId: w.id, label: "Recruitment", color: "blue" } });
+    const p = await db.person.create({ data: { workspaceId: w.id, name: "Pia Update", lead: true, stage: "connected", jobTitle: "Manager", tags: { create: [{ tagId: rec.id }] } } });
+
+    const out = await update.run(
+      {
+        people: [
+          { person: "pia update", stage: "Call booked", job_title: "Director", add_tags: ["accounting firms"], remove_tags: ["Recruitment"], note: "Met at the breakfast event", new_linkedin_url: "https://www.linkedin.com/in/pia-update/" },
+          { person: "Pia Update", stage: "Signed" },
+          { person: "Nobody Here", stage: "Talking" },
+        ],
+      },
+      ctx,
+    );
+    expect(out).toMatch(/Updated 1 in AILI:\n- Pia Update: stage Call booked, title "Director", LinkedIn link, note added, tagged Accounting firms, untagged Recruitment/);
+    expect(out).toMatch(/no stage called "Signed"/);
+    expect(out).toMatch(/Nobody Here: not in AILI/);
+
+    const after = await db.person.findUniqueOrThrow({ where: { id: p.id }, include: { tags: true } });
+    expect(after).toMatchObject({ stage: "call", jobTitle: "Director", publicId: "pia-update", linkedinUrl: "https://www.linkedin.com/in/pia-update" });
+    expect(after.notes).toMatch(/^\[\d{1,2} \w{3}\] Met at the breakfast event$/);
+    expect(after.profileEditedAt).not.toBeNull();
+    expect(after.tags.map((t) => t.tagId)).toEqual([acc.id]);
+  });
 });
