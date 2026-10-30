@@ -18,17 +18,15 @@ import {
   withdrawInvites,
 } from "@/lib/client-actions";
 import { groupByCompany, type CompanyGroup, type CompanyRule } from "@/lib/companies";
-import { connectionOf, waitingDays, type ConnectionState } from "@/lib/invites";
+import { connectionOf, type ConnectionState } from "@/lib/invites";
 import { lastTouch } from "@/lib/lead-next";
 import { relativeTime } from "@/lib/next-step";
 import { openedState } from "@/lib/profile-opens";
 import type { Template } from "@/lib/templates";
-import { formatWhen, toWallInput } from "@/lib/time-zone";
 import { stageLabel, type Account, type Person, type StageDef, type Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LinkedInMark } from "@/components/linkedin-bits";
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
@@ -44,9 +42,10 @@ import { PostAlertsPanel, usePostAlerts } from "./post-alerts";
 
 /*
  * Leads: People and Companies, the Apollo way but short. Filters on the left
- * (tags, connection, stage, not opened), one plain table on the right. On a
- * person's row, Connection and Stage are menus: you did it on LinkedIn, AILI
- * notes it. Post alerts and the week's warm-up sit under More.
+ * (tags, connection, stage, not opened), one plain table on the right. The
+ * ring on the photo is the connection; Stage is a menu on each row, and the
+ * selection bar changes the connection for those ticked. Post alerts and the
+ * week's warm-up sit under More.
  */
 
 type View = "people" | "companies" | "week";
@@ -94,11 +93,6 @@ const CONNECTIONS: { key: ConnectionState; label: string }[] = [
   { key: "connected", label: "Connected" },
 ];
 
-/** "26 Oct" where you are. */
-function dayMonth(iso: string, timeZone: string): string {
-  const s = formatWhen(new Date(iso), timeZone);
-  return s.slice(s.indexOf(" ") + 1, s.indexOf(","));
-}
 
 const ago = (iso: string | undefined) => {
   if (!iso) return "";
@@ -234,7 +228,6 @@ export function PeopleView({
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
   const withdrawable = chosenPeople.filter((p) => ["queued", "sending", "sent", "failed"].includes(p.invite?.status ?? ""));
   const now = new Date();
-  const today = toWallInput(now, timeZone).slice(0, 10);
   const leadCount = people.length;
   const companyCount = companies.filter((g) => g.key).length;
 
@@ -371,9 +364,8 @@ export function PeopleView({
                         onCheckedChange={(on) => setSelected(on ? new Set(shownIds) : new Set())}
                       />
                     </TableHead>
-                    <TableHead className="w-[24%]">Name</TableHead>
-                    <TableHead className="w-[17%]">Company</TableHead>
-                    <TableHead className="w-44">Connection</TableHead>
+                    <TableHead className="w-[28%]">Name</TableHead>
+                    <TableHead className="w-[21%]">Company</TableHead>
                     <TableHead className="w-36">Stage</TableHead>
                     <TableHead>Tags</TableHead>
                     <TableHead className="w-36 pr-5">Last activity</TableHead>
@@ -427,9 +419,6 @@ export function PeopleView({
                         </TableCell>
                         <TableCell>
                           <CompanyName name={p.company} />
-                        </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <ConnectionCell person={p} timeZone={timeZone} today={today} staleDays={staleDays} now={now} pending={pending} onAct={bulk} />
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <StageCell person={p} stages={stages} pending={pending} onAct={bulk} />
@@ -670,19 +659,6 @@ function FilterOption({ on, onClick, label, count, dot }: { on: boolean; onClick
   );
 }
 
-function MenuChoice({ on, pending, onClick, children }: { on: boolean; pending: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={onClick}
-      className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted", on && "font-semibold")}
-    >
-      <span className="w-4">{on && <Check className="size-3.5" />}</span>
-      {children}
-    </button>
-  );
-}
 
 /** The left column: tick tags, connection, stage, or not opened lately. Counts are for everyone. */
 function FilterPanel({
@@ -787,109 +763,6 @@ function TagsLine({ tags }: { tags: Tag[] }) {
       <span className="truncate">{tags[0].label}</span>
       {tags.length > 1 && <span className="shrink-0 text-muted-foreground">+{tags.length - 1}</span>}
     </span>
-  );
-}
-
-const PILL = {
-  connected: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400",
-  pending: "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400",
-  old: "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400",
-  not: "bg-muted text-muted-foreground hover:bg-muted/70",
-};
-
-/**
- * Connection on a row: green Connected 19 Oct, amber Request sent 5d (red
- * after the old-request days), grey Not connected. Click to change it, with
- * the day it happened. You did it on LinkedIn; AILI only notes it.
- */
-function ConnectionCell({
-  person,
-  timeZone,
-  today,
-  staleDays,
-  now,
-  pending,
-  onAct,
-}: {
-  person: Person;
-  timeZone: string;
-  today: string;
-  staleDays: number;
-  now: Date;
-  pending: boolean;
-  onAct: (run: () => Promise<number>, done: (n: number) => string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [day, setDay] = useState(today);
-  const state = connectionOf(person);
-  const first = person.name.split(" ")[0];
-  const waited = person.invite?.sentAt ? waitingDays(person.invite.sentAt, now) : null;
-  const old = state === "pending" && waited !== null && waited > staleDays;
-  const label =
-    state === "connected"
-      ? person.connectedAt
-        ? `Connected · ${dayMonth(person.connectedAt, timeZone)}`
-        : "Connected"
-      : state === "pending"
-        ? waited === null
-          ? "Request sent"
-          : `Request sent · ${waited === 0 ? "today" : `${waited}d`}`
-        : "Not connected";
-  const when = day === today ? "today" : dayMonth(`${day}T12:00:00`, "UTC");
-  const act = (run: () => Promise<number>, done: string) => {
-    setOpen(false);
-    onAct(run, () => done);
-  };
-  const ids = [person.id];
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) setDay(today);
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          disabled={pending}
-          title="Change their connection: you did it on LinkedIn, AILI notes it"
-          className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold whitespace-nowrap transition-colors", PILL[old ? "old" : state])}
-          suppressHydrationWarning
-        >
-          {label}
-          <ChevronDown className="size-3 opacity-60" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-1.5">
-        <div className="px-2 pt-1 pb-1 text-2xs font-semibold tracking-wider text-muted-foreground uppercase">Connection</div>
-        <label className="flex items-center justify-between gap-2 px-2 pb-1.5 text-xs text-muted-foreground">
-          On
-          <input
-            type="date"
-            value={day}
-            max={today}
-            onChange={(e) => setDay(e.target.value || today)}
-            className="h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-          />
-        </label>
-        <MenuChoice pending={pending} on={state === "not"} onClick={() => act(() => markNotConnected(ids), `${first} marked as not connected.`)}>
-          Not connected
-        </MenuChoice>
-        <MenuChoice pending={pending} on={state === "pending"} onClick={() => act(() => markRequestSent(ids, day), `Request to ${first} noted as sent ${when}.`)}>
-          Request sent
-        </MenuChoice>
-        <MenuChoice pending={pending} on={state === "connected"} onClick={() => act(() => markAccepted(ids, day), `${first} marked as connected ${when}.`)}>
-          Connected
-        </MenuChoice>
-        {state === "pending" && (
-          <MenuChoice pending={pending} on={false} onClick={() => act(() => markWithdrawn(ids), `Request to ${first} noted as withdrawn.`)}>
-            I withdrew it on LinkedIn
-          </MenuChoice>
-        )}
-        <p className="mt-1 border-t px-2 pt-1.5 pb-1 text-2xs leading-relaxed text-muted-foreground">You did it on LinkedIn; AILI only notes it, on the day above.</p>
-      </PopoverContent>
-    </Popover>
   );
 }
 
