@@ -191,10 +191,12 @@ export function PeopleView({
   const renamed = renaming === null ? null : (companies.find((g) => g.key === renaming) ?? null);
   const companyNames = useMemo(() => companies.filter((g) => g.key).map((g) => g.name), [companies]);
 
+  // Ticks stay when you search or filter again, so you can pick Andrew, search Kara and pick her too.
   const shownIds = rows.map((p) => p.id);
-  const chosen = shownIds.filter((id) => selected.has(id));
-  const chosenPeople = rows.filter((p) => selected.has(p.id));
-  const allOn = rows.length > 0 && chosen.length === rows.length;
+  const chosenPeople = people.filter((p) => selected.has(p.id));
+  const chosen = chosenPeople.map((p) => p.id);
+  const notShown = chosen.length - shownIds.filter((id) => selected.has(id)).length;
+  const allOn = rows.length > 0 && shownIds.every((id) => selected.has(id));
   const filtered = tagIds.size + conns.size + stageKeys.size > 0 || notOpened;
 
   function clearFilters() {
@@ -202,7 +204,6 @@ export function PeopleView({
     setConns(new Set());
     setStageKeys(new Set());
     setNotOpened(false);
-    setSelected(new Set());
   }
 
   function switchView(next: View) {
@@ -358,7 +359,16 @@ export function PeopleView({
                       <Checkbox
                         aria-label="Select everyone shown"
                         checked={allOn}
-                        onCheckedChange={(on) => setSelected(on ? new Set(shownIds) : new Set())}
+                        onCheckedChange={(on) =>
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            for (const id of shownIds) {
+                              if (on) next.add(id);
+                              else next.delete(id);
+                            }
+                            return next;
+                          })
+                        }
                       />
                     </TableHead>
                     <TableHead className="w-[28%]">Name</TableHead>
@@ -465,7 +475,10 @@ export function PeopleView({
           aria-label="Selected people"
           className="absolute bottom-14 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl bg-primary py-1.5 pr-1.5 pl-4 text-md whitespace-nowrap text-primary-foreground shadow-lg"
         >
-          <span className="mr-2 font-semibold">{chosen.length} selected</span>
+          <span className="mr-2 font-semibold">
+            {chosen.length} selected
+            {notShown > 0 && <span className="font-normal opacity-70"> · {notShown} not shown</span>}
+          </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="secondary" disabled={pending}>
