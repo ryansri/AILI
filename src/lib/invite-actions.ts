@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { run } from "./action-result";
 import { getWorkspace, invitesSince } from "./data";
 import { db } from "./db";
-import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
+import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone, wallTimeToDate } from "./time-zone";
 import { notWhileRecording } from "./privacy-server";
 import { INVITE_CAPS, NOTE_MAX, STALE_DAYS } from "./invites";
 import { setConnection } from "./connection-store";
@@ -89,16 +89,32 @@ async function withdrawInvitesImpl(personIds: string[]) {
 
 /* By hand: you did it on LinkedIn yourself and tell AILI (see connection-store.ts). */
 
-async function markRequestSentImpl(personIds: string[]) {
+/** "2026-10-26" from the Connection menu: midday that day where you are, never later than now. */
+function onDay(day: string | undefined, timeZone: string | null): Date {
+  const now = new Date();
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return now;
+  const at = wallTimeToDate(`${day}T12:00`, validTimeZone(timeZone) ? timeZone : DEFAULT_TIME_ZONE);
+  return at && at < now ? at : now;
+}
+
+async function markRequestSentImpl(personIds: string[], day?: string) {
   const workspace = await getWorkspace();
-  const done = await setConnection(workspace.id, Array.isArray(personIds) ? personIds : [], "request_sent");
+  const done = await setConnection(workspace.id, Array.isArray(personIds) ? personIds : [], "request_sent", onDay(day, workspace.timeZone));
   refresh();
   return done.length;
 }
 
-async function markAcceptedImpl(personIds: string[]) {
+async function markAcceptedImpl(personIds: string[], day?: string) {
   const workspace = await getWorkspace();
-  const done = await setConnection(workspace.id, Array.isArray(personIds) ? personIds : [], "connected");
+  const done = await setConnection(workspace.id, Array.isArray(personIds) ? personIds : [], "connected", onDay(day, workspace.timeZone));
+  refresh();
+  return done.length;
+}
+
+/** A mistake fixed: not connected after all. */
+async function markNotConnectedImpl(personIds: string[]) {
+  const workspace = await getWorkspace();
+  const done = await setConnection(workspace.id, Array.isArray(personIds) ? personIds : [], "not_connected");
   refresh();
   return done.length;
 }
@@ -137,6 +153,10 @@ export async function withdrawInvites(...args: Parameters<typeof withdrawInvites
 
 export async function markRequestSent(...args: Parameters<typeof markRequestSentImpl>) {
   return run(() => markRequestSentImpl(...args));
+}
+
+export async function markNotConnected(...args: Parameters<typeof markNotConnectedImpl>) {
+  return run(() => markNotConnectedImpl(...args));
 }
 
 export async function markAccepted(...args: Parameters<typeof markAcceptedImpl>) {

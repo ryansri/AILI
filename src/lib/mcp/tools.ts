@@ -892,6 +892,7 @@ const CHANGE_WORDS: Record<ConnectionChange, string> = {
   connected: "connected",
   request_sent: "request sent",
   withdrawn: "request withdrawn",
+  not_connected: "not connected",
 };
 
 const updateConnections: Tool = {

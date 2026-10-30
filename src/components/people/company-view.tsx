@@ -2,15 +2,14 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Building2, ChevronDown, ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, X } from "lucide-react";
+import { MessageSquare, MoreHorizontal, Pencil, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { keepCompaniesApart, nameCompany } from "@/lib/client-actions";
-import { companyTimeline, deciderRank, shortRole, type CompanyGroup } from "@/lib/companies";
-import { companyNext, lastTouch, leadNext, type LeadNext } from "@/lib/lead-next";
+import { companyTimeline, deciderRank, type CompanyGroup } from "@/lib/companies";
+import { companyNext, type LeadNext } from "@/lib/lead-next";
 import { relativeTime } from "@/lib/next-step";
-import { stageLabel, type Person, type StageDef } from "@/lib/types";
+import type { Person } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,7 +17,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PersonAvatar } from "@/components/person-avatar";
 
 /*
@@ -27,8 +25,6 @@ import { PersonAvatar } from "@/components/person-avatar";
  * the people inside; the name opens the company.
  */
 
-/** The early stages the ring on the photo already shows. Past them, the stage shows by the name. */
-const RING_STAGES = new Set(["warming", "requested", "connected"]);
 
 const ago = (iso: string | undefined) => {
   if (!iso) return "";
@@ -44,10 +40,6 @@ const seniority = (p: Person) => {
   return r < 0 ? 99 : r;
 };
 
-function StageWord({ stages, stage }: { stages: StageDef[]; stage: string }) {
-  if (RING_STAGES.has(stage)) return null;
-  return <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground">{stageLabel(stages, stage)}</span>;
-}
 
 function NextText({ next }: { next: LeadNext | null | undefined }) {
   if (!next) return null;
@@ -58,154 +50,6 @@ function NextText({ next }: { next: LeadNext | null | undefined }) {
   );
 }
 
-/** Who you know at a company: their photos with the LinkedIn ring, and their roles, decision makers in bold. */
-function WhoYouKnow({ people }: { people: Person[] }) {
-  const sorted = [...people].sort((a, b) => seniority(a) - seniority(b));
-  const shown = sorted.slice(0, 4);
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="flex shrink-0 items-center gap-1.5">
-        {shown.map((p) => (
-          <PersonAvatar key={p.id} person={p} className="size-6 text-2xs" link={false} />
-        ))}
-        {sorted.length > shown.length && <span className="text-xs text-muted-foreground">+{sorted.length - shown.length}</span>}
-      </span>
-      <span className="min-w-0 truncate text-xs text-foreground/80">
-        {sorted.map((p, i) => {
-          const title = p.jobTitle || p.headline;
-          const role = shortRole(title) || firstName(p);
-          return (
-            <Fragment key={p.id}>
-              {i > 0 && ", "}
-              <span className={cn(deciderRank(title) >= 0 && "font-semibold text-foreground")}>{role}</span>
-            </Fragment>
-          );
-        })}
-      </span>
-    </div>
-  );
-}
-
-export function CompanyTable({
-  groups,
-  stages,
-  staleDays,
-  onOpen,
-}: {
-  groups: CompanyGroup[];
-  stages: StageDef[];
-  /** Days after which a connection request counts as old. */
-  staleDays: number;
-  onOpen: (key: string) => void;
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState<Set<string>>(new Set());
-  const toggle = (key: string) =>
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  const nexts = useMemo(
-    () => new Map(groups.map((g) => [g.key, g.key ? companyNext(g.people, staleDays, seniority) : null] as const)),
-    [groups, staleDays],
-  );
-
-  return (
-    <Table className="table-fixed">
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-10 pl-6" />
-          <TableHead className="w-[28%] pl-4">Company</TableHead>
-          <TableHead className="w-[24%]">Who you know</TableHead>
-          <TableHead>Next</TableHead>
-          <TableHead className="w-40 pr-6">Last touch</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {groups.map((g) => {
-          const isOpen = open.has(g.key) || !g.key;
-          const Chevron = isOpen ? ChevronDown : ChevronRight;
-          const next = nexts.get(g.key);
-          return (
-            <Fragment key={g.key || "none"}>
-              <TableRow className={cn("cursor-pointer", isOpen && g.key && "bg-muted/40")} onClick={() => (g.key ? onOpen(g.key) : toggle(g.key))}>
-                <TableCell className="pl-6">
-                  {g.key && (
-                    <button
-                      type="button"
-                      aria-label={isOpen ? `Hide the people at ${g.name}` : `Show the people at ${g.name}`}
-                      aria-expanded={isOpen}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggle(g.key);
-                      }}
-                      className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      <Chevron className="size-4" />
-                    </button>
-                  )}
-                </TableCell>
-                <TableCell className="pl-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span
-                      aria-hidden="true"
-                      className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/60 text-xs font-bold text-foreground/70"
-                    >
-                      {g.key ? g.name.charAt(0).toUpperCase() : <Building2 className="size-4" />}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span data-private className={cn("truncate text-md font-semibold", !g.key && "font-medium text-muted-foreground")}>{g.name}</span>
-                        {g.key && <StageWord stages={stages} stage={g.stage} />}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {g.people.length === 1 ? "1 person" : `${g.people.length} people`}
-                      </div>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>{g.key && <WhoYouKnow people={g.people} />}</TableCell>
-                <TableCell className="whitespace-normal">
-                  <NextText next={next} />
-                </TableCell>
-                <TableCell className="pr-6 text-xs text-muted-foreground" suppressHydrationWarning>
-                  {g.key && ago(g.lastAt)}
-                </TableCell>
-              </TableRow>
-              {isOpen &&
-                g.people.map((p) => (
-                  <TableRow key={p.id} className="cursor-pointer bg-muted/40 hover:bg-muted/70" onClick={() => router.push(`/inbox?person=${p.id}`)}>
-                    <TableCell className="pl-6" />
-                    <TableCell className="pl-4">
-                      <div className={cn("flex min-w-0 items-center gap-3", g.key && "pl-5")}>
-                        <PersonAvatar person={p} className="size-7" />
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span data-private className="truncate text-sm font-semibold">{p.name}</span>
-                            <StageWord stages={stages} stage={p.stage} />
-                          </div>
-                          <div className="truncate text-xs text-muted-foreground">{p.jobTitle || p.headline}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell />
-                    <TableCell className="whitespace-normal">
-                      <NextText next={next ? next.people.get(p.id) : leadNext(p, staleDays)} />
-                    </TableCell>
-                    <TableCell className="pr-6 text-xs text-muted-foreground" suppressHydrationWarning>
-                      {lastTouch(p).text}
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </Fragment>
-          );
-        })}
-      </TableBody>
-    </Table>
-  );
-}
 
 /** A company put together from different spellings: say so, once, with Keep apart and Rename. */
 export function GuessBar({ group, onRename }: { group: CompanyGroup; onRename: () => void }) {

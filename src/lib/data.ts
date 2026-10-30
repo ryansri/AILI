@@ -13,7 +13,6 @@ import { messageUsage } from "./send-limit-server";
 import { profilePace } from "./profile-opens";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
-import type { InviteFacts } from "./invites";
 import { templateStats, type Template } from "./templates";
 import { DEFAULT_STAGES, isTagColor, type Account, type InviteView, type Person, type StageDef, type Tag } from "./types";
 
@@ -394,16 +393,4 @@ export const getCompanyRules = cache(async (): Promise<CompanyRule[]> => {
   // Recording mode: real company names stay out of the page.
   if (await privacyOn(id)) return [];
   return db.companyName.findMany({ where: { workspaceId: id }, select: { raw: true, name: true } });
-});
-
-/** Connection requests for the stats under Request sent: the last 45 days, and any still waiting. */
-export const getInviteFacts = cache(async (): Promise<InviteFacts[]> => {
-  const id = await requireWorkspaceId();
-  const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
-  const rows = await db.invite.findMany({
-    where: { workspaceId: id, OR: [{ sentAt: { gte: since } }, { status: { in: ["sent", "withdrawing"] } }] },
-    select: { status: true, note: true, sentAt: true },
-  });
-  const hidden = await privacyOn(id);
-  return rows.map((r) => ({ status: r.status, note: hidden && r.note ? "(note)" : r.note, sentAt: r.sentAt?.toISOString() }));
 });

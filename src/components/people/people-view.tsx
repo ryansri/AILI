@@ -2,51 +2,54 @@
 
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, Bell, Building2, CalendarDays, Check, Undo2, ChevronDown, ChevronRight, MessageSquare, MoveRight, Plus, Send, Tag as TagIcon, Upload, User, UserCheck, X } from "lucide-react";
+import { Archive, Bell, CalendarDays, Check, ChevronDown, MessageSquare, MoreHorizontal, MoveRight, Plus, Send, Tag as TagIcon, Undo2, Upload, UserCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { bulkAddTag, bulkArchive, bulkSetStage, markAccepted, markProfilesOpened, markRequestSent, markWithdrawn, moveToOther, withdrawInvites } from "@/lib/client-actions";
-import { companyStandIns, groupByCompany, type CompanyRule } from "@/lib/companies";
-import { buildFunnel, notMessaged, type Funnel } from "@/lib/funnel";
-import { CONNECTION_CHOICES, connectionOf, waitingDays, type ConnectionState, type InviteFacts } from "@/lib/invites";
-import { lastTouch, leadNext } from "@/lib/lead-next";
+import {
+  bulkAddTag,
+  bulkArchive,
+  bulkSetStage,
+  markAccepted,
+  markNotConnected,
+  markProfilesOpened,
+  markRequestSent,
+  markWithdrawn,
+  moveToOther,
+  withdrawInvites,
+} from "@/lib/client-actions";
+import { groupByCompany, type CompanyGroup, type CompanyRule } from "@/lib/companies";
+import { connectionOf, waitingDays, type ConnectionState } from "@/lib/invites";
+import { lastTouch } from "@/lib/lead-next";
+import { relativeTime } from "@/lib/next-step";
+import { openedState } from "@/lib/profile-opens";
 import type { Template } from "@/lib/templates";
+import { formatWhen, toWallInput } from "@/lib/time-zone";
 import { stageLabel, type Account, type Person, type StageDef, type Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LinkedInMark } from "@/components/linkedin-bits";
 import { HeaderAction, HeaderSearch, PageHeader, useHeaderSearch } from "@/components/page-header";
-import { CountBadge } from "@/components/count-badge";
-import { TagChip, TagDot } from "@/components/tag-chip";
-import { ConnectionDot, PersonAvatar } from "@/components/person-avatar";
-import { WarmthChip } from "@/components/warmth-chip";
-import { WarmupWeek } from "./warmup-week";
-import { warmthMove, warmthOf, warmupLine } from "@/lib/warmth";
-import { MessageAllDialog } from "@/components/templates/message-all-dialog";
-import { ImportDialog } from "./import-dialog";
-import { CompanyNameDialog, CompanyPanel, CompanyTable, GuessBar } from "./company-view";
-import { PersonDialog } from "./person-dialog";
-import { RequestsStrip } from "./requests-strip";
-import { PostAlertsPanel, usePostAlerts } from "./post-alerts";
+import { TagDot } from "@/components/tag-chip";
+import { PersonAvatar } from "@/components/person-avatar";
 import { noteOpened, OpenedDot, ProfilePaceNote } from "@/components/opened-dot";
-import { openedState } from "@/lib/profile-opens";
+import { MessageAllDialog } from "@/components/templates/message-all-dialog";
+import { WarmupWeek } from "./warmup-week";
+import { ImportDialog } from "./import-dialog";
+import { CompanyNameDialog, CompanyPanel, GuessBar } from "./company-view";
+import { PersonDialog } from "./person-dialog";
+import { PostAlertsPanel, usePostAlerts } from "./post-alerts";
 
-const ALL = "all";
+/*
+ * Leads: People and Companies, the Apollo way but short. Filters on the left
+ * (tags, connection, stage, not opened), one plain table on the right. On a
+ * person's row, Connection and Stage are menus: you did it on LinkedIn, AILI
+ * notes it. Post alerts and the week's warm-up sit under More.
+ */
 
 type View = "people" | "companies" | "week";
-
-/** What the table shows: everyone, one step of the funnel, or the connected who have no message yet. */
-type Pick = { kind: "stage"; key: string } | { kind: "notMessaged" } | null;
 
 /* People or Companies: remembered on this computer. */
 const VIEW_KEY = "aili-leads-view";
@@ -79,68 +82,36 @@ function useView(): View {
   return raw === "companies" || raw === "week" ? raw : "people";
 }
 
-/** The early stages the ring on the photo already shows. Past them, the stage shows by the name. */
-const RING_STAGES = new Set(["warming", "requested", "connected"]);
+/** The first stages are the connection itself (the Connection column); Stage is what comes after. */
+const CONNECTION_STAGES = new Set(["warming", "requested", "connected"]);
+const laterStages = (stages: StageDef[]) => stages.filter((s) => !CONNECTION_STAGES.has(s.key));
+/** Back to no stage: the early stage that matches their connection. */
+const earlyStageFor = (p: Person) => ({ connected: "connected", pending: "requested", not: "warming" })[connectionOf(p)];
 
-/**
- * The funnel in one line: how many are at each step right now. Click a step
- * to see just those people; click the first to see everyone again.
- */
-function FunnelLine({
-  funnel,
-  unit,
-  pick,
-  onPick,
-}: {
-  funnel: Funnel;
-  unit: string;
-  pick: Pick;
-  onPick: (pick: Pick) => void;
-}) {
-  const chip = (on: boolean) =>
-    cn(
-      "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-      on && "bg-foreground text-background hover:bg-foreground hover:text-background",
-    );
-  return (
-    <nav aria-label="Your funnel" className="flex flex-wrap items-center gap-x-1 gap-y-1.5 border-b px-5 py-3">
-      <button type="button" aria-pressed={pick === null} onClick={() => onPick(null)} className={chip(pick === null)}>
-        <b className="text-md font-semibold tabular-nums">{funnel.total}</b>
-        {unit}
-      </button>
-      {funnel.steps.map((step) => {
-        const on = pick?.kind === "stage" && pick.key === step.key;
-        return (
-          <span key={step.key} className="flex items-center gap-1">
-            <span aria-hidden="true" className="text-border">
-              →
-            </span>
-            <button
-              type="button"
-              aria-pressed={on}
-              onClick={() => onPick(on ? null : { kind: "stage", key: step.key })}
-              className={chip(on)}
-            >
-              <b className={cn("text-md font-semibold tabular-nums", !on && "text-foreground")}>{step.here}</b>
-              {step.label.toLowerCase()}
-            </button>
-          </span>
-        );
-      })}
-      {funnel.lost > 0 && (
-        <button
-          type="button"
-          aria-pressed={pick?.kind === "stage" && pick.key === "lost"}
-          onClick={() => onPick({ kind: "stage", key: "lost" })}
-          className={cn(chip(pick?.kind === "stage" && pick.key === "lost"), "ml-3")}
-        >
-          <b className="text-md font-semibold tabular-nums">{funnel.lost}</b>
-          not a fit
-        </button>
-      )}
-    </nav>
-  );
+const CONNECTIONS: { key: ConnectionState; label: string }[] = [
+  { key: "not", label: "Not connected" },
+  { key: "pending", label: "Request sent" },
+  { key: "connected", label: "Connected" },
+];
+
+/** "26 Oct" where you are. */
+function dayMonth(iso: string, timeZone: string): string {
+  const s = formatWhen(new Date(iso), timeZone);
+  return s.slice(s.indexOf(" ") + 1, s.indexOf(","));
 }
+
+const ago = (iso: string | undefined) => {
+  if (!iso) return "";
+  const t = relativeTime(iso);
+  return t === "now" ? "just now" : `${t} ago`;
+};
+
+const toggleIn = <T,>(set: Set<T>, v: T) => {
+  const next = new Set(set);
+  if (next.has(v)) next.delete(v);
+  else next.add(v);
+  return next;
+};
 
 export function PeopleView({
   people,
@@ -149,7 +120,6 @@ export function PeopleView({
   templates,
   account,
   companyRules = [],
-  inviteFacts = [],
   timeZone = "Australia/Sydney",
   openAlerts = false,
 }: {
@@ -160,24 +130,20 @@ export function PeopleView({
   account: Account;
   /** Company names the user renamed, put together or kept apart. */
   companyRules?: CompanyRule[];
-  /** Connection requests, for the stats under Request sent. */
-  inviteFacts?: InviteFacts[];
-  /** The account's time zone, for the post alerts day. */
+  /** The account's time zone, for dates and the post alerts day. */
   timeZone?: string;
   /** Opened from the morning reminder: show Post alerts straight away. */
   openAlerts?: boolean;
 }) {
   const router = useRouter();
+  const view = useView();
   const [query, setQuery] = useState("");
-  // Any of these tags; none ticked shows everyone.
-  const [tagIds, setTagIds] = useState<string[]>([]);
-  const [conn, setConn] = useState<ConnectionState | typeof ALL>(ALL);
-  // Hides anyone whose profile you opened from AILI in the last 7 days, so each batch is fresh.
+  const [tagIds, setTagIds] = useState<Set<string>>(new Set());
+  const [conns, setConns] = useState<Set<ConnectionState>>(new Set());
+  const [stageKeys, setStageKeys] = useState<Set<string>>(new Set());
   const [notOpened, setNotOpened] = useState(false);
-  const [pick, setPick] = useState<Pick>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<{ company: string } | null>(null);
-  const view = useView();
   const [openCompany, setOpenCompany] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(openAlerts);
@@ -187,71 +153,60 @@ export function PeopleView({
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [pending, start] = useTransition();
   const search = useHeaderSearch(query);
-  // The tag narrows the whole page: funnel and table.
-  const scope = useMemo(
-    () => people.filter((p) => tagIds.length === 0 || tagIds.some((id) => p.tagIds.includes(id))),
-    [people, tagIds],
-  );
+  const staleDays = account.invites.staleDays;
 
-  const companies = useMemo(() => groupByCompany(scope, stages, companyRules), [scope, stages, companyRules]);
+  const companies = useMemo(() => groupByCompany(people, stages, companyRules), [people, stages, companyRules]);
   const byCompany = view === "companies";
-  // By company, each company counts once, as its furthest person.
-  const funnel = useMemo(
-    () => buildFunnel(byCompany ? companyStandIns(companies) : scope, stages),
-    [byCompany, companies, scope, stages],
-  );
 
-  const companyRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return companies.filter((g) => {
-      if (conn !== ALL && !g.people.some((p) => connectionOf(p) === conn)) return false;
-      if (pick?.kind === "stage" && g.stage !== pick.key) return false;
-      if (pick?.kind === "notMessaged" && !g.people.some(notMessaged)) return false;
-      if (q && !`${g.name} ${g.people.map((p) => `${p.name} ${p.jobTitle} ${p.company} ${p.headline}`).join(" ")}`.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [companies, pick, query, conn]);
-  const guessed = companyRows.filter((g) => g.guessed).slice(0, 3);
-  const opened = openCompany === null ? null : (companies.find((g) => g.key === openCompany) ?? null);
-  const renamed = renaming === null ? null : (companies.find((g) => g.key === renaming) ?? null);
-  const companyNames = useMemo(() => companies.filter((g) => g.key).map((g) => g.name), [companies]);
-
-  // How many are in each connection state, for the Connection menu.
-  const connCounts = useMemo(() => {
-    const counts: Record<string, number> = { not: 0, pending: 0, connected: 0 };
-    for (const p of scope) counts[connectionOf(p)]++;
-    return counts;
-  }, [scope]);
-
+  const q = query.trim().toLowerCase();
+  const hasTag = (p: Person) => tagIds.size === 0 || p.tagIds.some((id) => tagIds.has(id));
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = scope.filter((p) => {
-      if (conn !== ALL && connectionOf(p) !== conn) return false;
+    const list = people.filter((p) => {
+      if (tagIds.size && !p.tagIds.some((id) => tagIds.has(id))) return false;
+      if (conns.size && !conns.has(connectionOf(p))) return false;
+      if (stageKeys.size && !stageKeys.has(p.stage)) return false;
       if (notOpened && openedState(p.profileOpenedAt, timeZone) !== null) return false;
-      if (pick?.kind === "stage" && p.stage !== pick.key) return false;
-      if (pick?.kind === "notMessaged" && !notMessaged(p)) return false;
       if (q && !`${p.name} ${p.jobTitle} ${p.company} ${p.headline}`.toLowerCase().includes(q)) return false;
       return true;
     });
     const time = (iso: string | undefined) => (iso ? new Date(iso).getTime() : 0);
     return list.sort((a, b) => time(lastTouch(b).at) - time(lastTouch(a).at));
-  }, [scope, pick, query, conn, notOpened, timeZone]);
+  }, [people, tagIds, conns, stageKeys, notOpened, timeZone, q]);
+
+  const companyRows = useMemo(
+    () =>
+      companies.filter((g) => {
+        if (tagIds.size && !g.people.some((p) => p.tagIds.some((id) => tagIds.has(id)))) return false;
+        if (conns.size && !g.people.some((p) => conns.has(connectionOf(p)))) return false;
+        if (stageKeys.size && !stageKeys.has(g.stage)) return false;
+        if (q && !`${g.name} ${g.people.map((p) => `${p.name} ${p.jobTitle}`).join(" ")}`.toLowerCase().includes(q)) return false;
+        return true;
+      }),
+    [companies, tagIds, conns, stageKeys, q],
+  );
+  const guessed = byCompany ? companyRows.filter((g) => g.guessed).slice(0, 3) : [];
+  const opened = openCompany === null ? null : (companies.find((g) => g.key === openCompany) ?? null);
+  const renamed = renaming === null ? null : (companies.find((g) => g.key === renaming) ?? null);
+  const companyNames = useMemo(() => companies.filter((g) => g.key).map((g) => g.name), [companies]);
 
   const shownIds = rows.map((p) => p.id);
   const chosen = shownIds.filter((id) => selected.has(id));
   const chosenPeople = rows.filter((p) => selected.has(p.id));
   const allOn = rows.length > 0 && chosen.length === rows.length;
+  const filtered = tagIds.size + conns.size + stageKeys.size > 0 || notOpened;
 
-  const title =
-    pick?.kind === "notMessaged"
-      ? "Connected, not messaged yet"
-      : pick?.kind === "stage"
-        ? stageLabel(stages, pick.key)
-        : null;
-
-  function choose(next: Pick) {
-    setPick(next);
+  function clearFilters() {
+    setTagIds(new Set());
+    setConns(new Set());
+    setStageKeys(new Set());
+    setNotOpened(false);
     setSelected(new Set());
+  }
+
+  function switchView(next: View) {
+    writeView(next);
+    setSelected(new Set());
+    setConfirmArchive(false);
   }
 
   function toggle(id: string, on: boolean) {
@@ -277,37 +232,50 @@ export function PeopleView({
   }
 
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
-  const staleDays = account.invites.staleDays;
-  const needed = account.alerts.touchesToConnect;
-  const isStale = (p: Person) => p.invite?.status === "sent" && waitingDays(p.invite.sentAt, now) > staleDays;
   const withdrawable = chosenPeople.filter((p) => ["queued", "sending", "sent", "failed"].includes(p.invite?.status ?? ""));
-  const showRequests = !byCompany && pick?.kind === "stage" && pick.key === "requested";
-
-  function switchView(next: View) {
-    writeView(next);
-    setSelected(new Set());
-    setConfirmArchive(false);
-  }
   const now = new Date();
+  const today = toWallInput(now, timeZone).slice(0, 10);
+  const leadCount = people.length;
+  const companyCount = companies.filter((g) => g.key).length;
+
+  const tab = (key: "people" | "companies", label: string, count: number) => (
+    <button
+      type="button"
+      aria-pressed={view === key}
+      onClick={() => switchView(key)}
+      className={cn(
+        "-mb-px flex h-full items-center gap-2 border-b-2 border-transparent px-3 text-sm text-muted-foreground transition-colors hover:text-foreground",
+        view === key && "border-foreground font-semibold text-foreground",
+      )}
+    >
+      {label}
+      <span
+        className={cn(
+          "rounded-full px-1.5 py-px text-2xs font-semibold tabular-nums",
+          view === key ? "bg-foreground text-background" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
 
   return (
     <div className="relative flex h-full w-full flex-col">
       <PageHeader
         title="Leads"
         after={
-          title ? (
-            <span className="flex min-w-0 items-center gap-1 pt-1 text-sm text-muted-foreground">
-              <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
-              <span className="truncate font-medium">{title}</span>
-            </span>
-          ) : undefined
+          <nav aria-label="Show" className="ml-5 flex self-stretch">
+            {tab("people", "People", leadCount)}
+            {tab("companies", "Companies", companyCount)}
+          </nav>
         }
         search={
           search.open ? (
             <HeaderSearch
               value={query}
               onChange={setQuery}
-              placeholder="Search name, company, role"
+              placeholder={byCompany ? "Search companies" : "Search name, company, role"}
               open
               onOpenChange={search.setOpen}
             />
@@ -316,284 +284,255 @@ export function PeopleView({
         actions={
           <>
             <HeaderSearch value={query} onChange={setQuery} open={false} onOpenChange={search.setOpen} />
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn("ml-1", alertsToday > 0 && "border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40")}
-              onClick={() => setAlertsOpen(true)}
-            >
-              <Bell />
-              Post alerts{alertsToday > 0 ? ` · ${alertsToday} today` : ""}
-            </Button>
             <Button variant="outline" size="sm" className="mx-1" onClick={() => setImporting(true)}>
               <Upload />
               Import
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="More" className="relative">
+                  <MoreHorizontal />
+                  {alertsToday > 0 && <span aria-hidden="true" className="absolute top-1 right-1 size-1.5 rounded-full bg-amber-500" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setAlertsOpen(true)}>
+                  <Bell />
+                  Post alerts{alertsToday > 0 ? ` · ${alertsToday} today` : ""}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => switchView("week")}>
+                  <CalendarDays />
+                  Warm-up this week
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <HeaderAction icon={Plus} label="Add person" onClick={() => setAdding({ company: "" })} />
           </>
         }
       />
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        <FunnelLine funnel={funnel} unit={byCompany ? "companies" : "leads"} pick={pick} onPick={choose} />
-
-        <div className="flex items-center gap-2 px-6 pt-4 pb-2">
-          <h2 className="text-md font-semibold">{title ? (pick?.kind === "stage" ? `In ${title} now` : title) : "Everyone"}</h2>
-          <CountBadge count={byCompany ? companyRows.length : rows.length} variant="outline" className="text-muted-foreground" />
-          <div role="group" aria-label="Show" className="ml-1 flex rounded-lg bg-muted p-0.5">
-            {(
-              [
-                ["people", "People", User],
-                ["companies", "Companies", Building2],
-                ["week", "This week", CalendarDays],
-              ] as const
-            ).map(([key, label, Icon]) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={view === key}
-                onClick={() => switchView(key)}
-                className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground",
-                  view === key && "bg-background font-semibold text-foreground shadow-sm",
-                )}
-              >
-                <Icon className="size-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
-          {pick && (
-            <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => choose(null)}>
-              <X />
-              Show everyone
-            </Button>
-          )}
-          <div className="ml-auto flex items-center gap-1">
-            {view === "people" && (
-              <>
-                <ProfilePaceNote pace={account.profiles} timeZone={timeZone} />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-pressed={notOpened}
-                  title="Hide people whose profile you opened from AILI in the last 7 days"
-                  onClick={() => setNotOpened(!notOpened)}
-                  className={cn("ml-2", notOpened && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background")}
-                >
-                  <span className={cn("size-2 rounded-full", notOpened ? "bg-background" : "bg-blue-500")} aria-hidden="true" />
-                  Not opened
-                </Button>
-              </>
-            )}
-            <Select value={conn} onValueChange={(v) => setConn(v as ConnectionState | typeof ALL)}>
-              <SelectTrigger
-                size="sm"
-                aria-label="Connection"
-                className={cn(
-                  "min-w-40",
-                  conn !== ALL && "border-foreground bg-foreground text-background dark:bg-foreground [&_svg]:text-background",
-                )}
-              >
-                <SelectValue>
-                  {conn === ALL ? (
-                    "All connections"
-                  ) : (
-                    <>
-                      <ConnectionDot state={conn} />
-                      {CONNECTION_CHOICES.find((c) => c.key === conn)?.label} · {rows.length}
-                    </>
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value={ALL}>
-                  All connections
-                  <span className="ml-auto pl-3 text-muted-foreground tabular-nums">{scope.length}</span>
-                </SelectItem>
-                {CONNECTION_CHOICES.map((c) => (
-                  <SelectItem key={c.key} value={c.key}>
-                    <ConnectionDot state={c.key} />
-                    {c.label}
-                    <span className="ml-auto pl-3 text-muted-foreground tabular-nums">{connCounts[c.key]}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {conn !== ALL && (
-              <Button variant="ghost" size="icon-sm" aria-label="Show all connections" onClick={() => setConn(ALL)}>
-                <X />
-              </Button>
-            )}
-          </div>
-          <TagFilter tags={tags} people={people} value={tagIds} onChange={setTagIds} />
-        </div>
-
-        {showRequests && (
-          <RequestsStrip
-            invites={inviteFacts}
-            staleDays={staleDays}
-            week={account.invites.week}
-            onPickStale={() => setSelected(new Set(rows.filter(isStale).map((p) => p.id)))}
+      <div className="flex min-h-0 flex-1">
+        {view !== "week" && (
+          <FilterPanel
+            people={people}
+            tags={tags}
+            stages={stages}
+            byCompany={byCompany}
+            tagIds={tagIds}
+            conns={conns}
+            stageKeys={stageKeys}
+            notOpened={notOpened}
+            timeZone={timeZone}
+            onTag={(id) => setTagIds(toggleIn(tagIds, id))}
+            onConn={(c) => setConns(toggleIn(conns, c))}
+            onStage={(s) => setStageKeys(toggleIn(stageKeys, s))}
+            onNotOpened={() => setNotOpened(!notOpened)}
+            onClear={filtered ? clearFilters : undefined}
           />
         )}
 
-        {byCompany && (
-          <>
-            {guessed.map((g) => (
-              <GuessBar key={g.key} group={g} onRename={() => setRenaming(g.key)} />
-            ))}
-            <CompanyTable groups={companyRows} stages={stages} staleDays={staleDays} onOpen={setOpenCompany} />
-            {companyRows.length === 0 && (
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-auto">
+            {view === "week" && (
+              <>
+                <div className="flex items-center gap-2 px-6 pt-4">
+                  <h2 className="text-md font-semibold">Warm-up this week</h2>
+                  <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => switchView("people")}>
+                    <X />
+                    Back to people
+                  </Button>
+                </div>
+                <WarmupWeek people={people.filter(hasTag)} needed={account.alerts.touchesToConnect} />
+              </>
+            )}
+
+            {byCompany && (
+              <>
+                {guessed.map((g) => (
+                  <GuessBar key={g.key} group={g} onRename={() => setRenaming(g.key)} />
+                ))}
+                <CompaniesTable groups={companyRows} stages={stages} tags={tags} onOpen={setOpenCompany} />
+                {companyRows.length === 0 && (
+                  <div className="p-10 text-center text-sm text-muted-foreground">
+                    {people.length === 0 ? "No one yet. Import a list or add your first person." : "No companies match."}
+                  </div>
+                )}
+              </>
+            )}
+
+            {view === "people" && (
+              <Table className="table-fixed">
+                <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableRow className="text-2xs tracking-wider uppercase">
+                    <TableHead className="w-12 pl-5">
+                      <Checkbox
+                        aria-label="Select everyone shown"
+                        checked={allOn}
+                        onCheckedChange={(on) => setSelected(on ? new Set(shownIds) : new Set())}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[24%]">Name</TableHead>
+                    <TableHead className="w-[17%]">Company</TableHead>
+                    <TableHead className="w-44">Connection</TableHead>
+                    <TableHead className="w-36">Stage</TableHead>
+                    <TableHead>Tags</TableHead>
+                    <TableHead className="w-36 pr-5">Last activity</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((p) => {
+                    const on = selected.has(p.id);
+                    const myTags = tags.filter((t) => p.tagIds.includes(t.id));
+                    return (
+                      <TableRow
+                        key={p.id}
+                        data-state={on ? "selected" : undefined}
+                        className="group cursor-pointer"
+                        onClick={() => router.push(`/inbox?person=${p.id}`)}
+                      >
+                        <TableCell className="pl-5" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox aria-label={`Select ${p.name}`} checked={on} onCheckedChange={(v) => toggle(p.id, v === true)} />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <PersonAvatar person={p} className="size-8" />
+                            <div className="min-w-0">
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <span data-private className="truncate text-sm font-semibold">
+                                  {p.name}
+                                </span>
+                                <OpenedDot person={p} timeZone={timeZone} now={now} />
+                                {p.linkedinUrl && (
+                                  <a
+                                    href={p.linkedinUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    aria-label={`Open ${p.name} on LinkedIn`}
+                                    title="Open LinkedIn profile"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      noteOpened(p.id);
+                                    }}
+                                    className="flex shrink-0 rounded-[3px] opacity-70 transition-opacity hover:opacity-100"
+                                  >
+                                    <LinkedInMark className="size-3.5 text-[8px]" />
+                                  </a>
+                                )}
+                              </div>
+                              <div data-private className="truncate text-xs text-muted-foreground">
+                                {p.jobTitle || p.headline}
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <CompanyName name={p.company} />
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <ConnectionCell person={p} timeZone={timeZone} today={today} staleDays={staleDays} now={now} pending={pending} onAct={bulk} />
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <StageCell person={p} stages={stages} pending={pending} onAct={bulk} />
+                        </TableCell>
+                        <TableCell>
+                          <TagsLine tags={myTags} />
+                        </TableCell>
+                        <TableCell className="pr-5 text-xs text-muted-foreground" suppressHydrationWarning>
+                          {lastTouch(p).text}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+            {view === "people" && rows.length === 0 && (
               <div className="p-10 text-center text-sm text-muted-foreground">
-                {people.length === 0 ? "No one yet. Import a list or add your first person." : "No companies here."}
+                {people.length === 0 ? "No one yet. Import a list or add your first person." : "No one matches these filters."}
               </div>
             )}
-          </>
-        )}
-
-        {view === "week" && <WarmupWeek people={scope} needed={needed} />}
-
-        {view === "people" && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10 pl-6">
-                <Checkbox
-                  aria-label="Select everyone shown"
-                  checked={allOn}
-                  onCheckedChange={(on) => setSelected(on ? new Set(shownIds) : new Set())}
-                />
-              </TableHead>
-              <TableHead className="pl-4">Person</TableHead>
-              <TableHead>Warmth</TableHead>
-              <TableHead>Next</TableHead>
-              <TableHead>Tags</TableHead>
-              <TableHead className="pr-6">Last touch</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((p) => {
-              const on = selected.has(p.id);
-              const move = warmthMove(p, needed, now);
-              const usual = leadNext(p, staleDays, now);
-              const next = move && p.stage !== "lost" ? { text: move.short, due: move.due } : usual;
-              const line = warmupLine(p);
-              return (
-                <TableRow
-                  key={p.id}
-                  data-state={on ? "selected" : undefined}
-                  className="group cursor-pointer"
-                  onClick={() => router.push(`/inbox?person=${p.id}`)}
-                >
-                  <TableCell className="pl-6" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox aria-label={`Select ${p.name}`} checked={on} onCheckedChange={(v) => toggle(p.id, v === true)} />
-                  </TableCell>
-                  <TableCell className="pl-4">
-                    <div className="flex items-center gap-3">
-                      <PersonAvatar person={p} className="size-8" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span data-private className="text-md font-semibold">{p.name}</span>
-                          <OpenedDot person={p} timeZone={timeZone} now={now} />
-                          {!RING_STAGES.has(p.stage) && (
-                            <span className="rounded-md bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground">
-                              {stageLabel(stages, p.stage)}
-                            </span>
-                          )}
-                          {/* The row opens the chat; this opens their LinkedIn profile instead. */}
-                          {p.linkedinUrl && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <a
-                                  href={p.linkedinUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  aria-label={`Open ${p.name} on LinkedIn`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    noteOpened(p.id);
-                                  }}
-                                  className="flex size-6 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100"
-                                >
-                                  <LinkedInMark className="size-3.5 text-[8px]" />
-                                </a>
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom">Open LinkedIn profile</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                        <div data-private className="max-w-72 truncate text-xs text-muted-foreground">
-                          {[p.jobTitle || p.headline, p.company].filter(Boolean).join(" · ")}
-                        </div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col items-start gap-1">
-                      <WarmthChip warmth={warmthOf(p)} />
-                      {line && <span className="text-xs whitespace-nowrap text-muted-foreground">{line}</span>}
-                    </div>
-                  </TableCell>
-                  <TableCell
-                    title={move?.long}
-                    className={cn("text-md", next?.due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground/80")}
-                    suppressHydrationWarning
-                  >
-                    <NextCell person={p} text={next?.text ?? ""} pending={pending} onAct={(fn, msg) => bulk(fn, () => msg)} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tags
-                        .filter((t) => p.tagIds.includes(t.id))
-                        .map((t) => (
-                          <TagChip key={t.id} tag={t} />
-                        ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="pr-6 text-xs text-muted-foreground" suppressHydrationWarning>
-                    {lastTouch(p).text}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-        )}
-        {view === "people" && rows.length === 0 && (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            {people.length === 0 ? "No one yet. Import a list or add your first person." : "No one here."}
+            {/* Room so the last rows clear the selection bar. */}
+            {chosen.length > 0 && <div className="h-20" />}
           </div>
-        )}
-        {/* Room so the last rows clear the selection bar. */}
-        {chosen.length > 0 && <div className="h-20" />}
+
+          {view !== "week" && (
+            <div className="flex h-11 shrink-0 items-center gap-3 border-t px-5 text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                {byCompany
+                  ? `${companyRows.length} of ${companyCount} ${companyCount === 1 ? "company" : "companies"}`
+                  : `${rows.length} of ${leadCount} ${leadCount === 1 ? "person" : "people"}`}
+              </span>
+              {!byCompany && (
+                <span className="ml-auto">
+                  <ProfilePaceNote pace={account.profiles} timeZone={timeZone} />
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {chosen.length > 0 && (
+      {chosen.length > 0 && view === "people" && (
         <div
           role="toolbar"
           aria-label="Selected people"
-          className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl bg-primary py-1.5 pr-1.5 pl-4 text-md whitespace-nowrap text-primary-foreground shadow-lg"
+          className="absolute bottom-14 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl bg-primary py-1.5 pr-1.5 pl-4 text-md whitespace-nowrap text-primary-foreground shadow-lg"
         >
           <span className="mr-2 font-semibold">{chosen.length} selected</span>
-          <Button size="sm" variant="secondary" onClick={() => setMessaging(true)}>
-            <Send />
-            Message all
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="secondary" disabled={pending}>
+                <UserCheck />
+                Connection
+                <ChevronDown className="opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start">
+              <DropdownMenuItem onSelect={() => bulk(() => markRequestSent(chosen), (n) => `${people1(n)} marked as request sent today.`)}>
+                <Send />
+                Request sent today
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => bulk(() => markAccepted(chosen), (n) => `${people1(n)} marked as connected today.`)}>
+                <Check />
+                Connected today
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => bulk(() => markWithdrawn(chosen), (n) => (n === 1 ? "1 request marked as withdrawn." : `${n} requests marked as withdrawn.`))}>
+                <Undo2 />
+                I withdrew it on LinkedIn
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => bulk(() => markNotConnected(chosen), (n) => `${people1(n)} marked as not connected.`)}>
+                <X />
+                Not connected
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="hover:bg-primary-foreground/10 hover:text-primary-foreground" disabled={pending}>
+                <MoveRight />
+                Stage
+                <ChevronDown className="opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start">
+              {laterStages(stages).map((s) => (
+                <DropdownMenuItem key={s.key} onSelect={() => bulk(() => bulkSetStage(chosen, s.key), (n) => `${people1(n)} moved to ${s.label}.`)}>
+                  {s.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" className="hover:bg-primary-foreground/10 hover:text-primary-foreground" disabled={!tags.length || pending}>
                 <TagIcon />
-                Add tag
+                Tag
                 <ChevronDown className="opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start">
               {tags.map((t) => (
-                <DropdownMenuItem
-                  key={t.id}
-                  onSelect={() => bulk(() => bulkAddTag(chosen, t.id), (n) => `${t.label} added to ${people1(n)}.`)}
-                >
+                <DropdownMenuItem key={t.id} onSelect={() => bulk(() => bulkAddTag(chosen, t.id), (n) => `${t.label} added to ${people1(n)}.`)}>
                   <TagDot color={t.color} />
                   {t.label}
                 </DropdownMenuItem>
@@ -603,100 +542,49 @@ export function PeopleView({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" className="hover:bg-primary-foreground/10 hover:text-primary-foreground" disabled={pending}>
-                <MoveRight />
-                Move to stage
+                More
                 <ChevronDown className="opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start">
-              {stages.map((s) => (
-                <DropdownMenuItem
-                  key={s.key}
-                  onSelect={() => bulk(() => bulkSetStage(chosen, s.key), (n) => `${people1(n)} moved to ${s.label}.`)}
-                >
-                  {s.label}
+              <DropdownMenuItem onSelect={() => bulk(() => markProfilesOpened(chosen), (n) => `${people1(n)} marked as opened today.`)}>
+                <span className="size-2 rounded-full bg-blue-500" aria-hidden="true" />
+                Mark opened
+              </DropdownMenuItem>
+              {/* Message all and Withdraw go out through the Chrome helper, so only while it runs. */}
+              {account.helper.connected && (
+                <DropdownMenuItem onSelect={() => setMessaging(true)}>
+                  <Send />
+                  Message all
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="ghost" className="hover:bg-primary-foreground/10 hover:text-primary-foreground" disabled={pending}>
-                <UserCheck />
-                Connection
-                <ChevronDown className="opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start">
-              <DropdownMenuItem onSelect={() => bulk(() => markRequestSent(chosen), (n) => `${people1(n)} marked as request sent.`)}>
-                <Send />
-                Request sent on LinkedIn
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => bulk(() => markAccepted(chosen), (n) => `${people1(n)} marked as connected.`)}>
-                <Check />
-                They accepted
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => bulk(() => markWithdrawn(chosen), (n) => (n === 1 ? "1 request marked as withdrawn." : `${n} requests marked as withdrawn.`))}>
-                <Undo2 />
-                I withdrew it on LinkedIn
+              )}
+              {account.helper.connected && withdrawable.length > 0 && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    bulk(
+                      () => withdrawInvites(withdrawable.map((p) => p.id)),
+                      (n) => `Withdrawing ${n === 1 ? "1 request" : `${n} requests`}. The helper does it on LinkedIn in the next minute or so.`,
+                    )
+                  }
+                >
+                  <Undo2 />
+                  Withdraw on LinkedIn
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => bulk(() => moveToOther(chosen), (n) => `${people1(n)} moved to Other. Their conversations stay in the Inbox.`)}>
+                <MessageSquare />
+                Not leads
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="hover:bg-primary-foreground/10 hover:text-primary-foreground"
-            disabled={pending}
-            title="For profiles you opened outside AILI: they get today's blue dot and count this hour"
-            onClick={() => bulk(() => markProfilesOpened(chosen), (n) => `${people1(n)} marked as opened today.`)}
-          >
-            <span className="size-2 rounded-full bg-blue-400" aria-hidden="true" />
-            Mark opened
-          </Button>
-          {withdrawable.length > 0 && account.helper.connected && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="hover:bg-primary-foreground/10 hover:text-primary-foreground"
-              disabled={pending}
-              onClick={() =>
-                bulk(
-                  () => withdrawInvites(withdrawable.map((p) => p.id)),
-                  (n) => `Withdrawing ${n === 1 ? "1 request" : `${n} requests`}. The helper does it on LinkedIn in the next minute or so.`,
-                )
-              }
-            >
-              <Undo2 />
-              Withdraw {withdrawable.length === 1 ? "request" : `${withdrawable.length} requests`}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="hover:bg-primary-foreground/10 hover:text-primary-foreground"
-            disabled={pending}
-            onClick={() => bulk(() => moveToOther(chosen), (n) => `${people1(n)} moved to Other. Their conversations stay in the Inbox.`)}
-          >
-            <MessageSquare />
-            Not leads
-          </Button>
           {confirmArchive ? (
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={pending}
-              onClick={() => bulk(() => bulkArchive(chosen), (n) => `${people1(n)} archived.`)}
-            >
+            <Button size="sm" variant="destructive" disabled={pending} onClick={() => bulk(() => bulkArchive(chosen), (n) => `${people1(n)} archived.`)}>
               <Archive />
               Archive {chosen.length}?
             </Button>
           ) : (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="hover:bg-primary-foreground/10 hover:text-primary-foreground"
-              onClick={() => setConfirmArchive(true)}
-            >
+            <Button size="sm" variant="ghost" className="hover:bg-primary-foreground/10 hover:text-primary-foreground" onClick={() => setConfirmArchive(true)}>
               <Archive />
               Archive
             </Button>
@@ -725,13 +613,7 @@ export function PeopleView({
         stages={stages}
         company={adding?.company}
       />
-      <PostAlertsPanel
-        open={alertsOpen}
-        onOpenChange={setAlertsOpen}
-        people={people}
-        perDay={account.alerts.perDay}
-        timeZone={timeZone}
-      />
+      <PostAlertsPanel open={alertsOpen} onOpenChange={setAlertsOpen} people={people} perDay={account.alerts.perDay} timeZone={timeZone} />
       <CompanyPanel
         group={opened}
         staleDays={staleDays}
@@ -739,17 +621,11 @@ export function PeopleView({
         onRename={() => opened && setRenaming(opened.key)}
         onAddPerson={(company) => setAdding({ company })}
       />
-      <CompanyNameDialog
-        group={renamed}
-        others={companyNames.filter((n) => n !== renamed?.name)}
-        onOpenChange={(open) => !open && setRenaming(null)}
-      />
+      <CompanyNameDialog group={renamed} others={companyNames.filter((n) => n !== renamed?.name)} onOpenChange={(open) => !open && setRenaming(null)} />
       <ImportDialog open={importing} onOpenChange={setImporting} stages={stages} tags={tags} />
       <MessageAllDialog
         open={messaging}
-        onOpenChange={(open) => {
-          setMessaging(open);
-        }}
+        onOpenChange={setMessaging}
         title={`Message ${people1(chosenPeople.length)}`}
         groupName=""
         people={chosenPeople}
@@ -760,157 +636,379 @@ export function PeopleView({
   );
 }
 
-/** Tags to show, as many as you like: people with any of them. None ticked is everyone. */
-function TagFilter({ tags, people, value, onChange }: { tags: Tag[]; people: Person[]; value: string[]; onChange: (ids: string[]) => void }) {
-  const picked = tags.filter((t) => value.includes(t.id));
-  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+function FilterSection({ title, n, children }: { title: string; n: number; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-1">
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label="Tags"
-            className={cn(
-              "min-w-32 justify-between font-normal",
-              picked.length > 0 && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background dark:bg-foreground",
-            )}
-          >
-            <span className="flex min-w-0 items-center gap-1.5">
-              {picked.length === 0 ? (
-                "All tags"
-              ) : picked.length === 1 ? (
-                <>
-                  <TagDot color={picked[0].color} />
-                  <span className="truncate">{picked[0].label}</span>
-                </>
-              ) : (
-                <>
-                  <span className="flex -space-x-0.5">
-                    {picked.slice(0, 3).map((t) => (
-                      <TagDot key={t.id} color={t.color} />
-                    ))}
-                  </span>
-                  {picked.length} tags
-                </>
-              )}
-            </span>
-            <ChevronDown className="opacity-60" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-64 p-1">
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-muted"
-          >
-            All tags
-            {value.length === 0 && <Check className="ml-auto size-4" />}
-          </button>
-          {tags.map((t) => {
-            const on = value.includes(t.id);
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={on}
-                onClick={() => toggle(t.id)}
-                className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-muted"
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-[4px] border",
-                    on ? "border-foreground bg-foreground text-background" : "border-input",
-                  )}
-                >
-                  {on && <Check className="size-3" />}
-                </span>
-                <TagDot color={t.color} />
-                <span className="truncate">{t.label}</span>
-                <span className="ml-auto pl-3 text-xs text-muted-foreground tabular-nums">
-                  {people.filter((p) => p.tagIds.includes(t.id)).length}
-                </span>
-              </button>
-            );
-          })}
-          {tags.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">No tags yet.</p>}
-          {value.length > 1 && (
-            <p className="mt-1 border-t px-2 pt-1.5 pb-1 text-2xs text-muted-foreground">Showing people with any of these tags.</p>
-          )}
-        </PopoverContent>
-      </Popover>
-      {picked.length > 0 && (
-        <Button variant="ghost" size="icon-sm" aria-label="Show all tags" onClick={() => onChange([])}>
-          <X />
-        </Button>
-      )}
+    <div className="border-b px-3 pt-3 pb-2 last:border-b-0">
+      <div className="flex items-center justify-between px-1.5 pb-1 text-xs font-semibold text-foreground">
+        {title}
+        {n > 0 && <span className="rounded-full bg-muted px-1.5 text-2xs text-muted-foreground tabular-nums">{n}</span>}
+      </div>
+      {children}
     </div>
   );
 }
 
+function FilterOption({ on, onClick, label, count, dot }: { on: boolean; onClick: () => void; label: string; count: number; dot?: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={on}
+      onClick={onClick}
+      className="flex h-8 w-full items-center gap-2 rounded-md px-1.5 text-left text-sm text-foreground/85 hover:bg-muted"
+    >
+      <span
+        aria-hidden="true"
+        className={cn("flex size-4 shrink-0 items-center justify-center rounded-[4px] border", on ? "border-foreground bg-foreground text-background" : "border-input")}
+      >
+        {on && <Check className="size-3" />}
+      </span>
+      {dot}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
+    </button>
+  );
+}
+
+function MenuChoice({ on, pending, onClick, children }: { on: boolean; pending: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={onClick}
+      className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted", on && "font-semibold")}
+    >
+      <span className="w-4">{on && <Check className="size-3.5" />}</span>
+      {children}
+    </button>
+  );
+}
+
+/** The left column: tick tags, connection, stage, or not opened lately. Counts are for everyone. */
+function FilterPanel({
+  people,
+  tags,
+  stages,
+  byCompany,
+  tagIds,
+  conns,
+  stageKeys,
+  notOpened,
+  timeZone,
+  onTag,
+  onConn,
+  onStage,
+  onNotOpened,
+  onClear,
+}: {
+  people: Person[];
+  tags: Tag[];
+  stages: StageDef[];
+  byCompany: boolean;
+  tagIds: Set<string>;
+  conns: Set<ConnectionState>;
+  stageKeys: Set<string>;
+  notOpened: boolean;
+  timeZone: string;
+  onTag: (id: string) => void;
+  onConn: (c: ConnectionState) => void;
+  onStage: (key: string) => void;
+  onNotOpened: () => void;
+  onClear?: () => void;
+}) {
+  const counts = useMemo(() => {
+    const tag = new Map<string, number>();
+    const conn = new Map<ConnectionState, number>();
+    const stage = new Map<string, number>();
+    let fresh = 0;
+    for (const p of people) {
+      for (const id of p.tagIds) tag.set(id, (tag.get(id) ?? 0) + 1);
+      const c = connectionOf(p);
+      conn.set(c, (conn.get(c) ?? 0) + 1);
+      stage.set(p.stage, (stage.get(p.stage) ?? 0) + 1);
+      if (openedState(p.profileOpenedAt, timeZone) === null) fresh += 1;
+    }
+    return { tag, conn, stage, fresh };
+  }, [people, timeZone]);
+
+
+  return (
+    <aside aria-label="Filters" className="flex w-60 shrink-0 flex-col overflow-y-auto border-r bg-muted/20">
+      {tags.length > 0 && (
+        <FilterSection title="Tags" n={tagIds.size}>
+          {tags.map((t) => (
+            <FilterOption key={t.id} on={tagIds.has(t.id)} onClick={() => onTag(t.id)} label={t.label} count={counts.tag.get(t.id) ?? 0} dot={<TagDot color={t.color} />} />
+          ))}
+        </FilterSection>
+      )}
+      <FilterSection title="Connection" n={conns.size}>
+        {CONNECTIONS.map((c) => (
+          <FilterOption key={c.key} on={conns.has(c.key)} onClick={() => onConn(c.key)} label={c.label} count={counts.conn.get(c.key) ?? 0} />
+        ))}
+      </FilterSection>
+      <FilterSection title="Stage" n={stageKeys.size}>
+        {laterStages(stages).map((s) => (
+          <FilterOption key={s.key} on={stageKeys.has(s.key)} onClick={() => onStage(s.key)} label={s.label} count={counts.stage.get(s.key) ?? 0} />
+        ))}
+      </FilterSection>
+      {!byCompany && (
+        <FilterSection title="Opened" n={notOpened ? 1 : 0}>
+          <FilterOption on={notOpened} onClick={onNotOpened} label="Not opened in 7 days" count={counts.fresh} dot={<span className="size-2 shrink-0 rounded-full bg-blue-500" />} />
+        </FilterSection>
+      )}
+      {onClear && (
+        <button type="button" onClick={onClear} className="mx-4 my-3 self-start text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+          Clear filters
+        </button>
+      )}
+    </aside>
+  );
+}
+
+function CompanyName({ name }: { name: string }) {
+  if (!name) return <span className="text-xs text-muted-foreground">–</span>;
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-md border bg-muted/60 text-2xs font-bold text-foreground/70">
+        {name.charAt(0).toUpperCase()}
+      </span>
+      <span data-private className="truncate text-sm">
+        {name}
+      </span>
+    </span>
+  );
+}
+
+function TagsLine({ tags }: { tags: Tag[] }) {
+  if (!tags.length) return null;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-xs text-foreground/80" title={tags.map((t) => t.label).join(", ")}>
+      <TagDot color={tags[0].color} />
+      <span className="truncate">{tags[0].label}</span>
+      {tags.length > 1 && <span className="shrink-0 text-muted-foreground">+{tags.length - 1}</span>}
+    </span>
+  );
+}
+
+const PILL = {
+  connected: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400",
+  pending: "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400",
+  old: "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400",
+  not: "bg-muted text-muted-foreground hover:bg-muted/70",
+};
+
 /**
- * The Next column. While you are not connected yet, it is also where you
- * change their connection by hand after doing it on LinkedIn: click
- * "Waiting to accept" (or "Send a request") for the choices. Nothing goes
- * to LinkedIn.
+ * Connection on a row: green Connected 19 Oct, amber Request sent 5d (red
+ * after the old-request days), grey Not connected. Click to change it, with
+ * the day it happened. You did it on LinkedIn; AILI only notes it.
  */
-function NextCell({
+function ConnectionCell({
   person,
-  text,
+  timeZone,
+  today,
+  staleDays,
+  now,
   pending,
   onAct,
 }: {
   person: Person;
-  text: string;
+  timeZone: string;
+  today: string;
+  staleDays: number;
+  now: Date;
   pending: boolean;
-  onAct: (fn: () => Promise<number>, done: string) => void;
+  onAct: (run: () => Promise<number>, done: (n: number) => string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [day, setDay] = useState(today);
   const state = connectionOf(person);
-  if (state === "connected") return <>{text}</>;
   const first = person.name.split(" ")[0];
+  const waited = person.invite?.sentAt ? waitingDays(person.invite.sentAt, now) : null;
+  const old = state === "pending" && waited !== null && waited > staleDays;
+  const label =
+    state === "connected"
+      ? person.connectedAt
+        ? `Connected · ${dayMonth(person.connectedAt, timeZone)}`
+        : "Connected"
+      : state === "pending"
+        ? waited === null
+          ? "Request sent"
+          : `Request sent · ${waited === 0 ? "today" : `${waited}d`}`
+        : "Not connected";
+  const when = day === today ? "today" : dayMonth(`${day}T12:00:00`, "UTC");
+  const act = (run: () => Promise<number>, done: string) => {
+    setOpen(false);
+    onAct(run, () => done);
+  };
   const ids = [person.id];
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setDay(today);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={pending}
+          title="Change their connection: you did it on LinkedIn, AILI notes it"
+          className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold whitespace-nowrap transition-colors", PILL[old ? "old" : state])}
+          suppressHydrationWarning
+        >
+          {label}
+          <ChevronDown className="size-3 opacity-60" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-1.5">
+        <div className="px-2 pt-1 pb-1 text-2xs font-semibold tracking-wider text-muted-foreground uppercase">Connection</div>
+        <label className="flex items-center justify-between gap-2 px-2 pb-1.5 text-xs text-muted-foreground">
+          On
+          <input
+            type="date"
+            value={day}
+            max={today}
+            onChange={(e) => setDay(e.target.value || today)}
+            className="h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+          />
+        </label>
+        <MenuChoice pending={pending} on={state === "not"} onClick={() => act(() => markNotConnected(ids), `${first} marked as not connected.`)}>
+          Not connected
+        </MenuChoice>
+        <MenuChoice pending={pending} on={state === "pending"} onClick={() => act(() => markRequestSent(ids, day), `Request to ${first} noted as sent ${when}.`)}>
+          Request sent
+        </MenuChoice>
+        <MenuChoice pending={pending} on={state === "connected"} onClick={() => act(() => markAccepted(ids, day), `${first} marked as connected ${when}.`)}>
+          Connected
+        </MenuChoice>
+        {state === "pending" && (
+          <MenuChoice pending={pending} on={false} onClick={() => act(() => markWithdrawn(ids), `Request to ${first} noted as withdrawn.`)}>
+            I withdrew it on LinkedIn
+          </MenuChoice>
+        )}
+        <p className="mt-1 border-t px-2 pt-1.5 pb-1 text-2xs leading-relaxed text-muted-foreground">You did it on LinkedIn; AILI only notes it, on the day above.</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function StageCell({
+  person,
+  stages,
+  pending,
+  onAct,
+}: {
+  person: Person;
+  stages: StageDef[];
+  pending: boolean;
+  onAct: (run: () => Promise<number>, done: (n: number) => string) => void;
+}) {
+  const first = person.name.split(" ")[0];
+  const early = CONNECTION_STAGES.has(person.stage);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           disabled={pending}
-          onClick={(e) => e.stopPropagation()}
-          title="Change their connection: you did it on LinkedIn, AILI notes it"
-          className="-mx-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-left hover:bg-muted data-[state=open]:bg-muted"
+          className={cn(
+            "inline-flex h-6 max-w-full items-center gap-1 rounded-md border px-2 text-xs font-medium whitespace-nowrap hover:bg-muted data-[state=open]:bg-muted",
+            early && "border-dashed",
+          )}
         >
-          {text}
-          <ChevronDown className="size-3.5 shrink-0 opacity-50" />
+          <span className={cn("truncate", early && "font-normal text-muted-foreground")}>{early ? "No stage yet" : stageLabel(stages, person.stage)}</span>
+          <ChevronDown className="size-3 shrink-0 opacity-50" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-        {state === "pending" ? (
+      <DropdownMenuContent align="start">
+        {laterStages(stages).map((s) => (
+          <DropdownMenuItem key={s.key} onSelect={() => onAct(() => bulkSetStage([person.id], s.key), () => `${first} moved to ${s.label}.`)}>
+            <span className="w-4">{s.key === person.stage && <Check className="size-3.5" />}</span>
+            {s.label}
+          </DropdownMenuItem>
+        ))}
+        {!early && (
           <>
-            <DropdownMenuItem onSelect={() => onAct(() => markAccepted(ids), `${first} marked as connected.`)}>
-              <Check />
-              They accepted
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onAct(() => markWithdrawn(ids), `Request to ${first} noted as withdrawn.`)}>
-              <Undo2 />
-              I withdrew it on LinkedIn
-            </DropdownMenuItem>
-          </>
-        ) : (
-          <>
-            <DropdownMenuItem onSelect={() => onAct(() => markRequestSent(ids), `Request to ${first} noted as sent.`)}>
-              <Send />
-              I sent a request on LinkedIn
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onAct(() => markAccepted(ids), `${first} marked as connected.`)}>
-              <Check />
-              Already connected
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onAct(() => bulkSetStage([person.id], earlyStageFor(person)), () => `${first} has no stage now.`)}>
+              <span className="w-4" />
+              No stage yet
             </DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Companies: one row per firm, with its people, how many are connected, how far the firm got, tags and the latest activity. */
+function CompaniesTable({ groups, stages, tags, onOpen }: { groups: CompanyGroup[]; stages: StageDef[]; tags: Tag[]; onOpen: (key: string) => void }) {
+  return (
+    <Table className="table-fixed">
+      <TableHeader className="sticky top-0 z-10 bg-background">
+        <TableRow className="text-2xs tracking-wider uppercase">
+          <TableHead className="w-[30%] pl-5">Company</TableHead>
+          <TableHead className="w-44">People</TableHead>
+          <TableHead className="w-48">Connected</TableHead>
+          <TableHead className="w-36">Furthest stage</TableHead>
+          <TableHead>Tags</TableHead>
+          <TableHead className="w-32 pr-5">Last activity</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {groups.map((g) => {
+          const states = g.people.map(connectionOf);
+          const connected = states.filter((s) => s === "connected").length;
+          const waiting = states.filter((s) => s === "pending").length;
+          const groupTags = tags.filter((t) => g.people.some((p) => p.tagIds.includes(t.id)));
+          return (
+            <TableRow key={g.key || "none"} className={cn(g.key && "cursor-pointer")} onClick={() => g.key && onOpen(g.key)}>
+              <TableCell className="pl-5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/60 text-xs font-bold text-foreground/70">
+                    {g.key ? g.name.charAt(0).toUpperCase() : "–"}
+                  </span>
+                  <div className="min-w-0">
+                    <div data-private className={cn("truncate text-sm font-semibold", !g.key && "font-medium text-muted-foreground")}>
+                      {g.name}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{g.people.length === 1 ? "1 person" : `${g.people.length} people`}</div>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <span className="flex items-center gap-1.5">
+                  <span className="flex -space-x-1.5">
+                    {g.people.slice(0, 4).map((p) => (
+                      <PersonAvatar key={p.id} person={p} className="size-6 text-2xs ring-2 ring-background" link={false} />
+                    ))}
+                  </span>
+                  {g.people.length > 4 && <span className="text-xs text-muted-foreground">+{g.people.length - 4}</span>}
+                </span>
+              </TableCell>
+              <TableCell className="text-sm">
+                {connected} of {g.people.length} connected
+                {waiting > 0 && <span className="text-muted-foreground"> · {waiting} waiting</span>}
+              </TableCell>
+              <TableCell>
+                {g.key &&
+                  (CONNECTION_STAGES.has(g.stage) ? (
+                    <span className="text-xs text-muted-foreground">No stage yet</span>
+                  ) : (
+                    <span className="inline-flex h-6 items-center rounded-md border px-2 text-xs font-medium">{stageLabel(stages, g.stage)}</span>
+                  ))}
+              </TableCell>
+              <TableCell>
+                <TagsLine tags={groupTags} />
+              </TableCell>
+              <TableCell className="pr-5 text-xs text-muted-foreground" suppressHydrationWarning>
+                {ago(g.lastAt)}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }

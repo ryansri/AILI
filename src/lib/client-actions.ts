@@ -99,6 +99,7 @@ export const queueInvite = unwrap(invites.queueInvite);
 export const withdrawInvites = unwrap(invites.withdrawInvites);
 export const markRequestSent = unwrap(invites.markRequestSent);
 export const markAccepted = unwrap(invites.markAccepted);
+export const markNotConnected = unwrap(invites.markNotConnected);
 export const markWithdrawn = unwrap(invites.markWithdrawn);
 export const setInviteSettings = unwrap(invites.setInviteSettings);
 export const openedForAlerts = unwrap(alerts.openedForAlerts);

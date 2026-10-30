@@ -8,7 +8,7 @@ import { db } from "./db";
  * follow. Nothing goes to LinkedIn.
  */
 
-export type ConnectionChange = "request_sent" | "connected" | "withdrawn";
+export type ConnectionChange = "request_sent" | "connected" | "withdrawn" | "not_connected";
 
 const EARLY = ["warming", "requested"];
 const OPEN = ["queued", "sending", "sent", "withdrawing"];
@@ -62,6 +62,19 @@ export async function setConnection(workspaceId: string, personIds: string[], ch
         },
       });
       out.push({ personId: p.id, changed: !already });
+    } else if (change === "not_connected") {
+      // Marked by mistake: no request waiting, not connected, back to warming up.
+      const was = p.connection === "yes" || Boolean(latest && OPEN.includes(latest.status));
+      await db.invite.updateMany({ where: { personId: p.id, status: { in: OPEN } }, data: { status: "withdrawn", withdrawnAt: at, claimedAt: null, error: "" } });
+      await db.person.update({
+        where: { id: p.id },
+        data: {
+          connection: "no",
+          connectedAt: null,
+          ...(["requested", "connected"].includes(p.stage) ? { stage: "warming", stageChangedAt: at } : {}),
+        },
+      });
+      out.push({ personId: p.id, changed: was });
     } else {
       const open = latest && OPEN.includes(latest.status) ? latest : null;
       if (open) await db.invite.update({ where: { id: open.id }, data: { status: "withdrawn", withdrawnAt: at, claimedAt: null, error: "" } });

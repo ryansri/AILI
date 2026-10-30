@@ -95,4 +95,15 @@ describe.skipIf(!hasDb)("update_connections", () => {
     expect(await db.person.findUniqueOrThrow({ where: { id: other.id } })).toMatchObject({ lead: true, connection: "yes", stage: "connected" });
     expect(await db.person.findFirstOrThrow({ where: { workspaceId: w.id, name: "Tia Tagless" } })).toMatchObject({ lead: true, stage: "warming", connection: "no" });
   });
+
+  it("undoes a mistake: not connected after all", async () => {
+    const { setConnection } = await import("../connection-store");
+    const w = await db.workspace.create({ data: { name: "Undo test", initials: "U" } });
+    const p = await db.person.create({ data: { workspaceId: w.id, name: "Una Undo", lead: true, stage: "warming" } });
+    await setConnection(w.id, [p.id], "connected", new Date("2026-10-20T01:00:00Z"));
+    expect(await db.person.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ connection: "yes", stage: "connected" });
+    const [r] = await setConnection(w.id, [p.id], "not_connected");
+    expect(r.changed).toBe(true);
+    expect(await db.person.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ connection: "no", stage: "warming", connectedAt: null });
+  });
 });
