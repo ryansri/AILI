@@ -18,6 +18,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const { db } = await import("../db");
 const { TOOLS } = await import("./tools");
 const { wallTimeToDate, toWallInput } = await import("../time-zone");
+const { FIRST_HOUR, LAST_HOUR } = await import("../schedule");
 
 afterAll(async () => {
   await db.$disconnect();
@@ -63,10 +64,11 @@ describe.skipIf(!hasDb)("save_draft with a time and a second message", () => {
     const p = await db.person.create({ data: { workspaceId: w.id, name: "Andy Batstone", lead: true } });
     const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof saveDraft.run>[1];
     const before = Date.now();
-    // Only in the day, where the user is: a night-time run of this test checks the refusal instead.
-    const hour = Number(new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", hourCycle: "h23" }).format(new Date()));
+    // Only 7 am to 9 pm where the user is (FIRST_HOUR, LAST_HOUR): when 3 minutes from now falls outside, this checks the refusal instead.
+    const at = new Date(before + 4 * 60_000);
+    const hour = Number(new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", hourCycle: "h23" }).format(at));
     const run = saveDraft.run({ person_id: p.id, text: "saw your post", send_in_minutes: 3, second_text: "where are you starting?", second_after_minutes: 3 }, ctx);
-    if (hour < 7 || hour >= 20) {
+    if (hour < FIRST_HOUR || hour >= LAST_HOUR) {
       await expect(run).rejects.toThrow(/7 am and 9 pm/);
       return;
     }
