@@ -84,6 +84,8 @@ function useView(): View {
 
 /** The first stages are the connection itself (the Connection column); Stage is what comes after. */
 const CONNECTION_STAGES = new Set(["warming", "requested", "connected"]);
+/** Not a fit: hidden on Leads unless ticked under Stage. */
+const LOST = "lost";
 const laterStages = (stages: StageDef[]) => stages.filter((s) => !CONNECTION_STAGES.has(s.key));
 /** Back to no stage: the early stage that matches their connection. */
 const earlyStageFor = (p: Person) => ({ connected: "connected", pending: "requested", not: "warming" })[connectionOf(p)];
@@ -152,6 +154,10 @@ export function PeopleView({
   const companies = useMemo(() => groupByCompany(people, stages, companyRules), [people, stages, companyRules]);
   const byCompany = view === "companies";
 
+  // Not a fit stays out of sight unless you tick it, so the list is the people worth your time.
+  const showLost = stageKeys.has(LOST);
+  const lostCount = useMemo(() => people.filter((p) => p.stage === LOST).length, [people]);
+
   const q = query.trim().toLowerCase();
   const hasTag = (p: Person) => tagIds.size === 0 || p.tagIds.some((id) => tagIds.has(id));
   const rows = useMemo(() => {
@@ -159,13 +165,14 @@ export function PeopleView({
       if (tagIds.size && !p.tagIds.some((id) => tagIds.has(id))) return false;
       if (conns.size && !conns.has(connectionOf(p))) return false;
       if (stageKeys.size && !stageKeys.has(p.stage)) return false;
+      if (p.stage === LOST && !showLost) return false;
       if (notOpened && openedState(p.profileOpenedAt, timeZone) !== null) return false;
       if (q && !`${p.name} ${p.jobTitle} ${p.company} ${p.headline}`.toLowerCase().includes(q)) return false;
       return true;
     });
     const time = (iso: string | undefined) => (iso ? new Date(iso).getTime() : 0);
     return list.sort((a, b) => time(lastTouch(b).at) - time(lastTouch(a).at));
-  }, [people, tagIds, conns, stageKeys, notOpened, timeZone, q]);
+  }, [people, tagIds, conns, stageKeys, showLost, notOpened, timeZone, q]);
 
   const companyRows = useMemo(
     () =>
@@ -173,10 +180,11 @@ export function PeopleView({
         if (tagIds.size && !g.people.some((p) => p.tagIds.some((id) => tagIds.has(id)))) return false;
         if (conns.size && !g.people.some((p) => conns.has(connectionOf(p)))) return false;
         if (stageKeys.size && !stageKeys.has(g.stage)) return false;
+        if (g.stage === LOST && !showLost) return false;
         if (q && !`${g.name} ${g.people.map((p) => `${p.name} ${p.jobTitle}`).join(" ")}`.toLowerCase().includes(q)) return false;
         return true;
       }),
-    [companies, tagIds, conns, stageKeys, q],
+    [companies, tagIds, conns, stageKeys, showLost, q],
   );
   const guessed = byCompany ? companyRows.filter((g) => g.guessed).slice(0, 3) : [];
   const opened = openCompany === null ? null : (companies.find((g) => g.key === openCompany) ?? null);
@@ -228,8 +236,8 @@ export function PeopleView({
   const people1 = (n: number) => (n === 1 ? "1 person" : `${n} people`);
   const withdrawable = chosenPeople.filter((p) => ["queued", "sending", "sent", "failed"].includes(p.invite?.status ?? ""));
   const now = new Date();
-  const leadCount = people.length;
-  const companyCount = companies.filter((g) => g.key).length;
+  const leadCount = people.length - lostCount;
+  const companyCount = companies.filter((g) => g.key && g.stage !== LOST).length;
 
   const tab = (key: "people" | "companies", label: string, count: number) => (
     <button
@@ -439,6 +447,7 @@ export function PeopleView({
                 {byCompany
                   ? `${companyRows.length} of ${companyCount} ${companyCount === 1 ? "company" : "companies"}`
                   : `${rows.length} of ${leadCount} ${leadCount === 1 ? "person" : "people"}`}
+                {lostCount > 0 && !showLost && ` · ${lostCount} not a fit, hidden`}
               </span>
               {!byCompany && (
                 <span className="ml-auto">
@@ -732,10 +741,12 @@ function FilterPanel({
     const stage = new Map<string, number>();
     let fresh = 0;
     for (const p of people) {
+      stage.set(p.stage, (stage.get(p.stage) ?? 0) + 1);
+      // Not a fit is hidden unless ticked, so the other counts leave it out too.
+      if (p.stage === LOST) continue;
       for (const id of p.tagIds) tag.set(id, (tag.get(id) ?? 0) + 1);
       const c = connectionOf(p);
       conn.set(c, (conn.get(c) ?? 0) + 1);
-      stage.set(p.stage, (stage.get(p.stage) ?? 0) + 1);
       if (openedState(p.profileOpenedAt, timeZone) === null) fresh += 1;
     }
     return { tag, conn, stage, fresh };
@@ -758,7 +769,7 @@ function FilterPanel({
       </FilterSection>
       <FilterSection title="Stage" n={stageKeys.size}>
         {laterStages(stages).map((s) => (
-          <FilterOption key={s.key} on={stageKeys.has(s.key)} onClick={() => onStage(s.key)} label={s.label} count={counts.stage.get(s.key) ?? 0} />
+          <FilterOption key={s.key} on={stageKeys.has(s.key)} onClick={() => onStage(s.key)} label={s.key === LOST && !stageKeys.has(s.key) ? `${s.label} (hidden)` : s.label} count={counts.stage.get(s.key) ?? 0} />
         ))}
       </FilterSection>
       {!byCompany && (
