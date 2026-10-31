@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { connectionOf } from "@/lib/invites";
+import { connectionOf, requestLoop } from "@/lib/invites";
 import type { Person } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { noteOpened } from "@/components/opened-dot";
@@ -25,22 +25,31 @@ export function initials(name: string): string {
 const RING = {
   connected: "outline-emerald-500",
   pending: "outline-amber-400",
+  withdrawn: "outline-violet-500",
   not: "outline-stone-300 dark:outline-stone-600",
 };
 const RING_TITLE = {
   connected: "Connected on LinkedIn",
   pending: "Request sent, waiting for them to accept",
+  withdrawn: "Request withdrawn, waiting out LinkedIn's 3 weeks",
   not: "Not connected on LinkedIn",
 };
 
+/** The ring's state: purple while a withdrawn request waits out LinkedIn's 3 weeks. */
+function ringOf(person: Person): keyof typeof RING {
+  const state = connectionOf(person);
+  return state === "not" && requestLoop(person)?.step === "withdrawn" ? "withdrawn" : state;
+}
+
 /**
  * A person's photo, everywhere in the app: the ring shows the connection
- * (grey not connected, amber request sent, green connected), and a click
+ * (grey not connected, amber request sent, purple withdrawn and waiting
+ * 3 weeks, green connected), and a click
  * opens their LinkedIn profile. Pass link={false} where the photo already
  * sits inside a link or button.
  */
 export function PersonAvatar({ person, className, link = true }: { person: Person; className?: string; link?: boolean }) {
-  const state = connectionOf(person);
+  const state = ringOf(person);
   const avatar = (
     <Avatar className={cn("outline-2 outline-offset-2", RING[state], className)} title={link && person.linkedinUrl ? undefined : RING_TITLE[state]}>
       {person.pictureUrl && <AvatarImage src={person.pictureUrl} alt="" />}
