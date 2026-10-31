@@ -6,7 +6,9 @@ import { linkedInPostUrl } from "../linkedin-posting";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "../linkedin-text";
 import { addFirstComment, checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
 import { formatWhen, offsetLabel, parseWhen, wallTimeToDate } from "../time-zone";
-import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel } from "../plan";
+import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel, timeLabel } from "../plan";
+import { CHANNEL_NAMES, CHANNELS, daysLabel, type WeekView } from "../posting-weeks";
+import { loadPostingWeeks, type PostingWeeks } from "../posting-weeks-server";
 import { clockFor, loadPlan, type EntryView } from "../content-plan";
 import { addEntries, fillMatchingRow, followSchedule, linkPost, moveEntry, ownEntry, postedAtFor, updateEntry, type EntryInput } from "../plan-store";
 import { stageLabel } from "../types";
@@ -668,6 +670,23 @@ function describeRow(r: EntryView, tz: string): string {
   return `- ${when} · ${r.kind} · "${r.topic || "(no topic yet)"}" · ${status}${post} (row id: ${r.id})${extra.length ? `\n  ${extra.join(" · ")}` : ""}`;
 }
 
+/** "Posting days: Personal Mon · Tue · Wed at 10:30 am; … This week: … Next week: …" */
+function postingDaysLine(weeks: PostingWeeks): string {
+  const usual = CHANNELS.map((c) => `${CHANNEL_NAMES[c]} ${daysLabel(weeks.usual[c].days)}${weeks.usual[c].days.length ? ` at ${timeLabel(weeks.usual[c].time)}` : ""}`).join("; ");
+  const week = (wk: WeekView, name: string) => {
+    const open = CHANNELS.flatMap((c) => wk.channels[c].slots.filter((s) => s.planned && (s.state === "empty" || s.state === "planned" || s.state === "written")).map((s) => `${CHANNEL_NAMES[c]} ${dayLabel(s.day)}`));
+    const counts = CHANNELS.filter((c) => wk.channels[c].total).map((c) => `${CHANNEL_NAMES[c]} ${wk.channels[c].done} of ${wk.channels[c].total}`).join(", ");
+    return `${name}${wk.note ? ` (${wk.note})` : ""}: ${counts || "no posting days"}${open.length ? `; still needs a post: ${open.join(", ")}` : ""}.`;
+  };
+  return [
+    `Posting days (the user's usual week, set in AILI Content, Weeks): ${usual}. Plan new posts on these days and times; the user posts on the company page by hand.`,
+    weeks.ahead[0] ? week(weeks.ahead[0], "This week") : "",
+    weeks.ahead[1] ? week(weeks.ahead[1], "Next week") : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 const getPlan: Tool = {
   name: "get_plan",
   title: "Read the content plan",
@@ -691,14 +710,16 @@ const getPlan: Tool = {
     const tz = plan.timeZone;
     const from = /^\d{4}-\d{2}-\d{2}$/.test(text(args.from)) ? text(args.from) : addDays(plan.today, -7);
     const to = addDays(from, Math.min(Math.max(Number(args.days) || 21, 1), 120) - 1);
+    const weeks = await loadPostingWeeks(w, { weeksBack: 0, weeksAhead: 2 });
     const header = [
       `Now: ${formatWhen(new Date(), tz)} (${tz}). Plan warning: ${plan.warnDays ? `${plan.warnDays} days before a row's day` : "off"}.`,
+      postingDaysLine(weeks),
     ];
     if (plan.entries.length === 0) {
       return [
         ...header,
         "The plan is empty. The user can bring in their spreadsheet in AILI (Content, Plan), or you can add rows with add_plan_rows.",
-        `Plan in AILI: ${ctx.origin}/posts`,
+        `Plan in AILI: ${ctx.origin}/posts?tab=plan`,
       ].join("\n");
     }
     const span = planSpan(plan.entries, plan.today);
@@ -724,7 +745,7 @@ const getPlan: Tool = {
       ...(unplanned.length
         ? ["", `Not planned yet (${unplanned.length}):`, unplanned.slice(0, 40).map((r) => describeRow(r, tz)).join("\n")]
         : []),
-      `Plan in AILI: ${ctx.origin}/posts`,
+      `Plan in AILI: ${ctx.origin}/posts?tab=plan`,
     ].join("\n");
   },
 };

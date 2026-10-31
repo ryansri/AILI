@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { publishDuePosts } from "@/lib/posts";
 import { planReminder } from "@/lib/content-plan";
+import { postingReminder } from "@/lib/posting-weeks-server";
 import { PlanBar } from "@/components/shell/plan-bar";
 import { dayLabel } from "@/lib/plan";
 import { getWorkspace, loadWorkspaceData } from "@/lib/data";
@@ -36,7 +37,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           sentLine={`${account.sentToday} of ${account.dailyCap} new messages today${account.repliesToday ? `, plus ${account.repliesToday} ${account.repliesToday === 1 ? "reply" : "replies"}` : ""}.`}
         />
         <main className="flex min-w-0 flex-1 flex-col">
-          {reminder && <PlanBar toWrite={reminder.toWrite} toSchedule={reminder.toSchedule} firstDay={dayLabel(reminder.firstDay)} />}
+          {(reminder.plan || reminder.week) && (
+            <PlanBar
+              toWrite={reminder.plan?.toWrite ?? 0}
+              toSchedule={reminder.plan?.toSchedule ?? 0}
+              firstDay={reminder.plan ? dayLabel(reminder.plan.firstDay) : ""}
+              week={reminder.week}
+            />
+          )}
           <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
         </main>
         <AutoRefresh />
@@ -47,8 +55,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   );
 }
 
-/** The plan warning, read alongside the page's data. */
+/** The plan warning, and from Friday what next week's posting days still need, read alongside the page's data. */
 async function getWorkspaceForReminder() {
   const workspace = await getWorkspace();
-  return planReminder(workspace).catch(() => null);
+  const [plan, week] = await Promise.all([planReminder(workspace).catch(() => null), postingReminder(workspace).catch(() => null)]);
+  return { plan, week };
 }

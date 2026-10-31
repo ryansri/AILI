@@ -1,22 +1,33 @@
 import { db } from "@/lib/db";
 import { getWorkspace } from "@/lib/data";
 import { loadPlan } from "@/lib/content-plan";
+import { loadPostingWeeks } from "@/lib/posting-weeks-server";
 import { linkedinConfigured } from "@/lib/linkedin-posting";
 import { mediaStore } from "@/lib/media-store";
 import { linkedInPostingOf, timeZoneOf, timerStatus, toPostView } from "@/lib/posts";
 import { ContentShell } from "@/components/content/content-shell";
 import { PlanView } from "@/components/content/plan-view";
+import { PostingWeeksView } from "@/components/content/posting-weeks-view";
 import { PostsView } from "@/components/posts/posts-view";
 
 export const dynamic = "force-dynamic";
 
-/** Content: the plan (?tab=plan, the default) and the posts themselves (?tab=posts), at /posts. */
+/** Content: your posting days by week (?tab=weeks, the default), the plan (?tab=plan) and the posts themselves (?tab=posts), at /posts. */
 export default async function ContentPage({ searchParams }: PageProps<"/posts">) {
   const workspace = await getWorkspace();
   const sp = await searchParams;
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
   // Links to one post (from Claude, the plan) open Posts.
-  const tab = one("tab") === "posts" || (!one("tab") && (one("post") || one("new"))) ? "posts" : "plan";
+  const tab = one("tab") === "posts" || (!one("tab") && (one("post") || one("new"))) ? "posts" : one("tab") === "plan" || one("row") || one("add") || one("view") ? "plan" : "weeks";
+
+  if (tab === "weeks") {
+    const weeks = await loadPostingWeeks(workspace, { save: true });
+    return (
+      <ContentShell tab="weeks">
+        <PostingWeeksView data={weeks} />
+      </ContentShell>
+    );
+  }
 
   if (tab === "plan") {
     const plan = await loadPlan(workspace);

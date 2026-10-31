@@ -120,6 +120,8 @@ export function entryState(e: EntryFacts, clock: PlanClock): EntryState {
   const out = p?.status === "published" ? p.publishedAt : e.postedAt;
   if (out || p?.status === "published") {
     const outDay = out ? localDay(new Date(out), timeZone) : undefined;
+    // Scheduled on LinkedIn by hand for a later day: it goes out then.
+    if (!p && outDay && outDay > today) return { status: "scheduled", due: false, late: false };
     return { status: "posted", due: false, late: Boolean(e.day && outDay && outDay > e.day) };
   }
   if (p && (p.status === "scheduled" || p.status === "publishing")) return { status: "scheduled", due: false, late: false };

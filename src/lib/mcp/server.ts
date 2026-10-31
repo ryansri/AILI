@@ -35,7 +35,7 @@ function instructions(ctx: ServerContext): string {
     "Connections: when the user pastes their LinkedIn connections page or says who accepted, sent or withdrew a request, record it with update_connections, one entry per person with the date LinkedIn shows (and the profile link when the paste has one). It only records in AILI. Then say who was updated, who already was, and who isn't in AILI. Add anyone missing with add_leads (with their status, date, tag and profile link) when the user wants them in Leads.",
     "Leads: update_leads changes people already in AILI (stage, a corrected name, title or company, LinkedIn link, tags, a dated note). Say what changed.",
     "Progress: get_progress gives the week's or month's numbers against the user's goals, with a recap and the wins.",
-    "Planning: get_plan shows the user's content plan, row by row, and what needs them now. Write a row with create_post or save_article and its plan_row_id; add rows with add_plan_rows.",
+    "Planning: get_plan shows the user's content plan, row by row, and what needs them now. Write a row with create_post or save_article and its plan_row_id; add rows with add_plan_rows. It also gives the user's posting days (which days each week, for their profile and company page) and which of this and next week's days still need a post: plan and schedule new posts on those days.",
     `The user's time zone is ${ctx.timeZone} (${offsetLabel(now, ctx.timeZone)}). It was ${formatWhen(now, ctx.timeZone)} there when this connection started.`,
   ].join("\n");
 }

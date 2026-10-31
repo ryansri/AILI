@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-export type ContentTab = "plan" | "posts";
+export type ContentTab = "weeks" | "plan" | "posts";
 
-/** Content's top bar: Plan (the content plan) and Posts (the posts themselves), and New. */
+/** Content's top bar: Weeks (your posting days), Plan (the content plan) and Posts (the posts themselves), and New. */
 export function ContentShell({ tab, children }: { tab: ContentTab; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -15,6 +15,7 @@ export function ContentShell({ tab, children }: { tab: ContentTab; children: Rea
         <nav aria-label="Content" className="flex rounded-lg bg-muted p-[3px]">
           {(
             [
+              ["weeks", "Weeks", "/posts?tab=weeks"],
               ["plan", "Plan", "/posts?tab=plan"],
               ["posts", "Posts", "/posts?tab=posts"],
             ] as const

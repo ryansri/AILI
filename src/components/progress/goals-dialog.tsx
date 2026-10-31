@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 
 const ROWS: { key: keyof Goals; label: string; hint: (inviteCap: number) => string; max: number }[] = [
-  { key: "posts", label: "Posts a week", hint: () => "Published through AILI, or marked posted in your plan.", max: 50 },
+  { key: "posts", label: "Posts a week", hint: () => "Set by your posting days in Content, Weeks. A week with its own days counts those.", max: 50 },
   {
     key: "requests",
     label: "Connection requests a week",
@@ -76,6 +76,8 @@ export function GoalsDialog({ goals, inviteCap }: { goals: Goals; inviteCap: num
                   min={0}
                   max={r.max}
                   value={draft[r.key]}
+                  readOnly={r.key === "posts"}
+                  aria-readonly={r.key === "posts"}
                   onChange={(e) => setDraft({ ...draft, [r.key]: Number(e.target.value) })}
                   className="h-9 text-center font-semibold"
                 />

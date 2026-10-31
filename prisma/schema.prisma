@@ -80,6 +80,10 @@ model Workspace {
   linkedinPostName    String?
   /// Minutes between a post going live and its first comment (0 is right away).
   firstCommentDelay   Int       @default(5)
+  /// Posting days: the usual week (JSON: each page's weekdays and time) and the Monday it runs from.
+  /// Weeks before that show the days you actually posted. Empty until first used.
+  postingWeek         String    @default("")
+  postingSince        String    @default("")
   createdAt    DateTime  @default(now())
 
   people Person[]
@@ -93,6 +97,7 @@ model Workspace {
   posts  Post[]
   aiGrants AiGrant[]
   planEntries PlanEntry[]
+  postingWeeks PostingWeek[]
 }
 
 model Person {
@@ -475,6 +480,28 @@ model PlanEntry {
   updatedAt   DateTime  @updatedAt
 
   @@index([workspaceId, day])
+}
+
+/// One week with its own posting days (a lead magnet week with a 4th day), or
+/// a past week kept as it was when the usual week changed. Also holds the
+/// impressions typed in for that week, to compare rhythms.
+model PostingWeek {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// "YYYY-MM-DD", the week's Monday in the account's time zone.
+  monday      String
+  /// Weekdays, "1,2,3" (1 = Monday). Empty for none.
+  personalDays String   @default("")
+  companyDays  String   @default("")
+  /// Why the week is different, e.g. "Lead magnet week".
+  note        String    @default("")
+  personalImpressions Int?
+  companyImpressions  Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, monday])
 }
 
 /// An image or PDF that goes out with a post. The file is in blob storage

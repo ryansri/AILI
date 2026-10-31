@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { localDay } from "./plan";
+import { postsGoal } from "./posting-weeks-server";
 import { fakeName, fakeText } from "./privacy";
 import { privacyOn } from "./privacy-server";
 import { buildProgress, funnelOf, previousSpan, spanFor, type Events, type Funnel, type Goals, type Period, type Progress } from "./progress";
@@ -29,7 +30,8 @@ export async function loadProgress(workspaceId: string, period: Period, now: Dat
 
   const [posts, handPosted, invites, accepted, out, inbound, comments, stages, plannedRows, scheduled, cohort, hidden] = await Promise.all([
     db.post.findMany({ where: { workspaceId, status: "published", publishedAt: range }, select: { publishedAt: true } }),
-    db.planEntry.findMany({ where: { workspaceId, postedAt: range, postId: null }, select: { postedAt: true } }),
+    // Marked by hand; one scheduled on LinkedIn for later counts once its time comes.
+    db.planEntry.findMany({ where: { workspaceId, postedAt: { ...range, lte: now }, postId: null }, select: { postedAt: true } }),
     db.invite.findMany({ where: { workspaceId, sentAt: range, status: { not: "failed" } }, select: { sentAt: true } }),
     db.invite.findMany({ where: { workspaceId, acceptedAt: range }, select: { acceptedAt: true, personId: true, person: { select: { name: true } } } }),
     db.message.findMany({ where: { ...inWorkspace, direction: "out", sentAt: range }, select: { sentAt: true, personId: true } }),
@@ -98,7 +100,8 @@ export async function loadProgress(workspaceId: string, period: Period, now: Dat
     stages: stages.map((s) => ({ at: s.stageChangedAt!, personId: s.id, name: name(s.id, s.name), stage: s.stage })),
   };
   const weeklyGoals: Goals = {
-    posts: workspace.goalPosts,
+    // Posts follow your posting days in Content: this week's, or the usual week for a month.
+    posts: await postsGoal(workspace, period),
     requests: workspace.goalRequests,
     messages: workspace.goalMessages,
     comments: workspace.goalComments,
