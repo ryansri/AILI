@@ -276,7 +276,7 @@ export function requestLoop(p: LoopPerson, now = new Date()): RequestLoop | null
 /** The filter's names for each step after waiting, in loop order. */
 export const LOOP_CHOICES: { key: Exclude<RequestStep, "waiting">; label: string; hint: string; dot: string }[] = [
   { key: "withdraw", label: "Withdraw now", hint: `No answer for ${WITHDRAW_AFTER_DAYS}+ days`, dot: "bg-amber-500" },
-  { key: "withdrawn", label: "Waiting 3 weeks", hint: "Withdrawn; LinkedIn lets you ask again after 3 weeks", dot: "bg-stone-400" },
+  { key: "withdrawn", label: "Waiting 3 weeks", hint: "Withdrawn; LinkedIn lets you ask again after 3 weeks", dot: "bg-violet-500" },
   { key: "ask_again", label: "Ask again", hint: "3 weeks since you withdrew", dot: "bg-blue-500" },
   { key: "let_go", label: "Let it go", hint: "Asked twice, no answer", dot: "bg-red-500" },
 ];
@@ -285,7 +285,7 @@ const shortDay = (iso: string, timeZone: string) => new Date(iso).toLocaleDateSt
 const daysAgo = (n: number) => (n === 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`);
 
 /** What Last activity says for a request, and its colour: "Request sent 17 days ago · withdraw". */
-export function loopLine(loop: RequestLoop, timeZone: string): { text: string; tone: "plain" | "amber" | "blue" | "red" } {
+export function loopLine(loop: RequestLoop, timeZone: string): { text: string; tone: "plain" | "amber" | "violet" | "blue" | "red" } {
   const nth = loop.tries >= 2 ? ` · ${loop.tries === 2 ? "2nd" : `${loop.tries}th`} try` : "";
   switch (loop.step) {
     case "waiting":
@@ -293,7 +293,7 @@ export function loopLine(loop: RequestLoop, timeZone: string): { text: string; t
     case "withdraw":
       return { text: `Request sent ${daysAgo(loop.days)} · withdraw`, tone: "amber" };
     case "withdrawn":
-      return { text: `Withdrawn ${shortDay(loop.at, timeZone)} · ask again ${shortDay(loop.againAt!, timeZone)}`, tone: "plain" };
+      return { text: `Withdrawn ${shortDay(loop.at, timeZone)} · ask again ${shortDay(loop.againAt!, timeZone)}`, tone: "violet" };
     case "ask_again":
       return { text: `Withdrawn ${shortDay(loop.at, timeZone)} · ask again now`, tone: "blue" };
     case "let_go":

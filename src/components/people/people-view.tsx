@@ -105,7 +105,7 @@ const loopStep = (p: Person, now?: Date) => {
 /** Ticks in Connection add up: Request sent and Ready to ask again shows both. */
 const connMatch = (p: Person, picks: Set<ConnPick>) => picks.has(connectionOf(p)) || picks.has(loopStep(p) as ConnPick);
 
-const LOOP_TONE = { plain: "", amber: "font-medium text-amber-700 dark:text-amber-400", blue: "font-medium text-blue-700 dark:text-blue-400", red: "font-medium text-red-700 dark:text-red-400" };
+const LOOP_TONE = { plain: "", amber: "font-medium text-amber-700 dark:text-amber-400", violet: "font-medium text-violet-700 dark:text-violet-400", blue: "font-medium text-blue-700 dark:text-blue-400", red: "font-medium text-red-700 dark:text-red-400" };
 
 /** Last activity: a request's step when that's the latest thing ("Request sent 17 days ago · withdraw"), else the last touch. */
 function activityOf(p: Person, timeZone: string): { text: string; className: string } {

@@ -25,7 +25,7 @@ describe("withdraw, wait, ask again", () => {
   it("after you withdraw: LinkedIn's 3 weeks, then ask again", () => {
     const wait = requestLoop(person({ status: "withdrawn", sentAt: daysBefore(30), withdrawnAt: "2026-11-10T00:00:00Z" }), now)!;
     expect(wait.step).toBe("withdrawn");
-    expect(loopLine(wait, TZ).text).toBe("Withdrawn 10 Nov · ask again 1 Dec");
+    expect(loopLine(wait, TZ)).toEqual({ text: "Withdrawn 10 Nov · ask again 1 Dec", tone: "violet" });
     const ready = requestLoop(person({ status: "withdrawn", sentAt: daysBefore(40), withdrawnAt: daysBefore(21) }), now)!;
     expect(ready.step).toBe("ask_again");
     expect(loopLine(ready, TZ).tone).toBe("blue");
