@@ -11,6 +11,7 @@ import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
 import { ceilingFor, type DayUsage } from "./send-limit";
 import { messageUsage } from "./send-limit-server";
 import { profilePace } from "./profile-opens";
+import { WITHDRAW_AFTER_DAYS } from "./invites";
 import { startsAsLead } from "./leads";
 import type { CompanyRule } from "./companies";
 import { templateStats, type Template } from "./templates";
@@ -40,6 +41,8 @@ const personInclude = {
   outbox: { where: { status: { in: ["queued", "sending", "failed", "held", "after"] } }, orderBy: { createdAt: "asc" as const } },
   // The latest connection request is all the screens need.
   invites: { orderBy: { createdAt: "desc" as const }, take: 1 },
+  // How many went out, for "asked twice".
+  _count: { select: { invites: { where: { sentAt: { not: null }, status: { not: "failed" } } } } },
   touches: { orderBy: { createdAt: "desc" as const }, take: 30, select: { createdAt: true, kind: true, text: true, source: true } },
 } satisfies Prisma.PersonInclude;
 
@@ -79,6 +82,7 @@ function toPerson(row: PersonRow): Person {
     profileOpenedAt: row.profileOpenedAt?.toISOString(),
     connection: row.connection === "yes" || row.connection === "no" ? row.connection : "",
     invite: row.invites[0] ? toInviteView(row.invites[0]) : undefined,
+    requestTries: row._count.invites,
     alerts: row.alerts === "on" || row.alerts === "impossible" ? row.alerts : "",
     alertsAt: row.alertsAt?.toISOString(),
     alertsOpenedAt: row.alertsOpenedAt?.toISOString(),
@@ -293,7 +297,7 @@ function accountOf(workspace: Workspace, used: Usage, aiApps: string[]): Account
       today: used.invitesToday,
       week: used.invitesWeek,
       notifyAccepts: workspace.notifyAccepts,
-      staleDays: workspace.inviteStaleDays,
+      staleDays: WITHDRAW_AFTER_DAYS,
     },
     alerts: {
       nudge: workspace.alertsNudge,

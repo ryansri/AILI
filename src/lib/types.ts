@@ -141,6 +141,8 @@ export interface Person {
   connection?: "yes" | "no" | "";
   /** The latest connection request to them. */
   invite?: InviteView;
+  /** Connection requests sent to them so far (not counting failed ones). */
+  requestTries?: number;
   /** Post alerts (the bell on their LinkedIn profile): "" not yet, "on", or "impossible". */
   alerts?: "" | "on" | "impossible";
   alertsAt?: string; // ISO

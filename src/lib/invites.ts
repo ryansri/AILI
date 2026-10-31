@@ -225,3 +225,78 @@ export function connectionOf(
   if (p.invite && ["queued", "sending", "sent", "withdrawing"].includes(p.invite.status)) return "pending";
   return needsConnect(p) ? "not" : "connected";
 }
+
+/* ------------------------------------------- withdraw, wait, ask again */
+
+/** No answer for this long: withdraw the request on LinkedIn. */
+export const WITHDRAW_AFTER_DAYS = 14;
+/** LinkedIn will not take a new request to someone for three weeks after you withdraw one. */
+export const REASK_AFTER_DAYS = 21;
+/** After this many requests with no answer, AILI stops suggesting another. */
+export const MAX_TRIES = 2;
+
+/**
+ * Where a request that wasn't accepted is in the loop: waiting, waiting too
+ * long (withdraw it), withdrawn and in LinkedIn's three weeks, ready to ask
+ * again, or asked twice with no answer (let it go). Null when there's no
+ * request, it was accepted, or you're connected.
+ */
+export type RequestStep = "waiting" | "withdraw" | "withdrawn" | "ask_again" | "let_go";
+
+export interface RequestLoop {
+  step: RequestStep;
+  /** When the request went out, or when you withdrew it. */
+  at: string;
+  /** Withdrawn: the day LinkedIn lets you ask again. */
+  againAt?: string;
+  /** Requests sent so far, this one included. */
+  tries: number;
+  days: number;
+}
+
+type LoopPerson = Pick<Person, "connection" | "conversationId" | "messages" | "connectedAt" | "invite" | "requestTries">;
+
+export function requestLoop(p: LoopPerson, now = new Date()): RequestLoop | null {
+  const i = p.invite;
+  if (!i || !needsConnect(p)) return null;
+  const tries = Math.max(p.requestTries ?? 0, 1);
+  if (["sending", "sent", "withdrawing"].includes(i.status) && i.sentAt) {
+    const days = waitingDays(i.sentAt, now);
+    return { step: days >= WITHDRAW_AFTER_DAYS ? "withdraw" : "waiting", at: i.sentAt, tries, days };
+  }
+  if (i.status === "withdrawn" && i.withdrawnAt) {
+    const days = waitingDays(i.withdrawnAt, now);
+    if (tries >= MAX_TRIES) return { step: "let_go", at: i.withdrawnAt, tries, days };
+    const againAt = new Date(new Date(i.withdrawnAt).getTime() + REASK_AFTER_DAYS * DAY).toISOString();
+    return { step: days >= REASK_AFTER_DAYS ? "ask_again" : "withdrawn", at: i.withdrawnAt, againAt, tries, days };
+  }
+  return null;
+}
+
+/** The filter's names for each step after waiting, in loop order. */
+export const LOOP_CHOICES: { key: Exclude<RequestStep, "waiting">; label: string; hint: string; dot: string }[] = [
+  { key: "withdraw", label: "Withdraw now", hint: `No answer for ${WITHDRAW_AFTER_DAYS}+ days`, dot: "bg-amber-500" },
+  { key: "withdrawn", label: "Waiting 3 weeks", hint: "Withdrawn; LinkedIn lets you ask again after 3 weeks", dot: "bg-stone-400" },
+  { key: "ask_again", label: "Ask again", hint: "3 weeks since you withdrew", dot: "bg-blue-500" },
+  { key: "let_go", label: "Let it go", hint: "Asked twice, no answer", dot: "bg-red-500" },
+];
+
+const shortDay = (iso: string, timeZone: string) => new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", timeZone });
+const daysAgo = (n: number) => (n === 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`);
+
+/** What Last activity says for a request, and its colour: "Request sent 17 days ago · withdraw". */
+export function loopLine(loop: RequestLoop, timeZone: string): { text: string; tone: "plain" | "amber" | "blue" | "red" } {
+  const nth = loop.tries >= 2 ? ` · ${loop.tries === 2 ? "2nd" : `${loop.tries}th`} try` : "";
+  switch (loop.step) {
+    case "waiting":
+      return { text: `Request sent ${daysAgo(loop.days)}${nth}`, tone: "plain" };
+    case "withdraw":
+      return { text: `Request sent ${daysAgo(loop.days)} · withdraw`, tone: "amber" };
+    case "withdrawn":
+      return { text: `Withdrawn ${shortDay(loop.at, timeZone)} · ask again ${shortDay(loop.againAt!, timeZone)}`, tone: "plain" };
+    case "ask_again":
+      return { text: `Withdrawn ${shortDay(loop.at, timeZone)} · ask again now`, tone: "blue" };
+    case "let_go":
+      return { text: "Asked twice · let it go", tone: "red" };
+  }
+}

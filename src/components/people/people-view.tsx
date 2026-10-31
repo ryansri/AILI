@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, Bell, CalendarDays, Check, ChevronDown, MessageSquare, MoreHorizontal, MoveRight, Plus, Search, Send, Tag as TagIcon, Undo2, Upload, UserCheck, X } from "lucide-react";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ import {
   withdrawInvites,
 } from "@/lib/client-actions";
 import { groupByCompany, type CompanyGroup, type CompanyRule } from "@/lib/companies";
-import { connectionOf, type ConnectionState } from "@/lib/invites";
+import { connectionOf, LOOP_CHOICES, loopLine, requestLoop, type ConnectionState, type RequestStep } from "@/lib/invites";
 import { lastTouch } from "@/lib/lead-next";
 import { relativeTime } from "@/lib/next-step";
 import { openedState } from "@/lib/profile-opens";
@@ -96,6 +96,28 @@ const CONNECTIONS: { key: ConnectionState; label: string }[] = [
   { key: "connected", label: "Connected" },
 ];
 
+/** A Connection tick: the connection itself, or a step in the withdraw and ask-again loop. */
+type ConnPick = ConnectionState | Exclude<RequestStep, "waiting">;
+const loopStep = (p: Person, now?: Date) => {
+  const step = requestLoop(p, now)?.step;
+  return step && step !== "waiting" ? step : null;
+};
+/** Ticks in Connection add up: Request sent and Ready to ask again shows both. */
+const connMatch = (p: Person, picks: Set<ConnPick>) => picks.has(connectionOf(p)) || picks.has(loopStep(p) as ConnPick);
+
+const LOOP_TONE = { plain: "", amber: "font-medium text-amber-700 dark:text-amber-400", blue: "font-medium text-blue-700 dark:text-blue-400", red: "font-medium text-red-700 dark:text-red-400" };
+
+/** Last activity: a request's step when that's the latest thing ("Request sent 17 days ago · withdraw"), else the last touch. */
+function activityOf(p: Person, timeZone: string): { text: string; className: string } {
+  const loop = requestLoop(p);
+  const touch = lastTouch(p);
+  if (loop && (!touch.at || new Date(touch.at) <= new Date(loop.at) || !p.messages.length)) {
+    const line = loopLine(loop, timeZone);
+    return { text: line.text, className: LOOP_TONE[line.tone] };
+  }
+  return { text: touch.text, className: "" };
+}
+
 
 const ago = (iso: string | undefined) => {
   if (!iso) return "";
@@ -136,7 +158,7 @@ export function PeopleView({
   const view = useView();
   const [query, setQuery] = useState("");
   const [tagIds, setTagIds] = useState<Set<string>>(new Set());
-  const [conns, setConns] = useState<Set<ConnectionState>>(new Set());
+  const [conns, setConns] = useState<Set<ConnPick>>(new Set());
   const [stageKeys, setStageKeys] = useState<Set<string>>(new Set());
   const [notOpened, setNotOpened] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -163,7 +185,7 @@ export function PeopleView({
   const rows = useMemo(() => {
     const list = people.filter((p) => {
       if (tagIds.size && !p.tagIds.some((id) => tagIds.has(id))) return false;
-      if (conns.size && !conns.has(connectionOf(p))) return false;
+      if (conns.size && !connMatch(p, conns)) return false;
       if (stageKeys.size && !stageKeys.has(p.stage)) return false;
       if (p.stage === LOST && !showLost) return false;
       if (notOpened && openedState(p.profileOpenedAt, timeZone) !== null) return false;
@@ -178,7 +200,7 @@ export function PeopleView({
     () =>
       companies.filter((g) => {
         if (tagIds.size && !g.people.some((p) => p.tagIds.some((id) => tagIds.has(id)))) return false;
-        if (conns.size && !g.people.some((p) => conns.has(connectionOf(p)))) return false;
+        if (conns.size && !g.people.some((p) => connMatch(p, conns))) return false;
         if (stageKeys.size && !stageKeys.has(g.stage)) return false;
         if (g.stage === LOST && !showLost) return false;
         if (q && !`${g.name} ${g.people.map((p) => `${p.name} ${p.jobTitle}`).join(" ")}`.toLowerCase().includes(q)) return false;
@@ -375,13 +397,14 @@ export function PeopleView({
                     <TableHead className="w-[21%]">Company</TableHead>
                     <TableHead className="w-36">Stage</TableHead>
                     <TableHead>Tags</TableHead>
-                    <TableHead className="w-36 pr-5">Last activity</TableHead>
+                    <TableHead className="w-60 pr-5">Last activity</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((p) => {
                     const on = selected.has(p.id);
                     const myTags = tags.filter((t) => p.tagIds.includes(t.id));
+                    const activity = activityOf(p, timeZone);
                     return (
                       <TableRow
                         key={p.id}
@@ -433,8 +456,8 @@ export function PeopleView({
                         <TableCell>
                           <TagsLine tags={myTags} />
                         </TableCell>
-                        <TableCell className="pr-5 text-xs text-muted-foreground" suppressHydrationWarning>
-                          {lastTouch(p).text}
+                        <TableCell className={cn("truncate pr-5 text-xs text-muted-foreground", activity.className)} title={activity.text} suppressHydrationWarning>
+                          {activity.text}
                         </TableCell>
                       </TableRow>
                     );
@@ -648,10 +671,11 @@ function FilterSection({ title, n, children }: { title: string; n: number; child
   );
 }
 
-function FilterOption({ on, onClick, label, count, dot }: { on: boolean; onClick: () => void; label: string; count: number; dot?: React.ReactNode }) {
+function FilterOption({ on, onClick, label, count, dot, hint }: { on: boolean; onClick: () => void; label: string; count: number; dot?: React.ReactNode; hint?: string }) {
   return (
     <button
       type="button"
+      title={hint}
       role="menuitemcheckbox"
       aria-checked={on}
       onClick={onClick}
@@ -738,19 +762,19 @@ function FilterPanel({
   stages: StageDef[];
   byCompany: boolean;
   tagIds: Set<string>;
-  conns: Set<ConnectionState>;
+  conns: Set<ConnPick>;
   stageKeys: Set<string>;
   notOpened: boolean;
   timeZone: string;
   onTag: (id: string) => void;
-  onConn: (c: ConnectionState) => void;
+  onConn: (c: ConnPick) => void;
   onStage: (key: string) => void;
   onNotOpened: () => void;
   onClear?: () => void;
 }) {
   const counts = useMemo(() => {
     const tag = new Map<string, number>();
-    const conn = new Map<ConnectionState, number>();
+    const conn = new Map<ConnPick, number>();
     const stage = new Map<string, number>();
     let fresh = 0;
     for (const p of people) {
@@ -760,6 +784,8 @@ function FilterPanel({
       for (const id of p.tagIds) tag.set(id, (tag.get(id) ?? 0) + 1);
       const c = connectionOf(p);
       conn.set(c, (conn.get(c) ?? 0) + 1);
+      const step = loopStep(p);
+      if (step) conn.set(step, (conn.get(step) ?? 0) + 1);
       if (openedState(p.profileOpenedAt, timeZone) === null) fresh += 1;
     }
     return { tag, conn, stage, fresh };
@@ -777,7 +803,23 @@ function FilterPanel({
       )}
       <FilterSection title="Connection" n={conns.size}>
         {CONNECTIONS.map((c) => (
-          <FilterOption key={c.key} on={conns.has(c.key)} onClick={() => onConn(c.key)} label={c.label} count={counts.conn.get(c.key) ?? 0} />
+          <Fragment key={c.key}>
+            <FilterOption on={conns.has(c.key)} onClick={() => onConn(c.key)} label={c.label} count={counts.conn.get(c.key) ?? 0} />
+            {/* After Request sent: the withdraw and ask-again loop, a step each. */}
+            {c.key === "pending" &&
+              LOOP_CHOICES.map((l) => (
+                <div key={l.key} className="pl-4">
+                  <FilterOption
+                    on={conns.has(l.key)}
+                    onClick={() => onConn(l.key)}
+                    label={l.label}
+                    hint={l.hint}
+                    count={counts.conn.get(l.key) ?? 0}
+                    dot={<span className={cn("size-2 shrink-0 rounded-full", l.dot)} />}
+                  />
+                </div>
+              ))}
+          </Fragment>
         ))}
       </FilterSection>
       <FilterSection title="Stage" n={stageKeys.size}>
@@ -791,7 +833,11 @@ function FilterPanel({
         </FilterSection>
       )}
       {onClear && (
-        <button type="button" onClick={onClear} className="mx-4 my-3 self-start text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+        <button
+          type="button"
+          onClick={onClear}
+          className="mx-4 my-3 self-start text-sm font-medium text-red-600 underline-offset-2 hover:text-red-700 hover:underline dark:text-red-400"
+        >
           Clear filters
         </button>
       )}

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { PLAN_WARNING_DAYS } from "@/lib/plan";
 import { setAlertSettings, setInviteSettings, setPlanWarning, updateDailyCap, updateFirstCommentDelay, updateNotifyReplies, updateProfilesPerHour } from "@/lib/client-actions";
 import { PROFILES_PER_HOUR } from "@/lib/profile-opens";
-import { INVITE_CAPS, STALE_DAYS } from "@/lib/invites";
+import { INVITE_CAPS, WITHDRAW_AFTER_DAYS } from "@/lib/invites";
 import { ALERTS_PER_DAY, TOUCHES_TO_CONNECT } from "@/lib/alerts";
 import type { Account } from "@/lib/types";
 import { delayLabel, FIRST_COMMENT_DELAYS } from "@/lib/linkedin-text";
@@ -51,7 +51,6 @@ export function SendingView({
   const [inviteCap, setInviteCap] = useState(String(invites.cap));
   const [perHour, setPerHour] = useState(String(profiles.perHour));
   const [accepts, setAccepts] = useState(invites.notifyAccepts);
-  const [staleDays, setStaleDays] = useState(String(invites.staleDays));
   const [nudge, setNudge] = useState(alerts.nudge);
   const [perDay, setPerDay] = useState(String(alerts.perDay));
   const [needed, setNeeded] = useState(String(alerts.touchesToConnect));
@@ -214,26 +213,11 @@ export function SendingView({
             }}
           />
         </Row>
-        <Row title="Old requests" status="Requests waiting longer than this show in amber under Request sent, with Withdraw.">
-          <Select
-            value={staleDays}
-            onValueChange={(value) => {
-              const previous = staleDays;
-              setStaleDays(value);
-              saveInvites({ staleDays: Number(value) }, `Requests count as old after ${Number(value) / 7} weeks.`, () => setStaleDays(previous));
-            }}
-          >
-            <SelectTrigger aria-label="Old requests" className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {STALE_DAYS.map((d) => (
-                <SelectItem key={d} value={String(d)}>
-                  After {d / 7} weeks
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Row
+          title="Old requests"
+          status={`No answer after ${WITHDRAW_AFTER_DAYS} days: withdraw it on LinkedIn. Three weeks later, ask once more; after two tries AILI lets it go. Leads and Today show who is at each step.`}
+        >
+          <span className="text-sm text-muted-foreground">After {WITHDRAW_AFTER_DAYS} days</span>
         </Row>
       </Group>
       <p className="text-xs leading-relaxed text-muted-foreground">
