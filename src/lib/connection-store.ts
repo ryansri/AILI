@@ -23,6 +23,8 @@ export interface ChangeResult {
 
 /** A day of slack, so a request sent again on the day it was withdrawn still counts as new. */
 const SAME_DAY_MS = 86_400_000;
+/** A withdrawal recorded again this much later moves to the new time. */
+const LATER_MS = 3_600_000;
 
 /** Records one change for each person, at `at` (the day it happened on LinkedIn, or now). */
 export async function setConnection(workspaceId: string, personIds: string[], change: ConnectionChange, at: Date = new Date()): Promise<ChangeResult[]> {
@@ -89,8 +91,12 @@ export async function setConnection(workspaceId: string, personIds: string[], ch
     } else {
       const open = latest && OPEN.includes(latest.status) ? latest : null;
       if (open) await db.invite.update({ where: { id: open.id }, data: { status: "withdrawn", withdrawnAt: at, claimedAt: null, error: "" } });
+      // Marked withdrawn in AILI before it was really withdrawn on LinkedIn: the later day is the real one,
+      // so the 3 weeks before asking again count from it.
+      const later = !open && latest?.status === "withdrawn" && latest.withdrawnAt && at.getTime() > latest.withdrawnAt.getTime() + LATER_MS;
+      if (later) await db.invite.update({ where: { id: latest.id }, data: { withdrawnAt: at } });
       if (p.stage === "requested") await db.person.update({ where: { id: p.id }, data: { stage: "warming", stageChangedAt: at } });
-      out.push({ personId: p.id, changed: Boolean(open) || p.stage === "requested" });
+      out.push({ personId: p.id, changed: Boolean(open) || Boolean(later) || p.stage === "requested" });
     }
   }
   return out;

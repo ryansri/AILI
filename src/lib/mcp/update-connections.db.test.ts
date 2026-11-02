@@ -122,6 +122,21 @@ describe.skipIf(!hasDb)("update_connections", () => {
     expect(await db.invite.count({ where: { personId: rae.id, status: "sent" } })).toBe(1);
   });
 
+  it("moves the withdraw day when it is recorded again later", async () => {
+    const w = await db.workspace.create({ data: { name: "Withdraw later test", initials: "W", timeZone: "Australia/Sydney" } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof tool.run>[1];
+    const sam = await db.person.create({ data: { workspaceId: w.id, name: "Sam Later", lead: true, stage: "warming", connection: "no" } });
+    await db.invite.create({ data: { workspaceId: w.id, personId: sam.id, status: "withdrawn", source: "linkedin", sentAt: new Date("2026-10-03T01:00:00Z"), withdrawnAt: new Date("2026-10-20T01:00:00Z") } });
+
+    const out = await tool.run({ people: [{ person: "Sam Later", status: "withdrawn", date: "2026-10-31" }] }, ctx);
+    expect(out).toMatch(/Updated 1 in AILI:\n- Sam Later: request withdrawn, Sat 31 Oct/);
+    const [i] = await db.invite.findMany({ where: { personId: sam.id } });
+    expect(i.withdrawnAt?.toISOString()).toBe("2026-10-31T01:00:00.000Z");
+    // An earlier day never moves it back.
+    expect(await tool.run({ people: [{ person: "Sam Later", status: "withdrawn", date: "2026-10-25" }] }, ctx)).toMatch(/Already like that/);
+    expect((await db.invite.findFirstOrThrow({ where: { personId: sam.id } })).withdrawnAt?.toISOString()).toBe("2026-10-31T01:00:00.000Z");
+  });
+
   it("undoes a mistake: not connected after all", async () => {
     const { setConnection } = await import("../connection-store");
     const w = await db.workspace.create({ data: { name: "Undo test", initials: "U" } });
