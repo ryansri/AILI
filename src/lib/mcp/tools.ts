@@ -970,6 +970,7 @@ const updateConnections: Tool = {
     const already: string[] = [];
     const missing: string[] = [];
     const unsure: string[] = [];
+    const keptWithdrawn: string[] = [];
     for (const entry of list) {
       const ref = text(entry.person).trim();
       const change = (["connected", "request_sent", "withdrawn"] as const).find((c) => c === text(entry.status));
@@ -989,6 +990,11 @@ const updateConnections: Tool = {
       }
       const [result] = await setConnection(ctx.workspaceId, [person.id], change, at);
       const day = formatWhen(at, tz);
+      if (result?.withdrawnAt) {
+        const off = formatWhen(result.withdrawnAt, tz);
+        keptWithdrawn.push(`${person.name}: withdrawn ${off.slice(0, off.indexOf(","))}; the request from ${day.slice(0, day.indexOf(","))} is the old one`);
+        continue;
+      }
       const line = `${person.name}: ${CHANGE_WORDS[change]}, ${day.slice(0, day.indexOf(","))}${person.lead ? "" : " (in Other, not a lead)"}`;
       (result?.changed ? done : already).push(line);
     }
@@ -997,6 +1003,9 @@ const updateConnections: Tool = {
     const parts = [
       done.length ? `Updated ${done.length} in AILI:\n${done.map((l) => `- ${l}`).join("\n")}` : "Nothing needed changing.",
       already.length ? `Already like that (date checked):\n${already.map((l) => `- ${l}`).join("\n")}` : "",
+      keptWithdrawn.length
+        ? `Withdrawn in AILI, left alone (${keptWithdrawn.length}). LinkedIn may still list them as pending until the user withdraws there:\n${keptWithdrawn.map((l) => `- ${l}`).join("\n")}`
+        : "",
       missing.length ? `Not in AILI (${missing.length}), left alone: ${missing.join(", ")}` : "",
       unsure.length ? `Not changed, check with the user:\n${unsure.map((l) => `- ${l}`).join("\n")}` : "",
       "Recorded in AILI only; nothing was sent to LinkedIn.",

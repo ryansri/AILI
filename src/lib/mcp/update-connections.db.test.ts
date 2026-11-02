@@ -96,6 +96,32 @@ describe.skipIf(!hasDb)("update_connections", () => {
     expect(await db.person.findFirstOrThrow({ where: { workspaceId: w.id, name: "Tia Tagless" } })).toMatchObject({ lead: true, stage: "warming", connection: "no" });
   });
 
+  it("leaves a withdrawn person alone when the request is from before the withdrawal", async () => {
+    const w = await db.workspace.create({ data: { name: "Withdrawn test", initials: "W", timeZone: "Australia/Sydney" } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof tool.run>[1];
+    const wade = await db.person.create({ data: { workspaceId: w.id, name: "Wade Withdrawn", lead: true, stage: "warming", connection: "no" } });
+    await db.invite.create({ data: { workspaceId: w.id, personId: wade.id, status: "withdrawn", source: "linkedin", sentAt: new Date("2026-10-06T01:00:00Z"), withdrawnAt: new Date("2026-10-28T01:00:00Z") } });
+    const rae = await db.person.create({ data: { workspaceId: w.id, name: "Rae Reask", lead: true, stage: "warming", connection: "no" } });
+    await db.invite.create({ data: { workspaceId: w.id, personId: rae.id, status: "withdrawn", source: "linkedin", sentAt: new Date("2026-09-01T01:00:00Z"), withdrawnAt: new Date("2026-09-15T01:00:00Z") } });
+
+    const out = await tool.run(
+      {
+        people: [
+          // LinkedIn's Sent list still shows the old request from 3 weeks ago.
+          { person: "Wade Withdrawn", status: "request_sent", date: "2026-10-06" },
+          // Asked again after the withdrawal: a new request.
+          { person: "Rae Reask", status: "request_sent", date: "2026-10-27" },
+        ],
+      },
+      ctx,
+    );
+    expect(out).toMatch(/Updated 1 in AILI:\n- Rae Reask: request sent, Tue 27 Oct/);
+    expect(out).toMatch(/Withdrawn in AILI, left alone \(1\)[\s\S]*Wade Withdrawn: withdrawn Wed 28 Oct; the request from Tue 6 Oct is the old one/);
+    expect(await db.invite.count({ where: { personId: wade.id } })).toBe(1);
+    expect(await db.person.findUniqueOrThrow({ where: { id: wade.id } })).toMatchObject({ stage: "warming" });
+    expect(await db.invite.count({ where: { personId: rae.id, status: "sent" } })).toBe(1);
+  });
+
   it("undoes a mistake: not connected after all", async () => {
     const { setConnection } = await import("../connection-store");
     const w = await db.workspace.create({ data: { name: "Undo test", initials: "U" } });

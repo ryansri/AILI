@@ -17,7 +17,12 @@ export interface ChangeResult {
   personId: string;
   /** False when they were already like that. */
   changed: boolean;
+  /** Set when a request sent before their withdrawal was left alone: it is the old request, not a new one. */
+  withdrawnAt?: Date;
 }
+
+/** A day of slack, so a request sent again on the day it was withdrawn still counts as new. */
+const SAME_DAY_MS = 86_400_000;
 
 /** Records one change for each person, at `at` (the day it happened on LinkedIn, or now). */
 export async function setConnection(workspaceId: string, personIds: string[], change: ConnectionChange, at: Date = new Date()): Promise<ChangeResult[]> {
@@ -31,6 +36,12 @@ export async function setConnection(workspaceId: string, personIds: string[], ch
     if (change === "request_sent") {
       if (latest?.status === "sent") {
         out.push({ personId: p.id, changed: false });
+        continue;
+      }
+      // Withdrawn in AILI, and this request is from before then: it is the old request (LinkedIn's Sent
+      // list can still show it). Only one sent after the withdrawal is a new ask.
+      if (latest?.status === "withdrawn" && latest.withdrawnAt && at.getTime() < latest.withdrawnAt.getTime() - SAME_DAY_MS) {
+        out.push({ personId: p.id, changed: false, withdrawnAt: latest.withdrawnAt });
         continue;
       }
       if (latest && ["queued", "sending", "failed", "withdrawing"].includes(latest.status)) {
