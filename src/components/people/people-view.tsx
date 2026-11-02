@@ -33,7 +33,7 @@ import { HeaderAction, PageHeader } from "@/components/page-header";
 import { Input } from "@/components/ui/input";
 import { TagDot } from "@/components/tag-chip";
 import { PersonAvatar } from "@/components/person-avatar";
-import { noteOpened, OpenedDot, ProfilePaceNote } from "@/components/opened-dot";
+import { noteOpened, OpenedDot, ProfilePaceNote, StartFresh } from "@/components/opened-dot";
 import { MessageAllDialog } from "@/components/templates/message-all-dialog";
 import { WarmupWeek } from "./warmup-week";
 import { ImportDialog } from "./import-dialog";
@@ -341,6 +341,9 @@ export function PeopleView({
             onStage={(s) => setStageKeys(toggleIn(stageKeys, s))}
             onNotOpened={() => setNotOpened(!notOpened)}
             onClear={filtered ? clearFilters : undefined}
+            opensToday={account.profiles.today}
+            // Ticked people: the reset is just theirs (those opened today).
+            selectedOpened={chosen.length ? chosenPeople.filter((p) => openedState(p.profileOpenedAt, timeZone) === "today").map((p) => p.id) : undefined}
           />
         )}
 
@@ -756,6 +759,8 @@ function FilterPanel({
   onStage,
   onNotOpened,
   onClear,
+  opensToday,
+  selectedOpened,
 }: {
   people: Person[];
   tags: Tag[];
@@ -771,6 +776,10 @@ function FilterPanel({
   onStage: (key: string) => void;
   onNotOpened: () => void;
   onClear?: () => void;
+  /** Profiles opened today: with any, Reset today's blue dots shows under the filters. */
+  opensToday: number;
+  /** With people ticked: those of them opened today. */
+  selectedOpened?: string[];
 }) {
   const counts = useMemo(() => {
     const tag = new Map<string, number>();
@@ -832,14 +841,15 @@ function FilterPanel({
           <FilterOption on={notOpened} onClick={onNotOpened} label="Not opened in 7 days" count={counts.fresh} dot={<span className="size-2 shrink-0 rounded-full bg-blue-500" />} />
         </FilterSection>
       )}
-      {onClear && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="mx-4 my-3 self-start text-sm font-medium text-red-600 underline-offset-2 hover:text-red-700 hover:underline dark:text-red-400"
-        >
-          Clear filters
-        </button>
+      {(onClear || (!byCompany && (selectedOpened ? selectedOpened.length > 0 : opensToday > 0))) && (
+        <div className="flex flex-col items-start gap-2.5 px-4 py-3">
+          {onClear && (
+            <button type="button" onClick={onClear} className="text-sm font-medium text-red-600 underline-offset-2 hover:text-red-700 hover:underline dark:text-red-400">
+              Clear filters
+            </button>
+          )}
+          {!byCompany && <StartFresh today={opensToday} selected={selectedOpened} />}
+        </div>
       )}
     </aside>
   );

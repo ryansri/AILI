@@ -55,6 +55,7 @@ export const deleteTemplate = unwrap(actions.deleteTemplate);
 export const queueBulk = unwrap(actions.queueBulk);
 export const updateDailyCap = unwrap(actions.updateDailyCap);
 export const markProfileOpened = unwrap(actions.markProfileOpened);
+export const startFreshOpens = unwrap(actions.startFreshOpens);
 export const markProfilesOpened = unwrap(actions.markProfilesOpened);
 export const updateProfilesPerHour = unwrap(actions.updateProfilesPerHour);
 export const updateNotifyReplies = unwrap(actions.updateNotifyReplies);

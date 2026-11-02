@@ -15,7 +15,7 @@ import { deleteFollowers, holdOnReply, resumeFollowers, resumeHeldFollowers } fr
 import { ceilingFor, limitProblem } from "./send-limit";
 import { validProfilesPerHour } from "./profile-opens";
 import { messageUsage, wroteBack } from "./send-limit-server";
-import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
+import { DEFAULT_TIME_ZONE, dayBounds, validTimeZone } from "./time-zone";
 
 /** A draft from Claude or ChatGPT, with its suggested time and second message, cleared. */
 const NO_DRAFT = {
@@ -815,6 +815,25 @@ async function markProfilesOpenedImpl(personIds: string[]) {
   return people.length;
 }
 
+/**
+ * Start fresh: today's blue dots (for the people given, or everyone) turn grey, as if opened just before today,
+ * so the next profiles you open show blue and the hour's count starts again.
+ * They still count as opened this week.
+ */
+async function startFreshOpensImpl(personIds?: string[]) {
+  const workspace = await getWorkspace();
+  const start = dayBounds(new Date(), validTimeZone(workspace.timeZone) ? workspace.timeZone : DEFAULT_TIME_ZONE).start;
+  // The people ticked on Leads, or everyone.
+  const only = Array.isArray(personIds) && personIds.length ? { id: { in: personIds.slice(0, 2000) } } : {};
+  const { count } = await db.person.updateMany({
+    where: { workspaceId: workspace.id, profileOpenedAt: { gte: start }, ...only },
+    data: { profileOpenedAt: new Date(start.getTime() - 60_000) },
+  });
+  revalidatePath("/inbox");
+  revalidatePath("/people");
+  return count;
+}
+
 async function updateProfilesPerHourImpl(n: number) {
   const workspace = await getWorkspace();
   await db.workspace.update({ where: { id: workspace.id }, data: { profilesPerHour: validProfilesPerHour(n) } });
@@ -1021,6 +1040,10 @@ export async function markProfileOpened(...args: Parameters<typeof markProfileOp
 
 export async function markProfilesOpened(...args: Parameters<typeof markProfilesOpenedImpl>) {
   return run(() => markProfilesOpenedImpl(...args));
+}
+
+export async function startFreshOpens(...args: Parameters<typeof startFreshOpensImpl>) {
+  return run(() => startFreshOpensImpl(...args));
 }
 
 export async function updateProfilesPerHour(...args: Parameters<typeof updateProfilesPerHourImpl>) {
