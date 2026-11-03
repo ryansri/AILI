@@ -283,15 +283,19 @@ export const LOOP_CHOICES: { key: Exclude<RequestStep, "waiting">; label: string
 
 const shortDay = (iso: string, timeZone: string) => new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", timeZone });
 const daysAgo = (n: number) => (n === 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`);
+/** Calendar days in the user's time zone: sent Tue 10 am, read Wed 9 am is "yesterday", not "today". */
+const ymd = (d: Date, timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+const calendarDays = (iso: string, timeZone: string, now: Date) =>
+  Math.max(0, Math.round((Date.parse(ymd(now, timeZone)) - Date.parse(ymd(new Date(iso), timeZone))) / DAY));
 
 /** What Last activity says for a request, and its colour: "Request sent 17 days ago · withdraw". */
-export function loopLine(loop: RequestLoop, timeZone: string): { text: string; tone: "plain" | "amber" | "violet" | "blue" | "red" } {
+export function loopLine(loop: RequestLoop, timeZone: string, now = new Date()): { text: string; tone: "plain" | "amber" | "violet" | "blue" | "red" } {
   const nth = loop.tries >= 2 ? ` · ${loop.tries === 2 ? "2nd" : `${loop.tries}th`} try` : "";
   switch (loop.step) {
     case "waiting":
-      return { text: `Request sent ${daysAgo(loop.days)}${nth}`, tone: "plain" };
+      return { text: `Request sent ${daysAgo(calendarDays(loop.at, timeZone, now))}${nth}`, tone: "plain" };
     case "withdraw":
-      return { text: `Request sent ${daysAgo(loop.days)} · withdraw`, tone: "amber" };
+      return { text: `Request sent ${daysAgo(calendarDays(loop.at, timeZone, now))} · withdraw`, tone: "amber" };
     case "withdrawn":
       return { text: `Withdrawn ${shortDay(loop.at, timeZone)} · ask again ${shortDay(loop.againAt!, timeZone)}`, tone: "violet" };
     case "ask_again":

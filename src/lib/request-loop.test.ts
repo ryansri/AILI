@@ -19,7 +19,7 @@ describe("withdraw, wait, ask again", () => {
     expect(requestLoop(person({ status: "sent", sentAt: daysBefore(13) }), now)).toMatchObject({ step: "waiting", days: 13 });
     const old = requestLoop(person({ status: "sent", sentAt: daysBefore(17) }), now)!;
     expect(old.step).toBe("withdraw");
-    expect(loopLine(old, TZ)).toEqual({ text: "Request sent 17 days ago · withdraw", tone: "amber" });
+    expect(loopLine(old, TZ, now)).toEqual({ text: "Request sent 17 days ago · withdraw", tone: "amber" });
   });
 
   it("after you withdraw: LinkedIn's 3 weeks, then ask again", () => {
@@ -33,10 +33,21 @@ describe("withdraw, wait, ask again", () => {
 
   it("the second request waits as the 2nd try, and after it, lets go", () => {
     const second = requestLoop(person({ status: "sent", sentAt: daysBefore(2) }, { requestTries: 2 }), now)!;
-    expect(loopLine(second, TZ)).toEqual({ text: "Request sent 2 days ago · 2nd try", tone: "plain" });
+    expect(loopLine(second, TZ, now)).toEqual({ text: "Request sent 2 days ago · 2nd try", tone: "plain" });
     const twice = requestLoop(person({ status: "withdrawn", sentAt: daysBefore(20), withdrawnAt: daysBefore(5) }, { requestTries: 2 }), now)!;
     expect(twice.step).toBe("let_go");
     expect(loopLine(twice, TZ)).toEqual({ text: "Asked twice · let it go", tone: "red" });
+  });
+
+  it("counts Sydney calendar days, not 24-hour blocks", () => {
+    // Sent Tue 3 Nov 10:00 am Sydney, looked at Wed 4 Nov 10:40 am: under 24 hours, but yesterday.
+    const wed = new Date("2026-11-03T23:40:00Z");
+    const loop = requestLoop(person({ status: "sent", sentAt: "2026-11-02T23:00:00Z" }), wed)!;
+    expect(loopLine(loop, TZ, wed).text).toBe("Request sent yesterday");
+    // Sent 9 am, looked at 11 pm the same Sydney day: today.
+    const late = new Date("2026-11-03T12:00:00Z");
+    const same = requestLoop(person({ status: "sent", sentAt: "2026-11-02T22:00:00Z" }), late)!;
+    expect(loopLine(same, TZ, late).text).toBe("Request sent today");
   });
 
   it("is nothing once they accept or you're connected, or before a request goes out", () => {
