@@ -743,7 +743,7 @@ function LeadsSearch({ value, onChange, placeholder }: { value: string; onChange
   );
 }
 
-/** The left column: tick tags, connection, stage, or not opened lately. Counts are for everyone. */
+/** The left column: tick tags, connection, stage, or not opened lately. Each count follows the other groups' ticks. */
 function FilterPanel({
   people,
   tags,
@@ -781,24 +781,35 @@ function FilterPanel({
   /** With people ticked: those of them opened today. */
   selectedOpened?: string[];
 }) {
+  // Each group counts the people the other groups' ticks leave in, so with Recruitment Agencies ticked,
+  // Not connected says how many of them are not connected. Nothing ticked: everyone.
   const counts = useMemo(() => {
     const tag = new Map<string, number>();
     const conn = new Map<ConnPick, number>();
     const stage = new Map<string, number>();
     let fresh = 0;
+    const tagOk = (p: Person) => tagIds.size === 0 || p.tagIds.some((id) => tagIds.has(id));
+    const connOk = (p: Person) => conns.size === 0 || connMatch(p, conns);
+    // Not a fit is hidden unless ticked, so the other counts leave it out too.
+    const stageOk = (p: Person) => (stageKeys.size ? stageKeys.has(p.stage) : p.stage !== LOST);
+    const openOk = (p: Person) => !notOpened || openedState(p.profileOpenedAt, timeZone) === null;
     for (const p of people) {
-      stage.set(p.stage, (stage.get(p.stage) ?? 0) + 1);
-      // Not a fit is hidden unless ticked, so the other counts leave it out too.
-      if (p.stage === LOST) continue;
-      for (const id of p.tagIds) tag.set(id, (tag.get(id) ?? 0) + 1);
-      const c = connectionOf(p);
-      conn.set(c, (conn.get(c) ?? 0) + 1);
-      const step = loopStep(p);
-      if (step) conn.set(step, (conn.get(step) ?? 0) + 1);
-      if (openedState(p.profileOpenedAt, timeZone) === null) fresh += 1;
+      const t = tagOk(p);
+      const c = connOk(p);
+      const s = stageOk(p);
+      const o = openOk(p);
+      if (t && c && o) stage.set(p.stage, (stage.get(p.stage) ?? 0) + 1);
+      if (c && s && o) for (const id of p.tagIds) tag.set(id, (tag.get(id) ?? 0) + 1);
+      if (t && s && o) {
+        const key = connectionOf(p);
+        conn.set(key, (conn.get(key) ?? 0) + 1);
+        const step = loopStep(p);
+        if (step) conn.set(step, (conn.get(step) ?? 0) + 1);
+      }
+      if (t && c && s && openedState(p.profileOpenedAt, timeZone) === null) fresh += 1;
     }
     return { tag, conn, stage, fresh };
-  }, [people, timeZone]);
+  }, [people, timeZone, tagIds, conns, stageKeys, notOpened]);
 
 
   return (
