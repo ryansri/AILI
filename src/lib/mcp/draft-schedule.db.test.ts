@@ -102,3 +102,18 @@ describe.skipIf(!hasDb)("save_draft with a time and a second message", () => {
     await expect(saveDraft.run({ person_id: p.id, text: "Hi", third_text: "c" }, ctx)).rejects.toThrow(/needs second_text/);
   });
 });
+
+describe.skipIf(!hasDb)("update_post document_title", () => {
+  const updatePost = TOOLS.find((t) => t.name === "update_post")!;
+  it("sets the PDF's title, and says when there is no PDF yet", async () => {
+    const w = await db.workspace.create({ data: { name: "Doc title test", initials: "D", timeZone: "Australia/Sydney" } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof updatePost.run>[1];
+    const post = await db.post.create({ data: { workspaceId: w.id, title: "Monday carousel", body: "Hello" } });
+    await expect(updatePost.run({ post_id: post.id, document_title: "7 ways" }, ctx)).rejects.toThrow(/no PDF yet/);
+    const pdf = await db.postMedia.create({
+      data: { workspaceId: w.id, postId: post.id, kind: "document", url: "local:x.pdf", name: "x.pdf", contentType: "application/pdf", size: 10 },
+    });
+    expect(await updatePost.run({ post_id: post.id, document_title: "7 ways to save admin time" }, ctx)).toBe('PDF title set: "7 ways to save admin time".');
+    expect((await db.postMedia.findUniqueOrThrow({ where: { id: pdf.id } })).alt).toBe("7 ways to save admin time");
+  });
+});

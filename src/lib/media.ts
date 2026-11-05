@@ -24,6 +24,16 @@ export interface MediaView {
   src?: string;
   /** Deleted from AILI after publishing (LinkedIn keeps its copy). */
   removedAt?: string;
+  /** PDFs: the title LinkedIn shows above the document. Empty: the file's name. */
+  title?: string;
+}
+
+/** Longest document title LinkedIn takes. */
+export const MAX_DOC_TITLE = 400;
+
+/** The title a PDF goes out with: the one typed in, else the file's name without .pdf. */
+export function docTitleOf(m: { title?: string; name: string }): string {
+  return (m.title ?? "").trim() || m.name.replace(/\.pdf$/i, "").trim();
 }
 
 /** Image or PDF from a file's type, or null when LinkedIn won't take it. */

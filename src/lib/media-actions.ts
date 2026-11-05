@@ -5,6 +5,7 @@ import { run } from "./action-result";
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
+import { MAX_DOC_TITLE } from "./media";
 import { mediaEditable } from "./media-server";
 import { removeFile } from "./media-store";
 
@@ -39,6 +40,20 @@ async function orderMediaImpl(postId: string, ids: string[]) {
   const order = ids.filter((id) => known.has(id));
   await db.$transaction(order.map((id, position) => db.postMedia.update({ where: { id }, data: { position } })));
   revalidatePath("/posts");
+}
+
+/** The title LinkedIn shows above a PDF. Empty uses the file's name. */
+async function setDocTitleImpl(mediaId: string, title: string) {
+  const workspace = await getWorkspace();
+  const media = await db.postMedia.findFirst({ where: { id: mediaId, workspaceId: workspace.id, kind: "document" }, include: { post: true } });
+  if (!media) throw new Error("That PDF is not on the post any more.");
+  if (!mediaEditable(media.post)) throw new Error("The title can be changed until the post goes out.");
+  await db.postMedia.update({ where: { id: media.id }, data: { alt: title.trim().slice(0, MAX_DOC_TITLE) } });
+  revalidatePath("/posts");
+}
+
+export async function setDocTitle(...args: Parameters<typeof setDocTitleImpl>) {
+  return run(() => setDocTitleImpl(...args));
 }
 
 export async function removeMedia(...args: Parameters<typeof removeMediaImpl>) {

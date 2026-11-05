@@ -51,7 +51,7 @@ export default async function ContentPage({ searchParams }: PageProps<"/posts">)
       where: { workspaceId: workspace.id },
       include: {
         planEntry: { select: { day: true, time: true } },
-        media: { select: { id: true, kind: true, name: true, size: true, deletedAt: true, position: true } },
+        media: { select: { id: true, kind: true, name: true, size: true, deletedAt: true, position: true, alt: true } },
       },
       orderBy: { updatedAt: "desc" },
     }),

@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { FileText, ImagePlus, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { cannotAdd, IMAGE_TYPES, MAX_IMAGES, mediaKindOf, PART_BYTES, PDF_TYPE, type MediaKind, type MediaView } from "@/lib/media";
-import { orderMedia, removeMedia } from "@/lib/client-actions";
+import { cannotAdd, docTitleOf, IMAGE_TYPES, MAX_DOC_TITLE, MAX_IMAGES, mediaKindOf, PART_BYTES, PDF_TYPE, type MediaKind, type MediaView } from "@/lib/media";
+import { orderMedia, removeMedia, setDocTitle } from "@/lib/client-actions";
 
 /*
  * Images and PDF carousels on a post. Files go through AILI to storage
@@ -73,6 +73,53 @@ async function uploadFile(postId: string, file: File, onProgress: (label: string
   onProgress("Finishing");
   const body = JSON.stringify({ parts, name: file.name, contentType: file.type, size: file.size });
   await post(`/api/media/part?${q}&finish=1`, body, "application/json", file.size, file.name);
+}
+
+/** The title LinkedIn shows above a PDF. Saves when you leave the box or press Enter. */
+function DocTitle({ media }: { media: MediaView }) {
+  const router = useRouter();
+  const saved = media.title ?? "";
+  const [value, setValue] = useState(saved);
+  const [shownSaved, setShownSaved] = useState(saved);
+  // The page loaded a new title (saved here, or by Claude): show it.
+  if (saved !== shownSaved) {
+    setShownSaved(saved);
+    setValue(saved);
+  }
+  const fileName = docTitleOf({ name: media.name });
+
+  async function save() {
+    if (value.trim() === saved.trim()) return;
+    try {
+      await setDocTitle(media.id, value);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "The title did not save.");
+    }
+  }
+
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-md font-medium text-foreground">Title</span>
+      <input
+        value={value}
+        maxLength={MAX_DOC_TITLE}
+        placeholder={fileName}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+        className="h-9 rounded-lg border bg-background px-3 text-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <span className="text-xs text-muted-foreground">
+        Shows on LinkedIn above your document.{value.trim() ? "" : ` Left empty, it uses the file name: "${fileName}".`}
+      </span>
+    </label>
+  );
 }
 
 /** The "Images or carousel" part of a post: pick, add, order and remove its files. */
@@ -249,6 +296,8 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
         </ol>
       )}
 
+      {shown === "pdf" && list.filter((m) => m.kind === "document" && !m.removedAt).map((m) => <DocTitle key={m.id} media={m} />)}
+
       {shown !== "text" && store !== "off" && !full && (
         <label
           onDragOver={(e) => {
@@ -322,7 +371,7 @@ export function MediaPreview({ media }: { media: MediaView[] }) {
       <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-3.5">
         <FileText className="size-8 shrink-0 text-red-600" />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-md font-medium">{pdf.name}</span>
+          <span className="truncate text-md font-medium">{docTitleOf(pdf)}</span>
           <span className="text-xs text-muted-foreground">PDF carousel · people swipe through its pages on LinkedIn</span>
         </span>
       </div>

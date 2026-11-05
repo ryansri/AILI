@@ -1,4 +1,5 @@
 import "server-only";
+import { MAX_DOC_TITLE } from "../media";
 import { revalidatePath } from "next/cache";
 import { db } from "../db";
 import { getStages } from "../data";
@@ -517,12 +518,14 @@ const updatePost: Tool = {
     "Change a draft, scheduled or failed post in AILI: its text, its time, or publish it now. " +
     "unschedule: true moves a scheduled post back to drafts. post_id comes from list_posts or create_post. " +
     "A published post's text cannot change, but if it has no first comment yet, first_comment adds one: " +
-    "posted now, or at schedule_at. Show the user the comment and the time first.",
+    "posted now, or at schedule_at. Show the user the comment and the time first. " +
+    "document_title sets the title LinkedIn shows above the post's PDF (the user adds the PDF in AILI).",
   inputSchema: {
     type: "object",
     properties: {
       post_id: { type: "string" },
       text: { type: "string", description: "New text for the post, if it changes." },
+      document_title: { type: "string", description: "Title shown above the PDF on LinkedIn. Empty uses the file name." },
       ...firstCommentProperty,
       unschedule: { type: "boolean", description: "Take it off the schedule and keep it as a draft." },
       ...timingProperties,
@@ -577,6 +580,13 @@ const updatePost: Tool = {
       }
       await db.post.update({ where: { id: post.id }, data: { firstComment } });
       outcome = `${outcome} ${firstComment ? "First comment set." : "First comment removed."}`.trim();
+    }
+    if (typeof args.document_title === "string") {
+      const pdf = await db.postMedia.findFirst({ where: { postId: post.id, kind: "document", deletedAt: null } });
+      if (!pdf) throw new ToolError("This post has no PDF yet. The user adds it in AILI's Posts page, then the title can be set.");
+      const title = args.document_title.trim().slice(0, MAX_DOC_TITLE);
+      await db.postMedia.update({ where: { id: pdf.id }, data: { alt: title } });
+      outcome = `${outcome} ${title ? `PDF title set: "${title}".` : "PDF title cleared; it uses the file name."}`.trim();
     }
     if (args.unschedule === true) {
       await db.post.update({ where: { id: post.id }, data: { status: "draft", scheduledAt: null } });

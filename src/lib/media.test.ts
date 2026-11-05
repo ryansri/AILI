@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cannotAdd, dueForCleanup, mediaKindOf } from "./media";
+import { cannotAdd, docTitleOf, dueForCleanup, mediaKindOf } from "./media";
 
 const img = { contentType: "image/png", size: 1000 };
 const pdf = { contentType: "application/pdf", size: 1000 };
@@ -32,5 +32,13 @@ describe("post media rules", () => {
     expect(dueForCleanup(new Date("2026-10-01T12:00:00Z"), now)).toBe(true);
     expect(dueForCleanup(new Date("2026-10-01T13:00:00Z"), now)).toBe(false);
     expect(dueForCleanup(null, now)).toBe(false);
+  });
+});
+
+describe("PDF title on LinkedIn", () => {
+  it("uses the typed title, else the file name, never empty", () => {
+    expect(docTitleOf({ title: "7 ways to save admin time", name: "Monday carousel.pdf" })).toBe("7 ways to save admin time");
+    expect(docTitleOf({ title: "  ", name: "admin-time.PDF" })).toBe("admin-time");
+    expect(docTitleOf({ name: "admin-time.pdf" })).toBe("admin-time");
   });
 });

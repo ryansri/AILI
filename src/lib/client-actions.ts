@@ -78,6 +78,7 @@ export const togglePrivacy = unwrap(privacy.togglePrivacy);
 export const updateGoals = unwrap(progress.updateGoals);
 export const removeMedia = unwrap(media.removeMedia);
 export const orderMedia = unwrap(media.orderMedia);
+export const setDocTitle = unwrap(media.setDocTitle);
 export const disconnectLinkedInPosting = unwrap(posts.disconnectLinkedInPosting);
 export const disconnectAiApp = unwrap(posts.disconnectAiApp);
 
