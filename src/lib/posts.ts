@@ -69,7 +69,7 @@ export function toPostView(
     commentError: p.commentError ?? undefined,
     overdue: p.status === "scheduled" && (p.scheduledAt?.getTime() ?? Infinity) < Date.now() - 2 * 60_000,
     planned: p.planEntry?.day ? { day: p.planEntry.day, time: p.planEntry.time ?? "09:00" } : undefined,
-    media: toMediaViews(p.media ?? []),
+    media: toMediaViews(p.media ?? [], p.docTitle),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Post" ADD COLUMN "docTitle" TEXT NOT NULL DEFAULT '';

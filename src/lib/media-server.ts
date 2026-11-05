@@ -43,7 +43,10 @@ export async function addMedia(
 }
 
 /** The post's files as the page shows them, in order. */
-export function toMediaViews(rows: { id: string; kind: string; name: string; size: number; deletedAt: Date | null; position: number; alt?: string }[]): MediaView[] {
+export function toMediaViews(
+  rows: { id: string; kind: string; name: string; size: number; deletedAt: Date | null; position: number }[],
+  docTitle = "",
+): MediaView[] {
   return [...rows]
     .sort((a, b) => a.position - b.position)
     .map((m) => ({
@@ -53,19 +56,18 @@ export function toMediaViews(rows: { id: string; kind: string; name: string; siz
       size: m.size,
       src: m.deletedAt ? undefined : `/api/media/${m.id}`,
       removedAt: m.deletedAt?.toISOString(),
-      // A PDF's alt holds its title on LinkedIn.
-      ...(m.kind === "document" ? { title: m.alt ?? "" } : {}),
+      ...(m.kind === "document" ? { title: docTitle } : {}),
     }));
 }
 
 /** What goes to LinkedIn with the post: its images in order, or its PDF. Nothing when it has none. */
-export async function mediaForLinkedIn(post: Pick<Post, "id" | "body">): Promise<LinkedInMedia | undefined> {
+export async function mediaForLinkedIn(post: Pick<Post, "id" | "body" | "docTitle">): Promise<LinkedInMedia | undefined> {
   const rows = await db.postMedia.findMany({ where: { postId: post.id, deletedAt: null }, orderBy: { position: "asc" } });
   if (rows.length === 0) return undefined;
   const pdf = rows.find((m) => m.kind === "document");
   if (pdf) {
     // The title typed for the PDF, else its file name. Never the plan's name for the post ("Monday carousel").
-    const title = docTitleOf({ title: pdf.alt, name: pdf.name }) || post.body.split("\n")[0].slice(0, 100);
+    const title = docTitleOf({ title: post.docTitle, name: pdf.name }) || post.body.split("\n")[0].slice(0, 100);
     return { kind: "document", bytes: await readMedia(pdf.url), title };
   }
   const images = [];

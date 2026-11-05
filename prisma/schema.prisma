@@ -379,6 +379,8 @@ model Post {
   planEntry   PlanEntry?
   /// Images or a PDF carousel to post with it
   media       PostMedia[]
+  /// The title LinkedIn shows above its PDF. Can be set before the PDF is added. Empty: the file's name.
+  docTitle    String    @default("")
   /// Posted as a comment under the post once it is live, e.g. the link. Empty for none.
   firstComment      String    @default("")
   /// pending | posting | posted | failed; null when there is no first comment yet.

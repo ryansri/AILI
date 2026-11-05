@@ -463,6 +463,17 @@ const timingProperties = {
   },
 };
 
+/** Saves the title LinkedIn shows above a post's PDF, and says whether the PDF is there yet. */
+async function setDocTitleFor(postId: string, raw: string): Promise<string> {
+  const title = raw.trim().slice(0, MAX_DOC_TITLE);
+  await db.post.update({ where: { id: postId }, data: { docTitle: title } });
+  const hasPdf = (await db.postMedia.count({ where: { postId, kind: "document", deletedAt: null } })) > 0;
+  if (!title) return "PDF title cleared; it uses the file name.";
+  return hasPdf
+    ? `PDF title set: "${title}".`
+    : `PDF title set: "${title}". The user uploads the PDF in AILI before it goes out, or it posts as text only.`;
+}
+
 const createPost: Tool = {
   name: "create_post",
   title: "Create a LinkedIn post",
@@ -476,6 +487,10 @@ const createPost: Tool = {
       text: { type: "string", description: "The post, exactly as it should appear." },
       plan_row_id: { type: "string", description: "The plan row from get_plan this post is written for; the row then shows it as written or scheduled." },
       ...firstCommentProperty,
+      document_title: {
+        type: "string",
+        description: "For a PDF carousel: the title LinkedIn shows above the PDF. The user uploads the PDF in AILI afterwards; the title waits for it.",
+      },
       ...timingProperties,
     },
     required: ["text"],
@@ -502,12 +517,13 @@ const createPost: Tool = {
       data: { workspaceId: ctx.workspaceId, kind: "post", body, firstComment, source: ctx.appName },
     });
     if (rowId) await linkPost(ctx.workspaceId, rowId, post.id).catch(toolError);
+    const docNote = typeof args.document_title === "string" && args.document_title.trim() ? `\n${await setDocTitleFor(post.id, args.document_title)}` : "";
     revalidatePath("/posts");
     const outcome = await applyTiming(ctx, post.id, args.publish_now === true, at);
     revalidatePath("/posts");
     const delay = firstComment ? (await workspace(ctx)).firstCommentDelay : 0;
     const note = firstComment ? `\nFirst comment: ${delayLabel(delay).toLowerCase()} the post goes live.` : "";
-    return `${outcome}${note}\n(post id: ${post.id})`;
+    return `${outcome}${docNote}${note}\n(post id: ${post.id})`;
   },
 };
 
@@ -519,7 +535,7 @@ const updatePost: Tool = {
     "unschedule: true moves a scheduled post back to drafts. post_id comes from list_posts or create_post. " +
     "A published post's text cannot change, but if it has no first comment yet, first_comment adds one: " +
     "posted now, or at schedule_at. Show the user the comment and the time first. " +
-    "document_title sets the title LinkedIn shows above the post's PDF (the user adds the PDF in AILI).",
+    "document_title sets the title LinkedIn shows above the post's PDF; set it before the user adds the PDF in AILI, it waits for it.",
   inputSchema: {
     type: "object",
     properties: {
@@ -581,13 +597,7 @@ const updatePost: Tool = {
       await db.post.update({ where: { id: post.id }, data: { firstComment } });
       outcome = `${outcome} ${firstComment ? "First comment set." : "First comment removed."}`.trim();
     }
-    if (typeof args.document_title === "string") {
-      const pdf = await db.postMedia.findFirst({ where: { postId: post.id, kind: "document", deletedAt: null } });
-      if (!pdf) throw new ToolError("This post has no PDF yet. The user adds it in AILI's Posts page, then the title can be set.");
-      const title = args.document_title.trim().slice(0, MAX_DOC_TITLE);
-      await db.postMedia.update({ where: { id: pdf.id }, data: { alt: title } });
-      outcome = `${outcome} ${title ? `PDF title set: "${title}".` : "PDF title cleared; it uses the file name."}`.trim();
-    }
+    if (typeof args.document_title === "string") outcome = `${outcome} ${await setDocTitleFor(post.id, args.document_title)}`.trim();
     if (args.unschedule === true) {
       await db.post.update({ where: { id: post.id }, data: { status: "draft", scheduledAt: null } });
       outcome = `${outcome} Taken off the schedule; it is a draft now.`.trim();

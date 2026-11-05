@@ -42,13 +42,11 @@ async function orderMediaImpl(postId: string, ids: string[]) {
   revalidatePath("/posts");
 }
 
-/** The title LinkedIn shows above a PDF. Empty uses the file's name. */
-async function setDocTitleImpl(mediaId: string, title: string) {
-  const workspace = await getWorkspace();
-  const media = await db.postMedia.findFirst({ where: { id: mediaId, workspaceId: workspace.id, kind: "document" }, include: { post: true } });
-  if (!media) throw new Error("That PDF is not on the post any more.");
-  if (!mediaEditable(media.post)) throw new Error("The title can be changed until the post goes out.");
-  await db.postMedia.update({ where: { id: media.id }, data: { alt: title.trim().slice(0, MAX_DOC_TITLE) } });
+/** The title LinkedIn shows above the post's PDF. Empty uses the file's name. */
+async function setDocTitleImpl(postId: string, title: string) {
+  const post = await ownPost(postId);
+  if (!mediaEditable(post)) throw new Error("The title can be changed until the post goes out.");
+  await db.post.update({ where: { id: post.id }, data: { docTitle: title.trim().slice(0, MAX_DOC_TITLE) } });
   revalidatePath("/posts");
 }
 

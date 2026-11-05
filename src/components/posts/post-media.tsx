@@ -76,7 +76,7 @@ async function uploadFile(postId: string, file: File, onProgress: (label: string
 }
 
 /** The title LinkedIn shows above a PDF. Saves when you leave the box or press Enter. */
-function DocTitle({ media }: { media: MediaView }) {
+function DocTitle({ postId, media }: { postId: string; media: MediaView }) {
   const router = useRouter();
   const saved = media.title ?? "";
   const [value, setValue] = useState(saved);
@@ -91,7 +91,7 @@ function DocTitle({ media }: { media: MediaView }) {
   async function save() {
     if (value.trim() === saved.trim()) return;
     try {
-      await setDocTitle(media.id, value);
+      await setDocTitle(postId, value);
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The title did not save.");
@@ -296,7 +296,7 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
         </ol>
       )}
 
-      {shown === "pdf" && list.filter((m) => m.kind === "document" && !m.removedAt).map((m) => <DocTitle key={m.id} media={m} />)}
+      {shown === "pdf" && list.filter((m) => m.kind === "document" && !m.removedAt).map((m) => <DocTitle key={m.id} postId={postId} media={m} />)}
 
       {shown !== "text" && store !== "off" && !full && (
         <label

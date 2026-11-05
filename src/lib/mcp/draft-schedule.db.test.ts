@@ -103,17 +103,23 @@ describe.skipIf(!hasDb)("save_draft with a time and a second message", () => {
   });
 });
 
-describe.skipIf(!hasDb)("update_post document_title", () => {
+describe.skipIf(!hasDb)("PDF title from Claude", () => {
   const updatePost = TOOLS.find((t) => t.name === "update_post")!;
-  it("sets the PDF's title, and says when there is no PDF yet", async () => {
+  const createPost = TOOLS.find((t) => t.name === "create_post")!;
+  it("saves the title before the PDF is there, and the PDF picks it up", async () => {
     const w = await db.workspace.create({ data: { name: "Doc title test", initials: "D", timeZone: "Australia/Sydney" } });
     const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof updatePost.run>[1];
-    const post = await db.post.create({ data: { workspaceId: w.id, title: "Monday carousel", body: "Hello" } });
-    await expect(updatePost.run({ post_id: post.id, document_title: "7 ways" }, ctx)).rejects.toThrow(/no PDF yet/);
-    const pdf = await db.postMedia.create({
-      data: { workspaceId: w.id, postId: post.id, kind: "document", url: "local:x.pdf", name: "x.pdf", contentType: "application/pdf", size: 10 },
+    const out = await createPost.run({ text: "Hello", document_title: "7 ways to save admin time" }, ctx);
+    expect(out).toMatch(/PDF title set: "7 ways to save admin time". The user uploads the PDF in AILI/);
+    const id = /post id: (\w+)/.exec(out)![1];
+    expect((await db.post.findUniqueOrThrow({ where: { id } })).docTitle).toBe("7 ways to save admin time");
+
+    await db.postMedia.create({
+      data: { workspaceId: w.id, postId: id, kind: "document", url: "local:x.pdf", name: "x.pdf", contentType: "application/pdf", size: 10 },
     });
-    expect(await updatePost.run({ post_id: post.id, document_title: "7 ways to save admin time" }, ctx)).toBe('PDF title set: "7 ways to save admin time".');
-    expect((await db.postMedia.findUniqueOrThrow({ where: { id: pdf.id } })).alt).toBe("7 ways to save admin time");
+    expect(await updatePost.run({ post_id: id, document_title: "  New title " }, ctx)).toBe('PDF title set: "New title".');
+    const { toMediaViews } = await import("../media-server");
+    const post = await db.post.findUniqueOrThrow({ where: { id }, include: { media: true } });
+    expect(toMediaViews(post.media, post.docTitle)[0].title).toBe("New title");
   });
 });
