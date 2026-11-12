@@ -15,7 +15,7 @@ process.env.AUTH_SECRET = "test-secret-test-secret-test-secret";
 vi.mock("server-only", () => ({}));
 const { db } = await import("./db");
 const { seal } = await import("./secret-box");
-const { publishPost, publishDuePosts, postFirstComment, postSecondComment, addFirstComment, cancelFirstComment, cancelSecondComment } = await import("./posts");
+const { publishPost, publishDuePosts, postFirstComment, postSecondComment, addSecondComment, addFirstComment, cancelFirstComment, cancelSecondComment } = await import("./posts");
 const { cleanupPublishedMedia, deleteAllMedia } = await import("./media-server");
 const { saveLocal, readMedia } = await import("./media-store");
 
@@ -171,6 +171,37 @@ describe.skipIf(!hasDb)("second comment", () => {
     await cancelSecondComment(w.id, other.id);
     await publishDuePosts({ now: new Date(Date.now() + 90 * 60_000) });
     expect(comments()).not.toContain("Later");
+  });
+});
+
+describe.skipIf(!hasDb)("a second comment on a live post", () => {
+  it("posts it now or in some minutes, and never touches the first comment", async () => {
+    const w = await workspace(0);
+    const post = await db.post.create({ data: { workspaceId: w.id, body: "Live", firstComment: "Checklist: https://x.io" } });
+    await publishPost(w.id, post.id);
+    calls = [];
+    const later = await addSecondComment(w.id, post.id, "Any questions?", 30);
+    expect(later.secondStatus).toBe("pending");
+    expect(Math.round((later.secondAt!.getTime() - Date.now()) / 60_000)).toBe(30);
+    expect(calls).toHaveLength(0);
+    await publishDuePosts({ now: new Date(Date.now() + 31 * 60_000) });
+    expect(calls.map((c) => (c.body.message as { text: string }).text)).toEqual(["Any questions?"]);
+    const after = await db.post.findUniqueOrThrow({ where: { id: post.id } });
+    expect(after).toMatchObject({ firstComment: "Checklist: https://x.io", commentStatus: "posted", secondStatus: "posted" });
+    await expect(addSecondComment(w.id, post.id, "Again", 0)).rejects.toThrow(/already has a second comment/);
+
+    const other = await db.post.create({ data: { workspaceId: w.id, body: "Live 2", firstComment: "Link" } });
+    await publishPost(w.id, other.id);
+    calls = [];
+    expect((await addSecondComment(w.id, other.id, "Now please", 0)).secondStatus).toBe("posted");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("needs a first comment", async () => {
+    const w = await workspace(0);
+    const post = await db.post.create({ data: { workspaceId: w.id, body: "Bare" } });
+    await publishPost(w.id, post.id);
+    await expect(addSecondComment(w.id, post.id, "Hi", 30)).rejects.toThrow(/Add a first comment first/);
   });
 });
 

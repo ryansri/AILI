@@ -70,6 +70,7 @@ export const publishPostNow = unwrap(posts.publishPostNow);
 export const retryFirstComment = unwrap(posts.retryFirstComment);
 export const retrySecondComment = unwrap(posts.retrySecondComment);
 export const cancelSecondCommentOnPost = unwrap(posts.cancelSecondCommentOnPost);
+export const addSecondCommentToPost = unwrap(posts.addSecondCommentToPost);
 export const addFirstCommentToPost = unwrap(posts.addFirstCommentToPost);
 export const cancelFirstCommentOnPost = unwrap(posts.cancelFirstCommentOnPost);
 export const updateFirstCommentDelay = unwrap(posts.updateFirstCommentDelay);

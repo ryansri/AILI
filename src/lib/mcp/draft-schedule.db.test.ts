@@ -144,3 +144,17 @@ describe.skipIf(!hasDb)("second comment from Claude", () => {
   });
 });
 
+describe.skipIf(!hasDb)("second comment on a live post from Claude", () => {
+  const updatePost = TOOLS.find((t) => t.name === "update_post")!;
+  it("schedules it and leaves the first comment alone", async () => {
+    const w = await db.workspace.create({ data: { name: "Live second", initials: "L", timeZone: "Australia/Sydney" } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof updatePost.run>[1];
+    const post = await db.post.create({
+      data: { workspaceId: w.id, body: "Live", status: "published", publishedAt: new Date(), linkedinUrn: "urn:li:share:9", firstComment: "Checklist", commentStatus: "posted" },
+    });
+    const out = await updatePost.run({ post_id: post.id, second_comment: "Questions?", second_comment_after_minutes: 45 }, ctx);
+    expect(out).toMatch(/Second comment scheduled for .* The first comment is unchanged/);
+    expect(await db.post.findUniqueOrThrow({ where: { id: post.id } })).toMatchObject({ firstComment: "Checklist", secondComment: "Questions?", secondStatus: "pending" });
+  });
+});
+

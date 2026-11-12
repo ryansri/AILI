@@ -5,7 +5,7 @@ import { db } from "../db";
 import { getStages } from "../data";
 import { linkedInPostUrl } from "../linkedin-posting";
 import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS, SECOND_COMMENT_DELAYS, secondDelayOf } from "../linkedin-text";
-import { addFirstComment, checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
+import { addFirstComment, addSecondComment, checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
 import { formatWhen, offsetLabel, parseWhen, wallTimeToDate } from "../time-zone";
 import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel, timeLabel } from "../plan";
 import { CHANNEL_NAMES, CHANNELS, daysLabel, type WeekView } from "../posting-weeks";
@@ -466,7 +466,11 @@ const firstCommentProperty = {
       `Optional. A second comment under the post, posted second_comment_after_minutes after the first comment (needs a first comment), up to ${COMMENT_MAX_CHARS} characters. ` +
       "Empty string removes it. Only when the user asks for one.",
   },
-  second_comment_after_minutes: { type: "number", enum: SECOND_COMMENT_DELAYS, description: "30, 45 or 60. Default 45." },
+  second_comment_after_minutes: {
+    type: "number",
+    enum: [0, ...SECOND_COMMENT_DELAYS],
+    description: "30, 45 or 60 minutes after the first comment. Default 45. 0 (now) only for a live post whose first comment is out.",
+  },
 };
 
 /** The second comment and its delay from the tool's input, checked; null when the input doesn't touch it. */
@@ -569,7 +573,9 @@ const updatePost: Tool = {
     "unschedule: true moves a scheduled post back to drafts. post_id comes from list_posts or create_post. " +
     "A published post's text cannot change, but if it has no first comment yet, first_comment adds one: " +
     "posted now, or at schedule_at. Show the user the comment and the time first. " +
-    "document_title sets the title LinkedIn shows above the post's PDF; set it before the user adds the PDF in AILI, it waits for it.",
+    "document_title sets the title LinkedIn shows above the post's PDF; set it before the user adds the PDF in AILI, it waits for it. " +
+    "second_comment adds a second comment, also on a published post that has a first comment: it goes second_comment_after_minutes " +
+    "after the first (on a live post whose first comment is out, that many minutes from now; 0 is now). It never replaces the first comment.",
   inputSchema: {
     type: "object",
     properties: {
@@ -588,6 +594,25 @@ const updatePost: Tool = {
     const post = await db.post.findFirst({ where: { id: text(args.post_id), workspaceId: ctx.workspaceId } });
     if (!post) throw new ToolError("No such post in AILI. Use list_posts to find it.");
     if (post.kind === "article") throw new ToolError("That is an article. Articles are published by the user in LinkedIn from the Posts page.");
+    if (post.status === "published" && typeof args.second_comment === "string" && typeof args.first_comment !== "string" && !text(args.text).trim()) {
+      // A live post: a second comment under it, now or in some minutes.
+      const tz = timeZoneOf(await workspace(ctx));
+      const minutes = args.second_comment_after_minutes === undefined ? 45 : Number(args.second_comment_after_minutes);
+      let saved;
+      try {
+        saved = await addSecondComment(ctx.workspaceId, post.id, args.second_comment, minutes);
+      } catch (err) {
+        throw new ToolError(err instanceof Error ? err.message : "The second comment did not go.");
+      }
+      revalidatePath("/posts");
+      return saved.secondStatus === "posted"
+        ? "Second comment posted under the post on LinkedIn. The first comment is unchanged."
+        : saved.secondStatus === "failed"
+          ? `LinkedIn did not post the second comment: ${saved.secondError ?? "it refused"}. The user can try again from ${ctx.origin}/posts.`
+          : saved.secondStatus === "pending"
+            ? `Second comment scheduled for ${formatWhen(saved.secondAt!, tz)} (${tz}). The first comment is unchanged.`
+            : `Second comment saved: it goes ${saved.secondDelay} min after the first comment.`;
+    }
     if (post.status === "published" && typeof args.first_comment === "string" && !text(args.text).trim()) {
       // A live post: its first comment can still be added, now or at a time.
       const when = text(args.schedule_at);
@@ -608,7 +633,7 @@ const updatePost: Tool = {
           : `First comment scheduled for ${formatWhen(saved.commentAt!, tz)} (${tz}).`;
     }
     if (post.status === "published" || post.status === "publishing") {
-      throw new ToolError("It is already published, so its text cannot change here. Edit it on LinkedIn. A first comment can still be added if it has none.");
+      throw new ToolError("It is already published, so its text cannot change here. Edit it on LinkedIn. A first comment can still be added if it has none, and a second comment with second_comment.");
     }
     const newText = text(args.text).trim();
     const firstNow = typeof args.first_comment === "string" ? args.first_comment.trim() : post.firstComment.trim();

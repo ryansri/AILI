@@ -26,6 +26,7 @@ import { COMMENT_MAX_CHARS, DEFAULT_SECOND_COMMENT_DELAY, delayLabel, POST_MAX_C
 import { formatWhen, toWallInput, wallTimeToDate } from "@/lib/time-zone";
 import {
   addFirstCommentToPost,
+  addSecondCommentToPost,
   cancelFirstCommentOnPost,
   cancelSecondCommentOnPost,
   deletePost,
@@ -915,6 +916,71 @@ function AddFirstComment({ post }: { post: PostView }) {
   );
 }
 
+/** A live post with a first comment and no second: write one, posted now or in 30 to 60 minutes. */
+function AddSecondComment({ post }: { post: PostView }) {
+  const [text, setText] = useState("");
+  const firstOut = post.commentStatus === "posted";
+  const [minutes, setMinutes] = useState(firstOut ? 0 : DEFAULT_SECOND_COMMENT_DELAY);
+  const [pending, start] = useTransition();
+  const over = text.length > COMMENT_MAX_CHARS;
+  const choices = firstOut ? [0, ...SECOND_COMMENT_DELAYS] : SECOND_COMMENT_DELAYS;
+  function save() {
+    start(async () => {
+      try {
+        await addSecondCommentToPost(post.id, text, minutes);
+        toast.success(firstOut && minutes === 0 ? "Second comment posted on LinkedIn." : "Second comment scheduled.");
+        setText("");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "LinkedIn did not post it.");
+      }
+    });
+  }
+  return (
+    <div className="flex w-full max-w-[560px] flex-col gap-3 rounded-xl border bg-background px-5 py-4">
+      <Label htmlFor="add-second-comment" className="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        <MessageCircle className="size-3.5" />
+        Add a second comment
+      </Label>
+      <Textarea
+        id="add-second-comment"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="A question to restart the conversation, or the link again for late readers."
+        className="min-h-[72px] text-md leading-relaxed"
+      />
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span role="radiogroup" aria-label="When" className="flex rounded-lg bg-muted p-0.5">
+          {choices.map((d) => (
+            <button
+              key={d}
+              type="button"
+              role="radio"
+              aria-checked={minutes === d}
+              onClick={() => setMinutes(d)}
+              className={cn("h-6 rounded-md px-2.5 transition-colors", minutes === d ? "bg-background font-semibold text-foreground shadow-sm" : "hover:text-foreground")}
+            >
+              {d === 0 ? "Now" : `${d} min`}
+            </button>
+          ))}
+        </span>
+        <span className={cn("mr-auto", over && "font-medium text-red-600")}>
+          {over
+            ? `${text.length.toLocaleString()} / ${COMMENT_MAX_CHARS.toLocaleString()} characters`
+            : firstOut
+              ? minutes === 0
+                ? "Goes under your post now."
+                : `Goes under your post in ${minutes} minutes.`
+              : `${minutes} minutes after the first comment.`}
+        </span>
+        <Button size="sm" disabled={pending || !text.trim() || over} onClick={save}>
+          {pending ? <Loader2 className="animate-spin" /> : <Send />}
+          {firstOut && minutes === 0 ? "Post now" : "Schedule"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Detail({
   post,
   linkedin,
@@ -1161,6 +1227,7 @@ function Detail({
               </div>
             )}
             {post.status === "published" && post.url && !post.firstComment.trim() && <AddFirstComment post={post} />}
+            {post.status === "published" && post.url && post.firstComment.trim() && !post.secondComment.trim() && <AddSecondComment post={post} />}
             <article className="flex w-full max-w-[560px] flex-col gap-3 rounded-xl border bg-background px-5 py-4">
               <div className="flex items-center gap-2.5">
                 <span className="flex size-11 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">

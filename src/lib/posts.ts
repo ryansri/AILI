@@ -5,7 +5,7 @@ import { open, seal } from "./secret-box";
 import { commentOnLinkedInPost, LinkedInPostError, linkedInPostUrl, publishLinkedInPost, refreshLinkedIn } from "./linkedin-posting";
 import { cleanupPublishedMedia, mediaForLinkedIn, toMediaViews } from "./media-server";
 import type { MediaView } from "./media";
-import { COMMENT_MAX_CHARS, POST_MAX_CHARS } from "./linkedin-text";
+import { COMMENT_MAX_CHARS, POST_MAX_CHARS, secondDelayOf } from "./linkedin-text";
 
 const COMMENT_STATES = ["pending", "posting", "posted", "failed"] as const;
 type CommentState = (typeof COMMENT_STATES)[number];
@@ -257,6 +257,37 @@ export async function postSecondComment(workspaceId: string, postId: string): Pr
     await db.post.update({ where: { id: postId }, data: { secondStatus: "failed", secondError: message } });
     throw err instanceof Error ? err : new Error(message);
   }
+}
+
+/**
+ * A second comment for a post that is already live. With its first comment
+ * out, it goes in `minutes` (0 is now); while the first is still to come, it
+ * follows that one by `minutes` (30, 45 or 60). Set again to change it, until
+ * it goes.
+ */
+export async function addSecondComment(workspaceId: string, postId: string, text: string, minutes: number, now = new Date()): Promise<PostRow> {
+  const post = await db.post.findFirst({ where: { id: postId, workspaceId } });
+  if (!post) throw new Error("That post is not in AILI any more.");
+  if (post.kind !== "post" || post.status !== "published") throw new Error("Only a published post gets a comment this way.");
+  if (!post.linkedinUrn) throw new Error("AILI did not publish this post, so it cannot comment on it. Add the comment on LinkedIn.");
+  if (!post.firstComment.trim()) throw new Error("A second comment follows the first one. Add a first comment first.");
+  if (post.secondStatus === "posted" || post.secondStatus === "posting") throw new Error("It already has a second comment. Change it on LinkedIn.");
+  const comment = text.trim();
+  if (!comment) throw new Error("Write the comment first.");
+  checkCommentText(comment);
+  const firstOut = post.commentStatus === "posted";
+  const delay = firstOut && minutes <= 0 ? 0 : secondDelayOf(minutes);
+  const saved = await db.post.update({
+    where: { id: post.id },
+    data: firstOut
+      ? { secondComment: comment, secondDelay: delay || post.secondDelay, secondStatus: "pending", secondAt: new Date(now.getTime() + delay * 60_000), secondError: null }
+      : { secondComment: comment, secondDelay: delay, secondStatus: null, secondAt: null, secondError: null },
+  });
+  if (firstOut && delay === 0) {
+    await postSecondComment(workspaceId, post.id);
+    return db.post.findUniqueOrThrow({ where: { id: post.id } });
+  }
+  return saved;
 }
 
 /** Takes back a second comment that has not gone out yet. */

@@ -5,7 +5,7 @@ import { run } from "./action-result";
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
-import { addFirstComment, cancelFirstComment, cancelSecondComment, checkCommentText, checkPostText, checkScheduleTime, postFirstComment, postSecondComment, publishPost } from "./posts";
+import { addFirstComment, addSecondComment, cancelFirstComment, cancelSecondComment, checkCommentText, checkPostText, checkScheduleTime, postFirstComment, postSecondComment, publishPost } from "./posts";
 import { secondDelayOf } from "./linkedin-text";
 import { FIRST_COMMENT_DELAYS } from "./linkedin-text";
 import { validTimeZone } from "./time-zone";
@@ -131,6 +131,13 @@ async function retrySecondCommentImpl(postId: string) {
   done();
 }
 
+/** A second comment on a live post: in `minutes` (0 is now) once the first is out. */
+async function addSecondCommentImpl(postId: string, text: string, minutes: number) {
+  const { workspace, post } = await ownPost(postId);
+  await addSecondComment(workspace.id, post.id, text, minutes);
+  done();
+}
+
 async function cancelSecondCommentImpl(postId: string) {
   const { workspace, post } = await ownPost(postId);
   await cancelSecondComment(workspace.id, post.id);
@@ -229,6 +236,10 @@ export async function publishPostNow(...args: Parameters<typeof publishPostNowIm
 
 export async function retrySecondComment(...args: Parameters<typeof retrySecondCommentImpl>) {
   return run(() => retrySecondCommentImpl(...args));
+}
+
+export async function addSecondCommentToPost(...args: Parameters<typeof addSecondCommentImpl>) {
+  return run(() => addSecondCommentImpl(...args));
 }
 
 export async function cancelSecondCommentOnPost(...args: Parameters<typeof cancelSecondCommentImpl>) {
