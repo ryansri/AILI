@@ -36,6 +36,17 @@ export const COMMENT_MAX_CHARS = 1250;
 export const FIRST_COMMENT_DELAYS = [0, 1, 2, 5, 10, 15, 30];
 export const DEFAULT_FIRST_COMMENT_DELAY = 5;
 
+/** How long after the first comment the second one follows, in minutes. */
+export const SECOND_COMMENT_DELAYS = [30, 45, 60];
+export const DEFAULT_SECOND_COMMENT_DELAY = 45;
+
+/** A second-comment delay AILI offers; anything else becomes the nearest one. */
+export function secondDelayOf(minutes: unknown): number {
+  const n = Number(minutes);
+  if (!Number.isFinite(n)) return DEFAULT_SECOND_COMMENT_DELAY;
+  return SECOND_COMMENT_DELAYS.reduce((best, d) => (Math.abs(d - n) < Math.abs(best - n) ? d : best));
+}
+
 export function delayLabel(minutes: number): string {
   return minutes === 0 ? "Right away" : minutes === 1 ? "1 minute after" : `${minutes} minutes after`;
 }

@@ -6,6 +6,10 @@ import { commentOnLinkedInPost, LinkedInPostError, linkedInPostUrl, publishLinke
 import { cleanupPublishedMedia, mediaForLinkedIn, toMediaViews } from "./media-server";
 import type { MediaView } from "./media";
 import { COMMENT_MAX_CHARS, POST_MAX_CHARS } from "./linkedin-text";
+
+const COMMENT_STATES = ["pending", "posting", "posted", "failed"] as const;
+type CommentState = (typeof COMMENT_STATES)[number];
+const commentState = (s: string | null) => (COMMENT_STATES.includes(s as CommentState) ? (s as CommentState) : undefined);
 import { DEFAULT_TIME_ZONE, validTimeZone } from "./time-zone";
 
 /*
@@ -34,6 +38,12 @@ export interface PostView {
   commentStatus?: "pending" | "posting" | "posted" | "failed";
   commentAt?: string;
   commentError?: string;
+  /** Posted under the post secondDelay minutes after the first comment. */
+  secondComment: string;
+  secondDelay: number;
+  secondStatus?: CommentState;
+  secondAt?: string;
+  secondError?: string;
   /** Scheduled, and its time passed more than 2 minutes ago: the timer has not run. */
   overdue: boolean;
   /** The plan row it was written for: its day and time ("09:00" when the plan has none). */
@@ -67,6 +77,11 @@ export function toPostView(
       : undefined) as PostView["commentStatus"],
     commentAt: p.commentAt?.toISOString(),
     commentError: p.commentError ?? undefined,
+    secondComment: p.secondComment,
+    secondDelay: p.secondDelay,
+    secondStatus: commentState(p.secondStatus),
+    secondAt: p.secondAt?.toISOString(),
+    secondError: p.secondError ?? undefined,
     overdue: p.status === "scheduled" && (p.scheduledAt?.getTime() ?? Infinity) < Date.now() - 2 * 60_000,
     planned: p.planEntry?.day ? { day: p.planEntry.day, time: p.planEntry.time ?? "09:00" } : undefined,
     media: toMediaViews(p.media ?? [], p.docTitle),
@@ -210,12 +225,46 @@ export async function postFirstComment(workspaceId: string, postId: string): Pro
   try {
     const { token, author } = await postingToken(workspaceId);
     const urn = await commentOnLinkedInPost(token, author, post.linkedinUrn!, post.firstComment.trim());
-    await db.post.update({ where: { id: postId }, data: { commentStatus: "posted", commentUrn: urn || null } });
+    // The second comment, if there is one, follows its delay after this one.
+    const second = post.secondComment.trim()
+      ? { secondStatus: "pending", secondAt: new Date(Date.now() + post.secondDelay * 60_000), secondError: null }
+      : {};
+    await db.post.update({ where: { id: postId }, data: { commentStatus: "posted", commentUrn: urn || null, ...second } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "LinkedIn did not post the comment.";
     await db.post.update({ where: { id: postId }, data: { commentStatus: "failed", commentError: message } });
     throw err instanceof Error ? err : new Error(message);
   }
+}
+
+/**
+ * Posts a published post's second comment, once its first is out. Claimed as
+ * "posting" first, like the first comment, so it cannot go twice.
+ */
+export async function postSecondComment(workspaceId: string, postId: string): Promise<void> {
+  const claimed = await db.post.updateMany({
+    where: { id: postId, workspaceId, status: "published", commentStatus: "posted", secondStatus: { in: ["pending", "failed"] }, linkedinUrn: { not: null } },
+    data: { secondStatus: "posting", secondError: null },
+  });
+  if (claimed.count === 0) return;
+  const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
+  try {
+    const { token, author } = await postingToken(workspaceId);
+    const urn = await commentOnLinkedInPost(token, author, post.linkedinUrn!, post.secondComment.trim());
+    await db.post.update({ where: { id: postId }, data: { secondStatus: "posted", secondUrn: urn || null } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "LinkedIn did not post the comment.";
+    await db.post.update({ where: { id: postId }, data: { secondStatus: "failed", secondError: message } });
+    throw err instanceof Error ? err : new Error(message);
+  }
+}
+
+/** Takes back a second comment that has not gone out yet. */
+export async function cancelSecondComment(workspaceId: string, postId: string): Promise<void> {
+  const post = await db.post.findFirst({ where: { id: postId, workspaceId } });
+  if (!post) throw new Error("That post is not in AILI any more.");
+  if (post.secondStatus === "posted" || post.secondStatus === "posting") throw new Error("It has already gone out. Change it on LinkedIn.");
+  await db.post.update({ where: { id: post.id }, data: { secondComment: "", secondStatus: null, secondAt: null, secondError: null } });
 }
 
 /**
@@ -280,6 +329,10 @@ export async function publishDuePosts({ fromTimer = false, now = new Date() } = 
     where: { commentStatus: "posting", updatedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
     data: { commentStatus: "failed", commentError: "Posting the comment was interrupted. Check LinkedIn before trying again." },
   });
+  await db.post.updateMany({
+    where: { secondStatus: "posting", updatedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
+    data: { secondStatus: "failed", secondError: "Posting the comment was interrupted. Check LinkedIn before trying again." },
+  });
   const due = await db.post.findMany({
     where: { status: "scheduled", kind: "post", scheduledAt: { lte: now } },
     orderBy: { scheduledAt: "asc" },
@@ -303,6 +356,15 @@ export async function publishDuePosts({ fromTimer = false, now = new Date() } = 
   });
   for (const post of comments) {
     await postFirstComment(post.workspaceId, post.id).catch(() => {});
+  }
+  // Second comments whose time has come.
+  const seconds = await db.post.findMany({
+    where: { status: "published", commentStatus: "posted", secondStatus: "pending", secondAt: { lte: now } },
+    orderBy: { secondAt: "asc" },
+    take: 20,
+  });
+  for (const post of seconds) {
+    await postSecondComment(post.workspaceId, post.id).catch(() => {});
   }
   // The day after a post is out, its images and PDFs leave AILI's storage.
   await cleanupPublishedMedia(now).catch(() => {});

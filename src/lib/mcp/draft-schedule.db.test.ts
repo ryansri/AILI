@@ -123,3 +123,24 @@ describe.skipIf(!hasDb)("PDF title from Claude", () => {
     expect(toMediaViews(post.media, post.docTitle)[0].title).toBe("New title");
   });
 });
+
+describe.skipIf(!hasDb)("second comment from Claude", () => {
+  const createPost = TOOLS.find((t) => t.name === "create_post")!;
+  const updatePost = TOOLS.find((t) => t.name === "update_post")!;
+  it("saves it with its delay, needs a first comment, and goes when the first is removed", async () => {
+    const w = await db.workspace.create({ data: { name: "Second test", initials: "S", timeZone: "Australia/Sydney" } });
+    const ctx = { workspaceId: w.id, appName: "Claude", origin: "https://aili.test" } as Parameters<typeof createPost.run>[1];
+    await expect(createPost.run({ text: "Hi", second_comment: "Two" }, ctx)).rejects.toThrow(/Give a first_comment too/);
+    expect(await db.post.count({ where: { workspaceId: w.id } })).toBe(0);
+
+    const out = await createPost.run({ text: "Hi", first_comment: "One", second_comment: "Two", second_comment_after_minutes: 60 }, ctx);
+    expect(out).toMatch(/Second comment set: 60 min after the first comment/);
+    const id = /post id: (\w+)/.exec(out)![1];
+    expect(await db.post.findUniqueOrThrow({ where: { id } })).toMatchObject({ secondComment: "Two", secondDelay: 60 });
+
+    expect(await updatePost.run({ post_id: id, second_comment_after_minutes: 33 }, ctx)).toBe("Second comment set: 30 min after the first comment.");
+    expect(await updatePost.run({ post_id: id, first_comment: "" }, ctx)).toBe("First comment removed. Second comment removed too (it follows the first).");
+    expect((await db.post.findUniqueOrThrow({ where: { id } })).secondComment).toBe("");
+  });
+});
+

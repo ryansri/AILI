@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "../db";
 import { getStages } from "../data";
 import { linkedInPostUrl } from "../linkedin-posting";
-import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "../linkedin-text";
+import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS, SECOND_COMMENT_DELAYS, secondDelayOf } from "../linkedin-text";
 import { addFirstComment, checkCommentText, checkPostText, checkScheduleTime, linkedInPostingOf, publishPost, timeZoneOf } from "../posts";
 import { formatWhen, offsetLabel, parseWhen, wallTimeToDate } from "../time-zone";
 import { addDays, countStatuses, dayLabel, localDay, needsYou, planSpan, statusLabel, timeLabel } from "../plan";
@@ -335,6 +335,10 @@ function describePost(
     firstComment: string;
     commentStatus: string | null;
     commentError: string | null;
+    secondComment?: string;
+    secondDelay?: number;
+    secondStatus?: string | null;
+    secondError?: string | null;
   },
   tz: string,
   full = false,
@@ -354,7 +358,12 @@ function describePost(
       ? `\nFirst comment (${p.commentStatus === "failed" ? `failed: ${p.commentError ?? "unknown"}` : (p.commentStatus ?? "posts after publishing")}): ${p.firstComment}`
       : ` · first comment ${p.commentStatus === "failed" ? "failed" : (p.commentStatus ?? "set")}`
     : "";
-  return `- ${label} (id: ${p.id}) · ${when}${body}${comment}`;
+  const second = p.secondComment?.trim()
+    ? full
+      ? `\nSecond comment, ${p.secondDelay} min after the first (${p.secondStatus === "failed" ? `failed: ${p.secondError ?? "unknown"}` : (p.secondStatus ?? "waits for the first comment")}): ${p.secondComment}`
+      : ` · second comment ${p.secondStatus === "failed" ? "failed" : (p.secondStatus ?? "set")}`
+    : "";
+  return `- ${label} (id: ${p.id}) · ${when}${body}${comment}${second}`;
 }
 
 const listPosts: Tool = {
@@ -451,7 +460,31 @@ const firstCommentProperty = {
       `Optional. Posted as a comment under the post once it is live (the user's first-comment delay applies), up to ${COMMENT_MAX_CHARS} characters. ` +
       "Good for a link, so the post itself is not penalised for linking out. Only when the user asks for one.",
   },
+  second_comment: {
+    type: "string",
+    description:
+      `Optional. A second comment under the post, posted second_comment_after_minutes after the first comment (needs a first comment), up to ${COMMENT_MAX_CHARS} characters. ` +
+      "Empty string removes it. Only when the user asks for one.",
+  },
+  second_comment_after_minutes: { type: "number", enum: SECOND_COMMENT_DELAYS, description: "30, 45 or 60. Default 45." },
 };
+
+/** The second comment and its delay from the tool's input, checked; null when the input doesn't touch it. */
+function secondFrom(args: Record<string, unknown>, firstComment: string, current = { secondComment: "", secondDelay: 45 }) {
+  if (typeof args.second_comment !== "string" && args.second_comment_after_minutes === undefined) return null;
+  const secondComment = typeof args.second_comment === "string" ? args.second_comment.trim() : current.secondComment;
+  const secondDelay = args.second_comment_after_minutes === undefined ? current.secondDelay : secondDelayOf(args.second_comment_after_minutes);
+  try {
+    checkCommentText(secondComment);
+  } catch (err) {
+    throw new ToolError(err instanceof Error ? err.message : "The second comment does not work.");
+  }
+  if (secondComment && !firstComment.trim()) throw new ToolError("A second comment follows the first one. Give a first_comment too.");
+  return { secondComment, secondDelay };
+}
+
+const secondNoteOf = (s: { secondComment: string; secondDelay: number }) =>
+  s.secondComment ? `Second comment set: ${s.secondDelay} min after the first comment.` : "Second comment removed.";
 
 const timingProperties = {
   publish_now: { type: "boolean", description: "Publish on LinkedIn straight away. Only when the user asked to publish now." },
@@ -510,11 +543,12 @@ const createPost: Tool = {
     } catch (err) {
       throw new ToolError(err instanceof Error ? err.message : "The first comment does not work.");
     }
+    const second = secondFrom(args, firstComment);
     const at = await scheduleFrom(ctx, args);
     const rowId = text(args.plan_row_id);
     if (rowId) await planRow(ctx, rowId);
     const post = await db.post.create({
-      data: { workspaceId: ctx.workspaceId, kind: "post", body, firstComment, source: ctx.appName },
+      data: { workspaceId: ctx.workspaceId, kind: "post", body, firstComment, source: ctx.appName, ...(second ?? {}) },
     });
     if (rowId) await linkPost(ctx.workspaceId, rowId, post.id).catch(toolError);
     const docNote = typeof args.document_title === "string" && args.document_title.trim() ? `\n${await setDocTitleFor(post.id, args.document_title)}` : "";
@@ -523,7 +557,7 @@ const createPost: Tool = {
     revalidatePath("/posts");
     const delay = firstComment ? (await workspace(ctx)).firstCommentDelay : 0;
     const note = firstComment ? `\nFirst comment: ${delayLabel(delay).toLowerCase()} the post goes live.` : "";
-    return `${outcome}${docNote}${note}\n(post id: ${post.id})`;
+    return `${outcome}${docNote}${note}${second?.secondComment ? `\n${secondNoteOf(second)}` : ""}\n(post id: ${post.id})`;
   },
 };
 
@@ -577,6 +611,9 @@ const updatePost: Tool = {
       throw new ToolError("It is already published, so its text cannot change here. Edit it on LinkedIn. A first comment can still be added if it has none.");
     }
     const newText = text(args.text).trim();
+    const firstNow = typeof args.first_comment === "string" ? args.first_comment.trim() : post.firstComment.trim();
+    // Checked before anything is saved, so a bad second comment changes nothing.
+    const second = secondFrom(args, firstNow, post);
     const at = await scheduleFrom(ctx, args);
     if (newText) {
       try {
@@ -596,6 +633,14 @@ const updatePost: Tool = {
       }
       await db.post.update({ where: { id: post.id }, data: { firstComment } });
       outcome = `${outcome} ${firstComment ? "First comment set." : "First comment removed."}`.trim();
+    }
+    if (typeof args.first_comment === "string" && !firstNow && post.secondComment.trim() && typeof args.second_comment !== "string") {
+      await db.post.update({ where: { id: post.id }, data: { secondComment: "" } });
+      outcome = `${outcome} Second comment removed too (it follows the first).`.trim();
+    }
+    if (second) {
+      await db.post.update({ where: { id: post.id }, data: second });
+      outcome = `${outcome} ${secondNoteOf(second)}`.trim();
     }
     if (typeof args.document_title === "string") outcome = `${outcome} ${await setDocTitleFor(post.id, args.document_title)}`.trim();
     if (args.unschedule === true) {

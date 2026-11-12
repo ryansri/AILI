@@ -5,7 +5,8 @@ import { run } from "./action-result";
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
-import { addFirstComment, cancelFirstComment, checkCommentText, checkPostText, checkScheduleTime, postFirstComment, publishPost } from "./posts";
+import { addFirstComment, cancelFirstComment, cancelSecondComment, checkCommentText, checkPostText, checkScheduleTime, postFirstComment, postSecondComment, publishPost } from "./posts";
+import { secondDelayOf } from "./linkedin-text";
 import { FIRST_COMMENT_DELAYS } from "./linkedin-text";
 import { validTimeZone } from "./time-zone";
 import { clockFor } from "./content-plan";
@@ -38,20 +39,27 @@ async function savePostImpl(input: {
   title?: string;
   body: string;
   firstComment?: string;
+  /** Posted secondDelay minutes (30, 45 or 60) after the first comment. */
+  secondComment?: string;
+  secondDelay?: number;
   /** New posts and articles: the plan row they are written for. */
   entryId?: string;
 }): Promise<string> {
   const body = input.body.trim();
   const title = (input.title ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
   const firstComment = input.kind === "post" ? (input.firstComment ?? "").trim() : "";
+  const secondComment = input.kind === "post" ? (input.secondComment ?? "").trim() : "";
+  const secondDelay = secondDelayOf(input.secondDelay);
   if (input.kind === "post") {
     checkPostText(body);
     checkCommentText(firstComment);
+    checkCommentText(secondComment);
+    if (secondComment && !firstComment) throw new Error("A second comment follows the first one. Add a first comment too.");
   } else if (!title || !body) throw new Error("An article needs a title and some text.");
   if (input.id) {
     const { post } = await ownPost(input.id);
     if (post.status === "published" || post.status === "publishing") throw new Error("It is already published. Edit it on LinkedIn.");
-    await db.post.update({ where: { id: post.id }, data: { body, title, firstComment } });
+    await db.post.update({ where: { id: post.id }, data: { body, title, firstComment, secondComment, secondDelay } });
     done();
     return post.id;
   }
@@ -63,6 +71,8 @@ async function savePostImpl(input: {
       title,
       body,
       firstComment,
+      secondComment,
+      secondDelay,
       source: "AILI",
     },
   });
@@ -110,6 +120,20 @@ async function retryFirstCommentImpl(postId: string) {
   const { workspace, post } = await ownPost(postId);
   if (post.commentStatus !== "failed") return;
   await postFirstComment(workspace.id, post.id);
+  done();
+}
+
+/** Try a second comment again after LinkedIn refused it. */
+async function retrySecondCommentImpl(postId: string) {
+  const { workspace, post } = await ownPost(postId);
+  if (post.secondStatus !== "failed") return;
+  await postSecondComment(workspace.id, post.id);
+  done();
+}
+
+async function cancelSecondCommentImpl(postId: string) {
+  const { workspace, post } = await ownPost(postId);
+  await cancelSecondComment(workspace.id, post.id);
   done();
 }
 
@@ -201,6 +225,14 @@ export async function unschedulePost(...args: Parameters<typeof unschedulePostIm
 
 export async function publishPostNow(...args: Parameters<typeof publishPostNowImpl>) {
   return run(() => publishPostNowImpl(...args));
+}
+
+export async function retrySecondComment(...args: Parameters<typeof retrySecondCommentImpl>) {
+  return run(() => retrySecondCommentImpl(...args));
+}
+
+export async function cancelSecondCommentOnPost(...args: Parameters<typeof cancelSecondCommentImpl>) {
+  return run(() => cancelSecondCommentImpl(...args));
 }
 
 export async function retryFirstComment(...args: Parameters<typeof retryFirstCommentImpl>) {

@@ -12,6 +12,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
+  Plus,
   Send,
   Sparkles,
   Trash2,
@@ -21,15 +22,17 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { LinkedInPosting, PostView } from "@/lib/posts";
 import { articleHtml, articlePlainText, wordCount } from "@/lib/article-html";
-import { COMMENT_MAX_CHARS, delayLabel, POST_MAX_CHARS } from "@/lib/linkedin-text";
+import { COMMENT_MAX_CHARS, DEFAULT_SECOND_COMMENT_DELAY, delayLabel, POST_MAX_CHARS, SECOND_COMMENT_DELAYS } from "@/lib/linkedin-text";
 import { formatWhen, toWallInput, wallTimeToDate } from "@/lib/time-zone";
 import {
   addFirstCommentToPost,
   cancelFirstCommentOnPost,
+  cancelSecondCommentOnPost,
   deletePost,
   markArticlePublished,
   publishPostNow,
   retryFirstComment,
+  retrySecondComment,
   savePost,
   schedulePost,
   unschedulePost,
@@ -94,6 +97,8 @@ interface Editing {
   title: string;
   body: string;
   firstComment: string;
+  secondComment?: string;
+  secondDelay?: number;
   /** A new post or article written for a plan row: the row. */
   entryId?: string;
 }
@@ -262,6 +267,8 @@ export function PostsView({
                 title: selected.title,
                 body: selected.body,
                 firstComment: selected.firstComment,
+                secondComment: selected.secondComment,
+                secondDelay: selected.secondDelay,
               })
             }
             onMoved={(t) => {
@@ -409,14 +416,28 @@ function Editor({
   const [title, setTitle] = useState(editing.title);
   const [body, setBody] = useState(editing.body);
   const [firstComment, setFirstComment] = useState(editing.firstComment);
+  const [secondComment, setSecondComment] = useState(editing.secondComment ?? "");
+  const [secondDelay, setSecondDelay] = useState(editing.secondDelay ?? DEFAULT_SECOND_COMMENT_DELAY);
+  const [showSecond, setShowSecond] = useState(Boolean(editing.secondComment?.trim()));
   const [pending, start] = useTransition();
   const isPost = editing.kind === "post";
-  const over = isPost && (body.length > POST_MAX_CHARS || firstComment.length > COMMENT_MAX_CHARS);
+  const keptSecond = showSecond ? secondComment : "";
+  const over = isPost && (body.length > POST_MAX_CHARS || firstComment.length > COMMENT_MAX_CHARS || keptSecond.length > COMMENT_MAX_CHARS);
+  const secondWithoutFirst = isPost && Boolean(keptSecond.trim()) && !firstComment.trim();
 
   function save() {
     start(async () => {
       try {
-        const id = await savePost({ id: editing.id, kind: editing.kind, title, body, firstComment, entryId: editing.entryId });
+        const id = await savePost({
+          id: editing.id,
+          kind: editing.kind,
+          title,
+          body,
+          firstComment,
+          secondComment: keptSecond,
+          secondDelay,
+          entryId: editing.entryId,
+        });
         toast.success(editing.id ? "Saved." : isPost ? "Saved in Drafts." : "Article saved.");
         onDone(id);
       } catch (err) {
@@ -434,7 +455,7 @@ function Editor({
         <Button variant="ghost" size="sm" onClick={() => onDone()}>
           Cancel
         </Button>
-        <Button size="sm" disabled={pending || over || !body.trim() || (!isPost && !title.trim())} onClick={save}>
+        <Button size="sm" disabled={pending || over || secondWithoutFirst || !body.trim() || (!isPost && !title.trim())} onClick={save}>
           {pending && <Loader2 className="animate-spin" />}
           Save
         </Button>
@@ -486,6 +507,63 @@ function Editor({
               </p>
             </div>
           )}
+          {isPost &&
+            (showSecond ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="second-comment">Second comment</Label>
+                  <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={() => setShowSecond(false)}>
+                    Remove
+                  </Button>
+                </div>
+                <Textarea
+                  id="second-comment"
+                  value={secondComment}
+                  onChange={(e) => setSecondComment(e.target.value)}
+                  placeholder="A question to restart the conversation, or the link again for late readers."
+                  className="min-h-[88px] bg-background text-md leading-relaxed"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-2">
+                    Posted
+                    <span role="radiogroup" aria-label="Minutes after the first comment" className="flex rounded-lg bg-muted p-0.5">
+                      {SECOND_COMMENT_DELAYS.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          role="radio"
+                          aria-checked={secondDelay === d}
+                          onClick={() => setSecondDelay(d)}
+                          className={cn(
+                            "h-6 rounded-md px-2.5 transition-colors",
+                            secondDelay === d ? "bg-background font-semibold text-foreground shadow-sm" : "hover:text-foreground",
+                          )}
+                        >
+                          {d} min
+                        </button>
+                      ))}
+                    </span>
+                    after the first comment.
+                  </span>
+                  <span className={cn(secondComment.length > COMMENT_MAX_CHARS && "font-medium text-red-600")}>
+                    {secondComment.length.toLocaleString()} / {COMMENT_MAX_CHARS.toLocaleString()}
+                  </span>
+                </div>
+                {secondWithoutFirst && <p className="text-xs font-medium text-red-600">Add a first comment too: the second one follows it.</p>}
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                disabled={!firstComment.trim()}
+                title={firstComment.trim() ? undefined : "Write a first comment first"}
+                onClick={() => setShowSecond(true)}
+              >
+                <Plus />
+                Second comment
+              </Button>
+            ))}
           {isPost &&
             (editing.id ? (
               <div className="mt-2">
@@ -651,6 +729,88 @@ function FirstComment({ post, authorInitials, commentDelay }: { post: PostView; 
             >
               Try again
             </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The second comment under the preview: what it says and whether it is posted. */
+function SecondComment({ post, authorInitials }: { post: PostView; authorInitials: string }) {
+  const when = useWhen();
+  const [pending, start] = useTransition();
+  const status = post.secondStatus;
+  const state =
+    status === "posted"
+      ? { text: "Posted", className: "text-emerald-700" }
+      : status === "failed"
+        ? { text: `Not posted: ${post.secondError ?? "LinkedIn refused it"}`, className: "text-red-700" }
+        : status === "pending" || status === "posting"
+          ? { text: `Posting ${when(post.secondAt)}`, className: "text-muted-foreground" }
+          : post.status === "published" && post.commentStatus !== "posted"
+            ? { text: "Waits for the first comment", className: "text-muted-foreground" }
+            : { text: `${post.secondDelay} minutes after the first comment`, className: "text-muted-foreground" };
+  const act = (fn: () => Promise<unknown>, ok: string, fail: string) =>
+    start(async () => {
+      try {
+        await fn();
+        toast.success(ok);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : fail);
+      }
+    });
+  return (
+    <div className="flex gap-2.5 border-t pt-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-2xs font-semibold text-background">
+        {authorInitials}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="rounded-lg rounded-tl-none bg-muted px-3 py-2 text-md leading-relaxed whitespace-pre-wrap">{post.secondComment}</div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <MessageCircle className="size-3.5 text-muted-foreground" />
+          <span className="text-muted-foreground">Second comment ·</span>
+          <span className={state.className} suppressHydrationWarning>
+            {state.text}
+          </span>
+          {post.status === "published" && status !== "posted" && status !== "posting" && (
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              disabled={pending}
+              onClick={() => act(() => cancelSecondCommentOnPost(post.id), "Second comment cancelled.", "That did not work.")}
+            >
+              Cancel
+            </Button>
+          )}
+          {status === "failed" && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(post.secondComment)
+                    .then(() => toast.success("Comment copied. Paste it under your post on LinkedIn."))
+                    .catch(() => toast.error("Could not copy. Select the comment and copy it."))
+                }
+              >
+                Copy comment
+              </Button>
+              <span className="text-muted-foreground">·</span>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                disabled={pending}
+                onClick={() => act(() => retrySecondComment(post.id), "Second comment posted.", "LinkedIn did not post it.")}
+              >
+                Try again
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -1025,6 +1185,7 @@ function Detail({
               {post.firstComment.trim() && (
                 <FirstComment post={post} authorInitials={authorInitials} commentDelay={commentDelay} />
               )}
+              {post.firstComment.trim() && post.secondComment.trim() && <SecondComment post={post} authorInitials={authorInitials} />}
             </article>
           </>
         )}

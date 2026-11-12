@@ -389,6 +389,15 @@ model Post {
   commentAt         DateTime?
   commentUrn        String?
   commentError      String?
+  /// Posted under the post some minutes after the first comment. Empty for none.
+  secondComment     String    @default("")
+  /// Minutes after the first comment goes out: 30, 45 or 60.
+  secondDelay       Int       @default(45)
+  /// pending | posting | posted | failed; null until the first comment is out.
+  secondStatus      String?
+  secondAt          DateTime?
+  secondUrn         String?
+  secondError       String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

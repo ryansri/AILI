@@ -15,7 +15,7 @@ process.env.AUTH_SECRET = "test-secret-test-secret-test-secret";
 vi.mock("server-only", () => ({}));
 const { db } = await import("./db");
 const { seal } = await import("./secret-box");
-const { publishPost, publishDuePosts, postFirstComment, addFirstComment, cancelFirstComment } = await import("./posts");
+const { publishPost, publishDuePosts, postFirstComment, postSecondComment, addFirstComment, cancelFirstComment, cancelSecondComment } = await import("./posts");
 const { cleanupPublishedMedia, deleteAllMedia } = await import("./media-server");
 const { saveLocal, readMedia } = await import("./media-store");
 
@@ -115,6 +115,62 @@ describe.skipIf(!hasDb)("first comment", () => {
     failComments = false;
     await postFirstComment(w.id, post.id);
     expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).commentStatus).toBe("posted");
+  });
+});
+
+describe.skipIf(!hasDb)("second comment", () => {
+  const comments = () => calls.filter((c) => c.url.includes("/comments")).map((c) => (c.body.message as { text: string }).text);
+
+  it("follows the first comment after its delay, once", async () => {
+    const w = await workspace(0);
+    const post = await db.post.create({ data: { workspaceId: w.id, body: "Hi", firstComment: "Link", secondComment: "What do you think?", secondDelay: 30 } });
+    await publishPost(w.id, post.id);
+    const after = await db.post.findUniqueOrThrow({ where: { id: post.id } });
+    expect(after.commentStatus).toBe("posted");
+    expect(after.secondStatus).toBe("pending");
+    expect(Math.round((after.secondAt!.getTime() - Date.now()) / 60_000)).toBe(30);
+    expect(comments()).toEqual(["Link"]);
+
+    await publishDuePosts({ now: new Date(Date.now() + 20 * 60_000) });
+    expect(comments()).toEqual(["Link"]);
+    await publishDuePosts({ now: new Date(Date.now() + 31 * 60_000) });
+    expect(comments()).toEqual(["Link", "What do you think?"]);
+    expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).secondStatus).toBe("posted");
+    await publishDuePosts({ now: new Date(Date.now() + 90 * 60_000) });
+    expect(comments()).toHaveLength(2);
+  });
+
+  it("waits while the first comment failed, and is set off once it goes", async () => {
+    const w = await workspace(0);
+    failComments = true;
+    const post = await db.post.create({ data: { workspaceId: w.id, body: "Hi", firstComment: "Link", secondComment: "Second", secondDelay: 45 } });
+    await publishPost(w.id, post.id);
+    expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).secondStatus).toBeNull();
+    await publishDuePosts({ now: new Date(Date.now() + 120 * 60_000) });
+    failComments = false;
+    await postFirstComment(w.id, post.id);
+    expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).secondStatus).toBe("pending");
+  });
+
+  it("says why when LinkedIn refuses it, can try again, or be cancelled before it goes", async () => {
+    const w = await workspace(0);
+    const post = await db.post.create({ data: { workspaceId: w.id, body: "Hi", firstComment: "Link", secondComment: "Second" } });
+    await publishPost(w.id, post.id);
+    failComments = true;
+    await publishDuePosts({ now: new Date(Date.now() + 50 * 60_000) });
+    const failed = await db.post.findUniqueOrThrow({ where: { id: post.id } });
+    expect(failed.secondStatus).toBe("failed");
+    expect(failed.secondError).toMatch(/does not let this app post comments/);
+    failComments = false;
+    await postSecondComment(w.id, post.id);
+    expect((await db.post.findUniqueOrThrow({ where: { id: post.id } })).secondStatus).toBe("posted");
+    await expect(cancelSecondComment(w.id, post.id)).rejects.toThrow(/already gone out/);
+
+    const other = await db.post.create({ data: { workspaceId: w.id, body: "Hi", firstComment: "Link", secondComment: "Later" } });
+    await publishPost(w.id, other.id);
+    await cancelSecondComment(w.id, other.id);
+    await publishDuePosts({ now: new Date(Date.now() + 90 * 60_000) });
+    expect(comments()).not.toContain("Later");
   });
 });
 
