@@ -6,8 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getWorkspace } from "./data";
 import { MAX_DOC_TITLE } from "./media";
-import { mediaEditable } from "./media-server";
-import { removeFile } from "./media-store";
+import { mediaEditable, removeMediaFiles } from "./media-server";
 
 /*
  * Server actions for images and PDFs on posts. Uploads go through
@@ -26,7 +25,7 @@ async function removeMediaImpl(mediaId: string) {
   const media = await db.postMedia.findFirst({ where: { id: mediaId, workspaceId: workspace.id }, include: { post: true } });
   if (!media) return;
   if (!mediaEditable(media.post)) throw new Error("Images can be changed until the post goes out.");
-  await removeFile(media.url);
+  await removeMediaFiles(media);
   await db.postMedia.delete({ where: { id: media.id } });
   revalidatePath("/posts");
 }

@@ -1,16 +1,22 @@
 /*
- * Images and PDF carousels on posts: what LinkedIn takes, and the rules for
- * adding them. A post has text only, 1 to 20 images, or one PDF (LinkedIn
- * shows a PDF as a swipeable carousel). Shared by the page and the server.
+ * Images, PDF carousels and videos on posts: what LinkedIn takes, and the
+ * rules for adding them. A post has text only, 1 to 20 images, one PDF
+ * (LinkedIn shows a PDF as a swipeable carousel) or one MP4 video. Shared by
+ * the page and the server.
  */
 
-export type MediaKind = "image" | "document";
+export type MediaKind = "image" | "document" | "video";
 
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif"];
 export const PDF_TYPE = "application/pdf";
 export const MAX_IMAGES = 20;
 export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const PDF_MAX_BYTES = 100 * 1024 * 1024;
+export const VIDEO_TYPE = "video/mp4";
+export const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+/** LinkedIn takes videos from 3 seconds to 30 minutes long. */
+export const VIDEO_MIN_SECONDS = 3;
+export const VIDEO_MAX_SECONDS = 30 * 60;
 /** Bigger files go to AILI in pieces this size: Vercel takes at most 4.5 MB a request. */
 export const PART_BYTES = 4 * 1024 * 1024;
 
@@ -24,39 +30,58 @@ export interface MediaView {
   src?: string;
   /** Deleted from AILI after publishing (LinkedIn keeps its copy). */
   removedAt?: string;
-  /** PDFs: the title LinkedIn shows above the document. Empty: the file's name. */
+  /** PDFs and videos: the title LinkedIn shows with it. Empty: the file's name. */
   title?: string;
 }
 
 /** Longest document title LinkedIn takes. */
 export const MAX_DOC_TITLE = 400;
 
-/** The title a PDF goes out with: the one typed in, else the file's name without .pdf. */
+/** The title a PDF or video goes out with: the one typed in, else the file's name without .pdf or .mp4. */
 export function docTitleOf(m: { title?: string; name: string }): string {
-  return (m.title ?? "").trim() || m.name.replace(/\.pdf$/i, "").trim();
+  return (m.title ?? "").trim() || m.name.replace(/\.(pdf|mp4)$/i, "").trim();
 }
 
-/** Image or PDF from a file's type, or null when LinkedIn won't take it. */
+/** Image, PDF or video from a file's type, or null when LinkedIn won't take it. */
 export function mediaKindOf(contentType: string): MediaKind | null {
   if (IMAGE_TYPES.includes(contentType)) return "image";
   if (contentType === PDF_TYPE) return "document";
+  if (contentType === VIDEO_TYPE) return "video";
   return null;
 }
+
+/** An MP4 file says "ftyp" in its first bytes. */
+export function looksLikeMp4(bytes: Uint8Array): boolean {
+  return bytes.length >= 8 && String.fromCharCode(...bytes.subarray(4, 8)) === "ftyp";
+}
+
+/** Why a video this many seconds long won't go on LinkedIn, or null when it will. */
+export function videoLengthProblem(seconds: number): string | null {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  if (seconds < VIDEO_MIN_SECONDS) return `LinkedIn needs a video of at least ${VIDEO_MIN_SECONDS} seconds.`;
+  if (seconds > VIDEO_MAX_SECONDS) return "LinkedIn takes videos up to 30 minutes.";
+  return null;
+}
+
+const KIND_NAME: Record<MediaKind, string> = { image: "images", document: "a PDF carousel", video: "a video" };
 
 const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
 
 /**
  * Why this file can't be added to a post that already has `current`, or
- * null when it can. Images and a PDF don't mix, and there's one PDF at most.
+ * null when it can. Images, a PDF and a video don't mix, and there's one PDF
+ * or one video at most.
  */
 export function cannotAdd(current: { kind: MediaKind }[], file: { contentType: string; size: number }): string | null {
   const kind = mediaKindOf(file.contentType);
-  if (!kind) return "LinkedIn takes JPG, PNG or GIF images, or one PDF.";
+  if (!kind) return "LinkedIn takes JPG, PNG or GIF images, one PDF, or one MP4 video.";
   if (kind === "image" && file.size > IMAGE_MAX_BYTES) return `Images can be up to ${mb(IMAGE_MAX_BYTES)}.`;
   if (kind === "document" && file.size > PDF_MAX_BYTES) return `A PDF can be up to ${mb(PDF_MAX_BYTES)}.`;
-  if (kind === "image" && current.some((m) => m.kind === "document")) return "This post has a PDF carousel. Remove it to add images.";
-  if (kind === "document" && current.some((m) => m.kind === "image")) return "This post has images. Remove them to add a PDF carousel.";
+  if (kind === "video" && file.size > VIDEO_MAX_BYTES) return `A video can be up to ${mb(VIDEO_MAX_BYTES)}.`;
+  const other = current.find((m) => m.kind !== kind);
+  if (other) return `This post has ${KIND_NAME[other.kind]}. Remove ${other.kind === "image" ? "them" : "it"} to add ${KIND_NAME[kind]}.`;
   if (kind === "document" && current.length > 0) return "A post can have one PDF carousel.";
+  if (kind === "video" && current.length > 0) return "A post can have one video.";
   if (kind === "image" && current.length >= MAX_IMAGES) return `A post can have up to ${MAX_IMAGES} images.`;
   return null;
 }

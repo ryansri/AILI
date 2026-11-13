@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cannotAdd, docTitleOf, dueForCleanup, mediaKindOf } from "./media";
+import { cannotAdd, docTitleOf, dueForCleanup, looksLikeMp4, mediaKindOf, videoLengthProblem } from "./media";
 
 const img = { contentType: "image/png", size: 1000 };
 const pdf = { contentType: "application/pdf", size: 1000 };
@@ -8,7 +8,7 @@ describe("post media rules", () => {
   it("knows images from PDFs and refuses other files", () => {
     expect(mediaKindOf("image/jpeg")).toBe("image");
     expect(mediaKindOf("application/pdf")).toBe("document");
-    expect(mediaKindOf("video/mp4")).toBeNull();
+    expect(mediaKindOf("video/webm")).toBeNull();
     expect(cannotAdd([], { contentType: "image/webp", size: 1 })).toMatch(/JPG, PNG or GIF/);
   });
 
@@ -40,5 +40,28 @@ describe("PDF title on LinkedIn", () => {
     expect(docTitleOf({ title: "7 ways to save admin time", name: "Monday carousel.pdf" })).toBe("7 ways to save admin time");
     expect(docTitleOf({ title: "  ", name: "admin-time.PDF" })).toBe("admin-time");
     expect(docTitleOf({ name: "admin-time.pdf" })).toBe("admin-time");
+  });
+});
+
+describe("videos", () => {
+  const mp4 = { contentType: "video/mp4", size: 50 * 1024 * 1024 };
+  it("takes one MP4 up to 200 MB, on its own", () => {
+    expect(mediaKindOf("video/mp4")).toBe("video");
+    expect(mediaKindOf("video/quicktime")).toBeNull();
+    expect(cannotAdd([], mp4)).toBeNull();
+    expect(cannotAdd([], { ...mp4, size: 201 * 1024 * 1024 })).toMatch(/up to 200 MB/);
+    expect(cannotAdd([{ kind: "video" }], mp4)).toBe("A post can have one video.");
+    expect(cannotAdd([{ kind: "image" }], mp4)).toBe("This post has images. Remove them to add a video.");
+    expect(cannotAdd([{ kind: "video" }], { contentType: "application/pdf", size: 10 })).toBe("This post has a video. Remove it to add a PDF carousel.");
+    expect(cannotAdd([{ kind: "document" }], { contentType: "image/png", size: 10 })).toBe("This post has a PDF carousel. Remove it to add images.");
+  });
+
+  it("knows an MP4 by its first bytes, and LinkedIn's length limits", () => {
+    expect(looksLikeMp4(new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109]))).toBe(true);
+    expect(looksLikeMp4(new TextEncoder().encode("%PDF-1.7 hello"))).toBe(false);
+    expect(videoLengthProblem(2)).toMatch(/at least 3 seconds/);
+    expect(videoLengthProblem(31 * 60)).toMatch(/up to 30 minutes/);
+    expect(videoLengthProblem(90)).toBeNull();
+    expect(docTitleOf({ name: "Demo clip.MP4" })).toBe("Demo clip");
   });
 });

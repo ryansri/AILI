@@ -167,10 +167,15 @@ async function restCreate(accessToken: string, path: string, payload: unknown, w
   return data.$URN ?? data.id ?? "";
 }
 
-/** Pictures or a PDF to go with a post. A PDF shows on LinkedIn as a swipeable carousel. */
+/**
+ * Pictures, a PDF or a video to go with a post. A PDF shows on LinkedIn as a
+ * swipeable carousel. A video is read a range at a time (read(first, last),
+ * both bytes included), so a big one never sits in memory whole.
+ */
 export type LinkedInMedia =
   | { kind: "images"; images: { bytes: Uint8Array; alt?: string }[] }
-  | { kind: "document"; bytes: Uint8Array; title: string };
+  | { kind: "document"; bytes: Uint8Array; title: string }
+  | { kind: "video"; size: number; title: string; read: (first: number, last: number) => Promise<Uint8Array> };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -201,7 +206,61 @@ async function uploadAsset(accessToken: string, owner: string, kind: "images" | 
   return urn;
 }
 
-/** Publishes a post to the member's feed, with images or a PDF when given. Returns the new post's urn. */
+/** How long AILI waits for LinkedIn to process a video before posting it anyway. */
+const VIDEO_WAIT_CHECKS = 30;
+const VIDEO_WAIT_MS = 3000;
+
+/**
+ * Uploads a video to LinkedIn and returns its urn. LinkedIn says which byte
+ * ranges to send where; each goes up, LinkedIn's receipt for it (its ETag)
+ * is kept, and the upload is finalized with all of them. Then AILI waits a
+ * while for LinkedIn to process it.
+ */
+async function uploadVideo(accessToken: string, owner: string, media: Extract<LinkedInMedia, { kind: "video" }>): Promise<string> {
+  const res = await restRequest(
+    accessToken,
+    "POST",
+    "videos?action=initializeUpload",
+    { initializeUploadRequest: { owner, fileSizeBytes: media.size, uploadCaptions: false, uploadThumbnail: false } },
+    "post",
+  );
+  const data = (await res.json().catch(() => ({}))) as {
+    value?: { video?: string; uploadToken?: string; uploadInstructions?: { uploadUrl: string; firstByte: number; lastByte: number }[] };
+  };
+  const urn = data.value?.video;
+  const parts = data.value?.uploadInstructions ?? [];
+  if (!urn || parts.length === 0) throw new LinkedInPostError("LinkedIn did not accept the video upload. Try again in a minute.");
+  const receipts: string[] = [];
+  for (const part of parts) {
+    const put = await fetch(part.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: (await media.read(part.firstByte, part.lastByte)) as BodyInit,
+    });
+    if (!put.ok) throw explain(put.status, await put.text().catch(() => ""), "post");
+    const etag = put.headers.get("etag");
+    if (!etag) throw new LinkedInPostError("LinkedIn did not confirm part of the video. Try again.");
+    receipts.push(etag);
+  }
+  await restRequest(
+    accessToken,
+    "POST",
+    "videos?action=finalizeUpload",
+    { finalizeUploadRequest: { video: urn, uploadToken: data.value?.uploadToken ?? "", uploadedPartIds: receipts } },
+    "post",
+  );
+  for (let i = 0; i < VIDEO_WAIT_CHECKS; i++) {
+    const check = await restRequest(accessToken, "GET", `videos/${encodeURIComponent(urn)}`, undefined, "post");
+    const { status } = (await check.json().catch(() => ({}))) as { status?: string };
+    if (!status || status === "AVAILABLE") return urn;
+    if (/FAILED/.test(status)) throw new LinkedInPostError("LinkedIn could not process the video. Check it is an MP4 of 3 seconds to 30 minutes and try again.");
+    await sleep(VIDEO_WAIT_MS);
+  }
+  // Still processing: LinkedIn finishes it after the post goes up.
+  return urn;
+}
+
+/** Publishes a post to the member's feed, with images, a PDF or a video when given. Returns the new post's urn. */
 export async function publishLinkedInPost(accessToken: string, authorUrn: string, text: string, media?: LinkedInMedia): Promise<string> {
   let content: Record<string, unknown> | undefined;
   if (media?.kind === "images" && media.images.length > 0) {
@@ -214,6 +273,9 @@ export async function publishLinkedInPost(accessToken: string, authorUrn: string
   } else if (media?.kind === "document") {
     const id = await uploadAsset(accessToken, authorUrn, "documents", media.bytes);
     content = { media: { title: media.title.slice(0, 400) || "Carousel", id } };
+  } else if (media?.kind === "video") {
+    const id = await uploadVideo(accessToken, authorUrn, media);
+    content = { media: { title: media.title.slice(0, 400) || "Video", id } };
   }
   return restCreate(
     accessToken,

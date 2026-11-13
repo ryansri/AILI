@@ -504,11 +504,11 @@ const timingProperties = {
 async function setDocTitleFor(postId: string, raw: string): Promise<string> {
   const title = raw.trim().slice(0, MAX_DOC_TITLE);
   await db.post.update({ where: { id: postId }, data: { docTitle: title } });
-  const hasPdf = (await db.postMedia.count({ where: { postId, kind: "document", deletedAt: null } })) > 0;
-  if (!title) return "PDF title cleared; it uses the file name.";
+  const hasPdf = (await db.postMedia.count({ where: { postId, kind: { in: ["document", "video"] }, deletedAt: null } })) > 0;
+  if (!title) return "Title cleared; it uses the file name.";
   return hasPdf
-    ? `PDF title set: "${title}".`
-    : `PDF title set: "${title}". The user uploads the PDF in AILI before it goes out, or it posts as text only.`;
+    ? `Title set: "${title}".`
+    : `Title set: "${title}". The user uploads the PDF or video in AILI before it goes out, or it posts as text only.`;
 }
 
 const createPost: Tool = {
@@ -526,7 +526,7 @@ const createPost: Tool = {
       ...firstCommentProperty,
       document_title: {
         type: "string",
-        description: "For a PDF carousel: the title LinkedIn shows above the PDF. The user uploads the PDF in AILI afterwards; the title waits for it.",
+        description: "For a PDF carousel or video: the title LinkedIn shows with it. The user uploads the file in AILI afterwards (AILI takes images, one PDF or one MP4 video); the title waits for it.",
       },
       ...timingProperties,
     },
@@ -573,7 +573,7 @@ const updatePost: Tool = {
     "unschedule: true moves a scheduled post back to drafts. post_id comes from list_posts or create_post. " +
     "A published post's text cannot change, but if it has no first comment yet, first_comment adds one: " +
     "posted now, or at schedule_at. Show the user the comment and the time first. " +
-    "document_title sets the title LinkedIn shows above the post's PDF; set it before the user adds the PDF in AILI, it waits for it. " +
+    "document_title sets the title LinkedIn shows with the post's PDF or video; set it before the user adds the file in AILI, it waits for it. " +
     "second_comment adds a second comment, also on a published post that has a first comment: it goes second_comment_after_minutes " +
     "after the first (on a live post whose first comment is out, that many minutes from now; 0 is now). It never replaces the first comment.",
   inputSchema: {
@@ -581,7 +581,7 @@ const updatePost: Tool = {
     properties: {
       post_id: { type: "string" },
       text: { type: "string", description: "New text for the post, if it changes." },
-      document_title: { type: "string", description: "Title shown above the PDF on LinkedIn. Empty uses the file name." },
+      document_title: { type: "string", description: "Title shown with the PDF or video on LinkedIn. Empty uses the file name." },
       ...firstCommentProperty,
       unschedule: { type: "boolean", description: "Take it off the schedule and keep it as a draft." },
       ...timingProperties,

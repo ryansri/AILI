@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentWorkspaceId } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { cannotAdd, PART_BYTES } from "@/lib/media";
+import { cannotAdd, looksLikeMp4, PART_BYTES, VIDEO_TYPE } from "@/lib/media";
 import { addMedia, mediaEditable } from "@/lib/media-server";
 import { isOwnPart, mediaStore, readMedia, removeFile, saveBlob, saveLocal } from "@/lib/media-store";
 
@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /*
+ * Videos stay in their pieces: they are sent to LinkedIn a piece at a time,
+ * so a big one is never joined in memory.
+ *
  * Files over 4 MB, in pieces: Vercel takes at most 4.5 MB a request, and
  * sending big files from the browser straight to Blob stalled. The page sends
  * each piece here (?postId=…&upload=…&part=…, the piece as the body), then
@@ -60,6 +63,7 @@ async function finish(request: Request, post: { id: string; workspaceId: string;
     return NextResponse.json({ error: "That upload did not go through. Try again." }, { status: 400 });
   }
   const clear = () => Promise.all(parts.map(removeFile));
+  if (contentType === VIDEO_TYPE) return finishVideo(post, parts, name, Number(body.size), clear);
   let bytes: Uint8Array;
   try {
     const pieces = await Promise.all(parts.map(readMedia));
@@ -89,6 +93,42 @@ async function finish(request: Request, post: { id: string; workspaceId: string;
     return NextResponse.json({ id });
   } catch (err) {
     await removeFile(stored);
+    return failed(err, "That did not save.", 400);
+  }
+}
+
+/** A video: check its pieces add up and it is an MP4, then keep them as they are. */
+async function finishVideo(
+  post: { id: string; workspaceId: string; status: string; kind: string },
+  parts: string[],
+  name: string,
+  size: number,
+  clear: () => Promise<unknown>,
+) {
+  let first: Uint8Array;
+  let last: Uint8Array;
+  try {
+    first = await readMedia(parts[0]);
+    last = parts.length > 1 ? await readMedia(parts[parts.length - 1]) : first;
+  } catch (err) {
+    await clear();
+    return failed(err, "The pieces could not be read back. Try again.");
+  }
+  const why =
+    (parts.length > 1 && first.length !== PART_BYTES) || (parts.length - 1) * PART_BYTES + last.length !== size
+      ? "Some of the video went missing on the way. Try again."
+      : !looksLikeMp4(first)
+        ? "That file is not an MP4 video."
+        : cannotAdd([], { contentType: VIDEO_TYPE, size });
+  if (why) {
+    await clear();
+    return NextResponse.json({ error: why }, { status: 400 });
+  }
+  try {
+    const id = await addMedia(post, { url: parts[0], name, contentType: VIDEO_TYPE, size, parts });
+    return NextResponse.json({ id });
+  } catch (err) {
+    await clear();
     return failed(err, "That did not save.", 400);
   }
 }

@@ -5,7 +5,8 @@ import { jsonOpen, OPEN_CORS, openPreflight } from "@/lib/oauth-http";
 import { timeZoneOf } from "@/lib/posts";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Room for a video to upload to LinkedIn.
+export const maxDuration = 300;
 
 /**
  * The connector address people paste into Claude or ChatGPT. Without a valid

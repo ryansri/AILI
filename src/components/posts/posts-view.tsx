@@ -571,7 +571,7 @@ function Editor({
                 <MediaPanel postId={editing.id} media={media} store={mediaStore} />
               </div>
             ) : (
-              <p className="mt-2 text-xs text-muted-foreground">Images or a PDF carousel? Save first, then add them.</p>
+              <p className="mt-2 text-xs text-muted-foreground">Images, a PDF or a video? Save first, then add them.</p>
             ))}
         </div>
       </div>

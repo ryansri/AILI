@@ -3,7 +3,7 @@ import type { Post as PostRow } from "@prisma/client";
 import { db } from "./db";
 import { open, seal } from "./secret-box";
 import { commentOnLinkedInPost, LinkedInPostError, linkedInPostUrl, publishLinkedInPost, refreshLinkedIn } from "./linkedin-posting";
-import { cleanupPublishedMedia, mediaForLinkedIn, toMediaViews } from "./media-server";
+import { cleanupPublishedMedia, mediaForLinkedIn, removePublishedVideo, toMediaViews } from "./media-server";
 import type { MediaView } from "./media";
 import { COMMENT_MAX_CHARS, POST_MAX_CHARS, secondDelayOf } from "./linkedin-text";
 
@@ -201,6 +201,8 @@ export async function publishPost(workspaceId: string, postId: string): Promise<
           : {}),
       },
     });
+    // The post is live: its video leaves AILI's storage now (LinkedIn keeps its copy).
+    await removePublishedVideo(postId, now).catch((err) => console.error("Removing the video failed", err));
     // "Right away": no need to wait for the timer.
     if (hasComment && w.firstCommentDelay === 0) await postFirstComment(workspaceId, postId).catch(() => {});
     return published;

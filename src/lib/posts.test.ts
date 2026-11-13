@@ -16,8 +16,9 @@ vi.mock("server-only", () => ({}));
 const { db } = await import("./db");
 const { seal } = await import("./secret-box");
 const { publishPost, publishDuePosts, postFirstComment, postSecondComment, addSecondComment, addFirstComment, cancelFirstComment, cancelSecondComment } = await import("./posts");
-const { cleanupPublishedMedia, deleteAllMedia } = await import("./media-server");
+const { cleanupPublishedMedia, deleteAllMedia, chunkReader, chunksOf } = await import("./media-server");
 const { saveLocal, readMedia } = await import("./media-store");
+const { PART_BYTES } = await import("./media");
 
 type Call = { url: string; body: Record<string, unknown> };
 let calls: Call[] = [];
@@ -202,6 +203,59 @@ describe.skipIf(!hasDb)("a second comment on a live post", () => {
     const post = await db.post.create({ data: { workspaceId: w.id, body: "Bare" } });
     await publishPost(w.id, post.id);
     await expect(addSecondComment(w.id, post.id, "Hi", 30)).rejects.toThrow(/Add a first comment first/);
+  });
+});
+
+describe.skipIf(!hasDb)("videos", () => {
+  it("reads any range of a video kept in 4 MB pieces", async () => {
+    const whole = new Uint8Array(PART_BYTES * 2 + 10).map((_, i) => i % 251);
+    const parts = [
+      await saveLocal(`vid-a-${Date.now()}`, whole.subarray(0, PART_BYTES)),
+      await saveLocal(`vid-b-${Date.now()}`, whole.subarray(PART_BYTES, PART_BYTES * 2)),
+      await saveLocal(`vid-c-${Date.now()}`, whole.subarray(PART_BYTES * 2)),
+    ];
+    expect(chunksOf({ url: parts[0], parts: JSON.stringify(parts) })).toEqual(parts);
+    expect(chunksOf({ url: "local:x", parts: "" })).toEqual(["local:x"]);
+    const read = chunkReader(parts);
+    expect(Array.from(await read(0, 3))).toEqual(Array.from(whole.subarray(0, 4)));
+    const across = await read(PART_BYTES - 2, PART_BYTES * 2 + 1);
+    expect(across.length).toBe(PART_BYTES + 4);
+    expect(Array.from(across.subarray(0, 6))).toEqual(Array.from(whole.subarray(PART_BYTES - 2, PART_BYTES + 4)));
+    expect(Array.from(await read(PART_BYTES * 2, PART_BYTES * 2 + 9))).toEqual(Array.from(whole.subarray(PART_BYTES * 2)));
+  });
+
+  it("deletes the video from AILI as soon as the post is live, and keeps it when publishing fails", async () => {
+    const w = await workspace(5);
+    const pieces = [await saveLocal(`vid-p1-${Date.now()}`, new Uint8Array([0, 0, 0, 8, 102, 116, 121, 112]))];
+    const post = await db.post.create({ data: { workspaceId: w.id, body: "Watch this" } });
+    const m = await db.postMedia.create({
+      data: { workspaceId: w.id, postId: post.id, kind: "video", url: pieces[0], parts: JSON.stringify(pieces), name: "clip.mp4", contentType: "video/mp4", size: 8 },
+    });
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      calls.push({ url, body: typeof init.body === "string" ? JSON.parse(init.body) : {} });
+      if (url.includes("initializeUpload"))
+        return Response.json({ value: { video: "urn:li:video:V", uploadToken: "", uploadInstructions: [{ uploadUrl: "https://up.example/1", firstByte: 0, lastByte: 7 }] } });
+      if (url.startsWith("https://up.example")) return new Response(null, { status: 200, headers: { etag: "e1" } });
+      if (url.includes("finalizeUpload")) return new Response(null, { status: 200 });
+      if (url.includes("/videos/")) return Response.json({ status: "AVAILABLE" });
+      return new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:share:1" } });
+    });
+    calls = [];
+    await publishPost(w.id, post.id);
+    expect(calls.map((c) => c.url.replace(/\?.*/, ""))).toContain("https://api.linkedin.com/rest/posts");
+    expect((await db.postMedia.findUniqueOrThrow({ where: { id: m.id } })).deletedAt).not.toBeNull();
+    await expect(readMedia(pieces[0])).rejects.toThrow();
+
+    // LinkedIn refuses: the post failed, so the video stays to try again.
+    const keep = [await saveLocal(`vid-k1-${Date.now()}`, new Uint8Array([0, 0, 0, 8, 102, 116, 121, 112]))];
+    const failing = await db.post.create({ data: { workspaceId: w.id, body: "Again" } });
+    const k = await db.postMedia.create({
+      data: { workspaceId: w.id, postId: failing.id, kind: "video", url: keep[0], parts: JSON.stringify(keep), name: "clip.mp4", contentType: "video/mp4", size: 8 },
+    });
+    vi.stubGlobal("fetch", async () => new Response('{"message":"nope"}', { status: 500 }));
+    await expect(publishPost(w.id, failing.id)).rejects.toThrow();
+    expect((await db.postMedia.findUniqueOrThrow({ where: { id: k.id } })).deletedAt).toBeNull();
+    expect((await readMedia(keep[0])).length).toBe(8);
   });
 });
 

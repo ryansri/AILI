@@ -523,7 +523,7 @@ model PostMedia {
   workspaceId String
   postId      String
   post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
-  /// "image" or "document" (a PDF, shown on LinkedIn as a carousel)
+  /// "image", "document" (a PDF, shown on LinkedIn as a carousel) or "video" (an MP4)
   kind        String
   /// Where the file is: a blob URL, or "local:<name>" in development
   url         String
@@ -532,6 +532,8 @@ model PostMedia {
   size        Int       @default(0)
   position    Int       @default(0)
   alt         String    @default("")
+  /// Videos: the 4 MB pieces it is kept in, as a JSON list of urls, first to last. Empty: the whole file is at url.
+  parts       String    @default("")
   /// Set once the file is deleted from storage
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())

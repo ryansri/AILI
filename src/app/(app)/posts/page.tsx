@@ -11,6 +11,8 @@ import { PostingWeeksView } from "@/components/content/posting-weeks-view";
 import { PostsView } from "@/components/posts/posts-view";
 
 export const dynamic = "force-dynamic";
+// Publish now with a video: room for it to upload to LinkedIn.
+export const maxDuration = 300;
 
 /** Content: your posting days by week (?tab=weeks, the default), the plan (?tab=plan) and the posts themselves (?tab=posts), at /posts. */
 export default async function ContentPage({ searchParams }: PageProps<"/posts">) {

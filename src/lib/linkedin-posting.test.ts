@@ -109,6 +109,42 @@ describe("LinkedIn posting", () => {
     expect(JSON.parse(String(calls[3].init.body)).content).toEqual({ media: { title: "7 places", id: "urn:li:document:D" } });
   });
 
+  it("uploads a video in the parts LinkedIn asks for, finalizes it with the receipts, and posts it", async () => {
+    const calls = fakeLinkedIn([
+      Response.json({
+        value: {
+          video: "urn:li:video:V",
+          uploadToken: "",
+          uploadInstructions: [
+            { uploadUrl: "https://upload.example/v1", firstByte: 0, lastByte: 3 },
+            { uploadUrl: "https://upload.example/v2", firstByte: 4, lastByte: 5 },
+          ],
+        },
+      }),
+      new Response(null, { status: 200, headers: { etag: "e1" } }),
+      new Response(null, { status: 200, headers: { etag: "e2" } }),
+      new Response(null, { status: 200 }),
+      Response.json({ status: "AVAILABLE" }),
+      new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:share:10" } }),
+    ]);
+    const file = new Uint8Array([1, 2, 3, 4, 5, 6]);
+    const reads: [number, number][] = [];
+    const read = async (first: number, last: number) => (reads.push([first, last]), file.slice(first, last + 1));
+    const urn = await publishLinkedInPost("tok", "urn:li:person:abc", "hi", { kind: "video", size: 6, title: "Demo", read });
+    expect(urn).toBe("urn:li:share:10");
+    expect(calls[0].url).toBe("https://api.linkedin.com/rest/videos?action=initializeUpload");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      initializeUploadRequest: { owner: "urn:li:person:abc", fileSizeBytes: 6, uploadCaptions: false, uploadThumbnail: false },
+    });
+    expect(reads).toEqual([[0, 3], [4, 5]]);
+    expect(Array.from(calls[2].init.body as Uint8Array)).toEqual([5, 6]);
+    expect(calls[3].url).toBe("https://api.linkedin.com/rest/videos?action=finalizeUpload");
+    expect(JSON.parse(String(calls[3].init.body))).toEqual({
+      finalizeUploadRequest: { video: "urn:li:video:V", uploadToken: "", uploadedPartIds: ["e1", "e2"] },
+    });
+    expect(JSON.parse(String(calls[5].init.body)).content).toEqual({ media: { title: "Demo", id: "urn:li:video:V" } });
+  });
+
   it("stops when LinkedIn cannot process a file", async () => {
     fakeLinkedIn([
       Response.json({ value: { uploadUrl: "https://upload.example/d", document: "urn:li:document:D" } }),

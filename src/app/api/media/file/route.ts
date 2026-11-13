@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentWorkspaceId } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { cannotAdd } from "@/lib/media";
+import { cannotAdd, looksLikeMp4, VIDEO_TYPE } from "@/lib/media";
 import { addMedia, mediaEditable } from "@/lib/media-server";
 import { mediaStore, removeFile, saveBlob, saveLocal } from "@/lib/media-store";
 
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
   const name = url.searchParams.get("name") ?? "";
   const bytes = new Uint8Array(await request.arrayBuffer());
-  const why = cannotAdd([], { contentType, size: bytes.length });
+  const why = contentType === VIDEO_TYPE && !looksLikeMp4(bytes) ? "That file is not an MP4 video." : cannotAdd([], { contentType, size: bytes.length });
   if (why) return NextResponse.json({ error: why }, { status: 400 });
   let stored: string;
   try {

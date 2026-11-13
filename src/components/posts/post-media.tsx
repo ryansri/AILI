@@ -2,10 +2,23 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, ImagePlus, Loader2, X } from "lucide-react";
+import { FileText, Film, ImagePlus, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { cannotAdd, docTitleOf, IMAGE_TYPES, MAX_DOC_TITLE, MAX_IMAGES, mediaKindOf, PART_BYTES, PDF_TYPE, type MediaKind, type MediaView } from "@/lib/media";
+import {
+  cannotAdd,
+  docTitleOf,
+  IMAGE_TYPES,
+  MAX_DOC_TITLE,
+  MAX_IMAGES,
+  mediaKindOf,
+  PART_BYTES,
+  PDF_TYPE,
+  VIDEO_TYPE,
+  videoLengthProblem,
+  type MediaKind,
+  type MediaView,
+} from "@/lib/media";
 import { orderMedia, removeMedia, setDocTitle } from "@/lib/client-actions";
 
 /*
@@ -17,10 +30,35 @@ import { orderMedia, removeMedia, setDocTitle } from "@/lib/client-actions";
 
 export type MediaStoreMode = "blob" | "local" | "off";
 
-type Mode = "text" | "images" | "pdf";
+type Mode = "text" | "images" | "pdf" | "video";
 
 const modeOf = (media: MediaView[]): Mode =>
-  media.length === 0 ? "text" : media.some((m) => m.kind === "document") ? "pdf" : "images";
+  media.length === 0
+    ? "text"
+    : media.some((m) => m.kind === "document")
+      ? "pdf"
+      : media.some((m) => m.kind === "video")
+        ? "video"
+        : "images";
+
+const MODE_OF_KIND: Record<MediaKind, Mode> = { image: "images", document: "pdf", video: "video" };
+
+/** How long a video file plays, in seconds; 0 when the browser can't tell. */
+function videoSeconds(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    const done = (n: number) => {
+      URL.revokeObjectURL(url);
+      resolve(n);
+    };
+    v.onloadedmetadata = () => done(v.duration);
+    v.onerror = () => done(0);
+    setTimeout(() => done(0), 8000);
+    v.src = url;
+  });
+}
 
 const sizeLabel = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -75,7 +113,7 @@ async function uploadFile(postId: string, file: File, onProgress: (label: string
   await post(`/api/media/part?${q}&finish=1`, body, "application/json", file.size, file.name);
 }
 
-/** The title LinkedIn shows above a PDF. Saves when you leave the box or press Enter. */
+/** The title LinkedIn shows with a PDF or video. Saves when you leave the box or press Enter. */
 function DocTitle({ postId, media }: { postId: string; media: MediaView }) {
   const router = useRouter();
   const saved = media.title ?? "";
@@ -116,13 +154,13 @@ function DocTitle({ postId, media }: { postId: string; media: MediaView }) {
         className="h-9 rounded-lg border bg-background px-3 text-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <span className="text-xs text-muted-foreground">
-        Shows on LinkedIn above your document.{value.trim() ? "" : ` Left empty, it uses the file name: "${fileName}".`}
+        Shows on LinkedIn with your {media.kind === "video" ? "video" : "document"}.{value.trim() ? "" : ` Left empty, it uses the file name: "${fileName}".`}
       </span>
     </label>
   );
 }
 
-/** The "Images or carousel" part of a post: pick, add, order and remove its files. */
+/** The "Images, PDF or video" part of a post: pick, add, order and remove its files. */
 export function MediaPanel({ postId, media, store }: { postId: string; media: MediaView[]; store: MediaStoreMode }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -144,7 +182,9 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
     let added = 0;
     try {
       for (const [i, file] of files.entries()) {
-        const why = cannotAdd(current, { contentType: file.type, size: file.size });
+        const why =
+          cannotAdd(current, { contentType: file.type, size: file.size }) ??
+          (file.type === VIDEO_TYPE ? videoLengthProblem(await videoSeconds(file)) : null);
         if (why) {
           toast.error(`${file.name}: ${why}`);
           continue;
@@ -154,8 +194,7 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
         await uploadFile(postId, file, (label) => setBusy(files.length > 1 ? `${adding}: ${label}` : label));
         current.push({ kind: mediaKindOf(file.type)! });
         added++;
-        if (mediaKindOf(file.type) === "document") setMode("pdf");
-        else setMode("images");
+        setMode(MODE_OF_KIND[mediaKindOf(file.type)!]);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "That file did not upload.");
@@ -200,13 +239,15 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
     { key: "text", label: "Text only" },
     { key: "images", label: "Images" },
     { key: "pdf", label: "PDF carousel" },
+    { key: "video", label: "Video" },
   ];
-  const full = shown === "pdf" ? media.length >= 1 : media.length >= MAX_IMAGES;
+  const full = shown === "pdf" || shown === "video" ? media.length >= 1 : media.length >= MAX_IMAGES;
+  const one = shown === "pdf" ? "the PDF" : shown === "video" ? "the video" : "images";
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Images or carousel</div>
-      <div role="radiogroup" aria-label="Images or carousel" className="flex self-start rounded-lg bg-muted p-0.5">
+      <div className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Images, PDF or video</div>
+      <div role="radiogroup" aria-label="Images, PDF or video" className="flex self-start rounded-lg bg-muted p-0.5">
         {modes.map((m) => {
           // Files of one kind are on the post: remove them to switch.
           const locked = has !== "text" && m.key !== has;
@@ -217,7 +258,7 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
               role="radio"
               aria-checked={shown === m.key}
               disabled={locked}
-              title={locked ? `Remove the ${has === "pdf" ? "PDF" : "images"} first` : undefined}
+              title={locked ? `Remove the ${has === "pdf" ? "PDF" : has === "video" ? "video" : "images"} first` : undefined}
               onClick={() => setMode(m.key)}
               className={cn(
                 "h-7 rounded-md px-3 text-md transition-colors disabled:cursor-not-allowed disabled:opacity-40",
@@ -238,7 +279,7 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
       )}
 
       {list.length > 0 && (
-        <ol className="flex flex-wrap gap-2.5" aria-label={shown === "pdf" ? "PDF carousel" : "Images, in order"}>
+        <ol className="flex flex-wrap gap-2.5" aria-label={shown === "pdf" ? "PDF carousel" : shown === "video" ? "Video" : "Images, in order"}>
           {list.map((m, i) => (
             <li
               key={m.id}
@@ -270,10 +311,12 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
                 <img src={m.src} alt={m.name} className="size-full object-cover" draggable={false} />
               ) : (
                 <>
-                  <FileText className="size-6 shrink-0 text-red-600" />
+                  {m.kind === "video" ? <Film className="size-6 shrink-0 text-blue-600" /> : <FileText className="size-6 shrink-0 text-red-600" />}
                   <span className="flex min-w-0 flex-col text-xs">
                     <span className="truncate font-medium text-foreground">{m.name}</span>
-                    <span className="text-muted-foreground">{sizeLabel(m.size)} · each page is a slide</span>
+                    <span className="text-muted-foreground">
+                      {sizeLabel(m.size)} · {m.kind === "video" ? "video" : "each page is a slide"}
+                    </span>
                   </span>
                 </>
               )}
@@ -296,7 +339,8 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
         </ol>
       )}
 
-      {shown === "pdf" && list.filter((m) => m.kind === "document" && !m.removedAt).map((m) => <DocTitle key={m.id} postId={postId} media={m} />)}
+      {(shown === "pdf" || shown === "video") &&
+        list.filter((m) => (m.kind === "document" || m.kind === "video") && !m.removedAt).map((m) => <DocTitle key={m.id} postId={postId} media={m} />)}
 
       {shown !== "text" && store !== "off" && !full && (
         <label
@@ -324,8 +368,8 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
               `${busy}…`
             ) : (
               <>
-                <b className="font-semibold text-foreground">Drop {shown === "pdf" ? "the PDF" : "images"} here</b> or click to
-                choose. Download {shown === "pdf" ? "it" : "them"} from Claude first.
+                <b className="font-semibold text-foreground">Drop {one} here</b> or click to choose.
+                {shown === "video" ? "" : ` Download ${shown === "pdf" ? "it" : "them"} from Claude first.`}
               </>
             )}
           </span>
@@ -334,7 +378,7 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
             type="file"
             className="sr-only"
             multiple={shown === "images"}
-            accept={shown === "pdf" ? PDF_TYPE : IMAGE_TYPES.join(",")}
+            accept={shown === "pdf" ? PDF_TYPE : shown === "video" ? VIDEO_TYPE : IMAGE_TYPES.join(",")}
             onChange={(e) => void add(Array.from(e.target.files ?? []))}
           />
         </label>
@@ -344,9 +388,13 @@ export function MediaPanel({ postId, media, store }: { postId: string; media: Me
         <p className="text-xs leading-relaxed text-muted-foreground">
           {shown === "pdf"
             ? "One PDF, up to 100 MB. Each page becomes a slide people swipe through."
-            : `1 to ${MAX_IMAGES} images, JPG, PNG or GIF, up to 10 MB each.${list.length > 1 ? " Drag to change the order." : ""}`}
+            : shown === "video"
+              ? "One MP4 video, up to 200 MB, 3 seconds to 30 minutes long."
+              : `1 to ${MAX_IMAGES} images, JPG, PNG or GIF, up to 10 MB each.${list.length > 1 ? " Drag to change the order." : ""}`}
           <br />
-          AILI keeps them until the post is out, then deletes them the next day. LinkedIn keeps its copy.
+          {shown === "video"
+            ? "AILI keeps it until the post is live, then deletes it straight away. LinkedIn keeps its copy."
+            : "AILI keeps them until the post is out, then deletes them the next day. LinkedIn keeps its copy."}
         </p>
       )}
     </div>
@@ -358,10 +406,20 @@ export function MediaPreview({ media }: { media: MediaView[] }) {
   if (media.length === 0) return null;
   if (media.some((m) => m.removedAt)) {
     const pdf = media.some((m) => m.kind === "document");
+    const video = media.some((m) => m.kind === "video");
     const n = media.length;
     return (
       <div className="rounded-lg border-[1.5px] border-dashed bg-muted/50 px-4 py-3.5 text-md text-muted-foreground">
-        {pdf ? "PDF carousel" : `${n} ${n === 1 ? "image" : "images"}`} · removed from AILI after publishing, still on LinkedIn
+        {pdf ? "PDF carousel" : video ? "Video" : `${n} ${n === 1 ? "image" : "images"}`} · removed from AILI after publishing, still on LinkedIn
+      </div>
+    );
+  }
+  const video = media.find((m) => m.kind === "video");
+  if (video) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <video src={video.src} controls preload="metadata" playsInline className="max-h-[480px] w-full rounded-lg bg-black" />
+        <span className="truncate text-xs text-muted-foreground">{docTitleOf(video)}</span>
       </div>
     );
   }

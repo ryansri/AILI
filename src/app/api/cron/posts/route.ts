@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { publishDuePosts } from "@/lib/posts";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Room for a video to upload to LinkedIn.
+export const maxDuration = 300;
 
 function allowed(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
